@@ -1,0 +1,165 @@
+# KHR Production — automatic builds
+# Har dafa code GitHub par aaye (ya "Run workflow" dabayein) to ye banata hai:
+#   1) Android APK  (seedha phone par install)        -> Releases + Actions artifacts
+#   2) Android AAB  (Google Play Store upload ke liye) -> Releases + Actions artifacts
+#   3) Windows installer (.exe) PC ke liye              -> Releases + Actions artifacts
+#   4) Web app (GitHub Pages) — PC/phone browser se khulti aur "Install" hoti hai
+name: Build KHR Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+env:
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+  VERSION_CODE: ${{ github.run_number }}
+  VERSION_NAME: 1.0.${{ github.run_number }}
+
+jobs:
+  android:
+    name: Android APK + AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Supabase secrets
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Repo Settings > Secrets and variables > Actions mein VITE_SUPABASE_URL aur VITE_SUPABASE_ANON_KEY add karein."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Signing key (agar diya gaya ho)
+        id: key
+        env:
+          KEY_B64: ${{ secrets.KHR_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEY_B64" ]; then
+            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/khr-release.jks"
+            echo "KHR_KEYSTORE=$RUNNER_TEMP/khr-release.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::KHR_KEYSTORE_BASE64 secret nahi mila. Sirf debug APK banegi (Play Store ke liye AAB nahi)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build web + prepare Android
+        env:
+          KHR_KEYSTORE_PASSWORD: ${{ secrets.KHR_KEYSTORE_PASSWORD }}
+          KHR_KEY_ALIAS: ${{ secrets.KHR_KEY_ALIAS }}
+          KHR_KEY_PASSWORD: ${{ secrets.KHR_KEY_PASSWORD }}
+        run: npm run android:prepare
+
+      - name: Gradle build (signed release)
+        if: steps.key.outputs.signed == 'true'
+        working-directory: android
+        env:
+          KHR_KEYSTORE_PASSWORD: ${{ secrets.KHR_KEYSTORE_PASSWORD }}
+          KHR_KEY_ALIAS: ${{ secrets.KHR_KEY_ALIAS }}
+          KHR_KEY_PASSWORD: ${{ secrets.KHR_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease bundleRelease
+          mkdir -p ../out
+          cp app/build/outputs/apk/release/app-release.apk "../out/KHR-Production-${VERSION_NAME}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "../out/KHR-Production-${VERSION_NAME}-playstore.aab"
+
+      - name: Gradle build (debug, bina signing key)
+        if: steps.key.outputs.signed != 'true'
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          mkdir -p ../out
+          cp app/build/outputs/apk/debug/app-debug.apk "../out/KHR-Production-${VERSION_NAME}-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ env.VERSION_NAME }}
+          path: out/*
+
+  windows:
+    name: Windows installer (.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm install --no-save electron@33.4.11 electron-builder@25.1.8
+          npm pkg set version="$VERSION_NAME"
+          npx electron-builder --win --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ env.VERSION_NAME }}
+          path: release/*.exe
+
+  web:
+    name: Web app (GitHub Pages)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+        id: pages
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.pages.outcome == 'success'
+        with:
+          path: dist
+      - uses: actions/deploy-pages@v4
+        if: steps.pages.outcome == 'success'
+
+  release:
+    name: Download page (GitHub Release)
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: KHR Production ${{ env.VERSION_NAME }}
+          make_latest: true
+          body: |
+            **KHR Production ${{ env.VERSION_NAME }}**
+
+            - Android phone: `.apk` file download karein aur install karein.
+            - Google Play Store: `-playstore.aab` file Play Console mein upload karein.
+            - Windows PC: `KHR-Production-Setup-….exe` download kar ke install karein.
+          files: files/*
