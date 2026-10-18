@@ -19,6 +19,7 @@ permissions:
 env:
   VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+  VITE_IMGBB_API_KEY: ${{ secrets.VITE_IMGBB_API_KEY }}
   VERSION_CODE: ${{ github.run_number }}
   VERSION_NAME: 1.0.${{ github.run_number }}
 
@@ -34,6 +35,9 @@ jobs:
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
             echo "::error::Repo Settings > Secrets and variables > Actions mein VITE_SUPABASE_URL aur VITE_SUPABASE_ANON_KEY add karein."
             exit 1
+          fi
+          if [ -z "$VITE_IMGBB_API_KEY" ]; then
+            echo "::warning::VITE_IMGBB_API_KEY secret nahi mila. App chalegi lekin thumbnail upload band rahega."
           fi
 
       - uses: actions/setup-node@v4
