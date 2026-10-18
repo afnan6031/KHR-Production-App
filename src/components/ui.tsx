@@ -26,6 +26,31 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
   );
 }
 
+/* ---------- Android back button ka stack ----------
+   Jo cheez sab se upar khuli hai (sheet, image, server ki chat) wahi pehle band hoti hai. */
+const backStack: { id: number; fn: { current: () => void } }[] = [];
+let backSeq = 0;
+export function useBackHandler(active: boolean, fn: () => void) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    if (!active) return;
+    const item = { id: ++backSeq, fn: ref };
+    backStack.push(item);
+    return () => {
+      const i = backStack.indexOf(item);
+      if (i >= 0) backStack.splice(i, 1);
+    };
+  }, [active]);
+}
+/** true = kisi ne back sambhal liya */
+export function runBackHandler(): boolean {
+  const top = backStack[backStack.length - 1];
+  if (!top) return false;
+  top.fn.current();
+  return true;
+}
+
 /* ---------- Toast ---------- */
 const ToastCtx = createContext<(msg: string) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
@@ -52,6 +77,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 /* ---------- Bottom sheet ---------- */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useBackHandler(true, onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -165,16 +191,18 @@ export function Avatar({ name, url, online }: { name: string; url?: string; onli
   );
 }
 
-export function Logo({ size = 34 }: { size?: number }) {
+/** KHR ka asli logo: dark mode mein main logo, light mode mein white wala, aur variant="circle" se gol */
+export function Logo({ size = 34, variant = 'auto' }: { size?: number; variant?: 'auto' | 'main' | 'circle' | 'white' }) {
+  const box = { width: size, height: size };
+  if (variant !== 'auto') {
+    const src = variant === 'circle' ? 'brand/khr-circle.png' : variant === 'white' ? 'brand/khr-white.png' : 'brand/khr-main.png';
+    return <img className="logo-img" src={src} alt="KHR Production" style={box} />;
+  }
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="var(--logo-bg)" />
-      <path d="M12 22 50 14l1.6 7.4L13.6 29.4z" fill="var(--accent)" />
-      <path d="M20 19.6 24 26M30.5 17.4l4 6.4M41 15.2l4 6.4" stroke="var(--logo-bg)" strokeWidth="3" />
-      <rect x="12" y="31" width="40" height="20" rx="4" fill="var(--logo-fg)" />
-      <text x="32" y="46" textAnchor="middle" fontFamily="var(--f-display)" fontWeight="800" fontSize="13" fill="var(--logo-bg)">KHR</text>
-      <circle cx="49" cy="34.5" r="2.4" fill="var(--live)" />
-    </svg>
+    <span className="logo-auto" style={box}>
+      <img className="logo-on-dark" src="brand/khr-main.png" alt="KHR Production" style={box} />
+      <img className="logo-on-light" src="brand/khr-white.png" alt="KHR Production" style={box} />
+    </span>
   );
 }
 

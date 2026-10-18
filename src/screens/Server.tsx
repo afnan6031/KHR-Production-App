@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData, type ServerChannelInput } from '../lib/data';
 import type { DirectMessage, Profile, ServerChannel } from '../lib/types';
 import { errorText, fmtClock, fmtDate } from '../lib/utils';
-import { Avatar, ConfirmButton, Seg, Sheet, useToast } from '../components/ui';
+import { Avatar, ConfirmButton, Logo, Seg, Sheet, useBackHandler, useToast } from '../components/ui';
 import { Composer, ImageViewer, MessageFeed, UserAvatar, roleTone, type FeedItem } from '../components/Messaging';
 
 /* ---------- server channel "naye message" (har device par yaad) ---------- */
@@ -86,12 +86,15 @@ export function ServerScreen() {
   };
 
   const channelId = view.kind === 'channel' ? view.id : '';
+  // phone par chat khuli ho to back = server ki list (dashboard nahi)
+  const narrow = typeof window !== 'undefined' && !window.matchMedia('(min-width: 980px)').matches;
+  useBackHandler(narrow && view.kind !== 'home', () => setView({ kind: 'home' }));
 
   return (
     <div className={'srv ' + (view.kind === 'home' ? 'at-home' : 'at-chat') + (view.kind === 'channel' ? ' with-members' : '')}>
       <aside className="srv-side">
         <div className="srv-head">
-          <span className="srv-logo" aria-hidden="true">K</span>
+          <Logo size={40} variant="circle" />
           <div className="grow">
             <b>KHR Server</b>
             <small className="muted">{d.profiles.filter((p) => p.status === 'approved' || p.is_owner).length} members · {d.online.size} online</small>

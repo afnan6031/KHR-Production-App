@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNo
 import { useData } from '../lib/data';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { APP_TZ, errorText, fmtClock } from '../lib/utils';
-import { Avatar, ConfirmButton, useToast } from './ui';
+import { Avatar, ConfirmButton, useBackHandler, useToast } from './ui';
 import { dayLabel } from './Attachments';
 
 /* ---------- Server roles ka rang ---------- */
@@ -239,6 +239,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
 
 /** Image bari dekhne ke liye */
 export function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  useBackHandler(true, onClose);
   useEffect(() => {
     const k = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', k);

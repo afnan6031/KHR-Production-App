@@ -11,7 +11,7 @@ import { HomeScreen, TeamScreen } from './screens/Home';
 import { LeaderboardScreen, ProgressScreen } from './screens/Progress';
 import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server';
 import { ChannelSheet, PerfSheet, ProfileSheet, VideoSheet } from './components/Sheets';
-import { Avatar, Logo, ThemeButton, ToastProvider } from './components/ui';
+import { Avatar, Logo, ThemeButton, ToastProvider, runBackHandler } from './components/ui';
 import { BellButton, NotificationsProvider } from './components/Notifications';
 
 export default function App() {
@@ -106,9 +106,21 @@ function Shell() {
   // Android back button: sheet band -> progress/channel se wapas -> home -> app band
   const nav = useRef({ sheet, openId, openUser, tab });
   nav.current = { sheet, openId, openUser, tab };
+  // PC/phone par install ki hui web app (PWA): browser ka back bhi pehle sheet/chat band kare
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() || !window.matchMedia('(display-mode: standalone)').matches) return;
+    history.pushState({ khr: 1 }, '');
+    const onPop = () => {
+      if (runBackHandler()) history.pushState({ khr: 1 }, '');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const h = CapApp.addListener('backButton', () => {
+      if (runBackHandler()) return; // sheet / image / server chat pehle band
       const n = nav.current;
       if (n.sheet) setSheet(null);
       else if (n.openUser) setOpenUser(null);

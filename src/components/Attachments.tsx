@@ -50,17 +50,17 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
       <div className="tools-btns">
         <button type="button" className="tbtn" onClick={() => setOpen({ kind: 'script' })} aria-label={`Scripts: aaj ${scripts.length}`}>
           <IconScript />
-          <span>Scripts</span>
+          <span className="tlabel">Scripts</span>
           <b className="num">{scripts.length}</b>
         </button>
         <button type="button" className="tbtn" onClick={() => setOpen({ kind: 'thumbnail' })} aria-label={`Thumbnails: aaj ${thumbs.length}`}>
           <IconThumb />
-          <span className="lg">Thumbnails</span><span className="sm">Thumbs</span>
+          <span className="tlabel"><span className="lg">Thumbnails</span><span className="sm">Thumbs</span></span>
           <b className="num">{thumbs.length}</b>
         </button>
         <button type="button" className={'tbtn' + (unread ? ' hot' : '')} onClick={() => setOpen({ kind: 'chat' })} aria-label={`Messages${unread ? `: ${unread} naye` : ''}`}>
           <IconChat />
-          <span className="lg">Messages</span><span className="sm">Chat</span>
+          <span className="tlabel"><span className="lg">Messages</span><span className="sm">Chat</span></span>
           <b className="num">{unread ? unread : msgCount}</b>
           {unread > 0 && <i className="tdot" aria-hidden="true" />}
         </button>

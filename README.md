@@ -352,6 +352,22 @@ Notifications kaise kaam karti hain:
 
 ---
 
+## v7: Final fixes
+
+- **Back button (phone):**
+  - Server mein kisi channel ya DM mein ho to back dabane se pehle **server ki list** aati hai, dashboard nahi.
+  - Khuli sheet ya tasveer bhi back se pehle band hoti hai.
+- **Keyboard:** likhte waqt typing box **keyboard ke upar** aa jata hai aur neeche ki patti chhup jati hai, taake jo likh rahe hain wo nazar aaye. Ye chat, DM aur saari sheets mein hai.
+- **KHR logo har jagah:** owner ke asli logos `resources/brand/` mein rakhe hain. `python3 scripts/make_icons.py` in se sab bana deta hai:
+  - Android app icon (square + round + adaptive)
+  - splash screen
+  - PC/web icon aur Windows installer icon
+  - app ke andar: dark mode mein main logo, light mode mein white logo, server mein gol logo
+- **PC par poori screen:** dashboard ab daayein-baayein khaali jagah nahi chhorta. Ek line mein zyada cards aate hain.
+- **Buttons fit:** Scripts / Thumbnails / Messages ke number aur icons har screen size par apni jagah rehte hain. Jagah kam ho to "Thumbs" / "Chat" jaise chhote naam ban jate hain.
+
+---
+
 ## Pehle se setup kiya hua hai? Update kaise karein
 
 1. **Supabase → SQL Editor → New query** kholein. Nayi `supabase/schema.sql` poori paste kar ke **Run** karein.

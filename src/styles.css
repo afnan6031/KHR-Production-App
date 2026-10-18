@@ -496,8 +496,8 @@ a.btn { text-decoration: none; color: inherit; }
 /* v4 fixes: 3 tool buttons ek line mein, aur owner ka Reject button timer ke neeche */
 .tools-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tbtn .sm { display: none; }
-@media (max-width: 460px) { .tbtn .lg { display: none; } .tbtn .sm { display: inline; } .tbtn { gap: 4px; padding: 7px 4px; } }
-@media (max-width: 330px) { .tbtn .sm { display: none; } }
+
+
 .task { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; }
 .task > .tick { margin-top: 2px; }
 .task > .btn { grid-column: 2; justify-self: start; }
@@ -726,3 +726,48 @@ main.server-main .srv > * { min-height: 0; }
   .brand b { font-size: 16.5px; }
   .theme-btn { width: 34px; height: 34px; }
 }
+
+/* ================= v7: keyboard ke upar typing ================= */
+body.kb-open nav.tabs { display: none; }
+body.kb-open main.server-main { bottom: var(--kb, 0px); }
+body.kb-open main:not(.server-main) { padding-bottom: calc(var(--kb, 0px) + 24px); }
+.sheet-bg { padding-bottom: var(--kb, 0px); }
+.sheet { max-height: calc(92vh - var(--kb, 0px)); }
+body.kb-open .toast { bottom: calc(var(--kb, 0px) + 16px); }
+
+/* ================= v7: KHR logo ================= */
+.logo-img, .logo-auto img { display: block; object-fit: contain; flex: none; }
+.logo-auto { display: inline-block; position: relative; flex: none; }
+.logo-auto img { position: absolute; inset: 0; }
+.logo-on-dark { display: none !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo-on-dark { display: block !important; } :root:not([data-theme="light"]) .logo-on-light { display: none !important; } }
+:root[data-theme="dark"] .logo-on-dark { display: block !important; }
+:root[data-theme="dark"] .logo-on-light { display: none !important; }
+.srv-head .logo-img { border-radius: 50%; }
+
+/* ================= v7: PC par poori screen ================= */
+@media (min-width: 980px) {
+  main { max-width: none; padding-left: max(28px, env(safe-area-inset-left, 0px)); padding-right: max(28px, env(safe-area-inset-right, 0px)); }
+  .top-in, nav.tabs .in { max-width: none; padding-left: 28px; padding-right: 28px; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  .stats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .hello, .sec-head > .hello { max-width: none; }
+  .auth { max-width: 460px; }
+}
+@media (min-width: 1500px) { .cards { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); } }
+
+/* ================= v7: Scripts / Thumbnails / Messages buttons hamesha apni jagah ================= */
+.tools { container-type: inline-size; }
+.tools-btns { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
+.tbtn { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 7px 8px !important; min-width: 0; overflow: hidden; text-align: left; }
+.tbtn svg { width: 16px; height: 16px; }
+.tbtn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tbtn b { justify-self: end; min-width: 22px; text-align: center; }
+.tbtn .lg { display: inline; }
+.tbtn .sm { display: none; }
+@container (max-width: 420px) { .tbtn .lg { display: none; } .tbtn .sm { display: inline; } }
+@container (max-width: 330px) { .tbtn > svg { display: none; } .tbtn { grid-template-columns: minmax(0, 1fr) auto; padding: 7px 8px !important; } }
+@container (max-width: 220px) { .tbtn .tlabel { display: none; } .tbtn { grid-template-columns: 1fr; justify-items: center; } .tbtn > svg { display: block; } .tbtn b { justify-self: center; } }
+.tbtn { gap: 5px; font-size: 12.5px; }
+.tbtn b { min-width: 18px; padding: 0 5px !important; }
+@container (max-width: 330px) { .tbtn { font-size: 12px; gap: 4px; padding: 7px 6px !important; } }

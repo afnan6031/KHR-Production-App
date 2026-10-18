@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { applyTheme, onThemeChange } from './lib/theme';
+import { initKeyboard } from './lib/keyboard';
 import './styles.css';
 
 // Web / PC par offline-ready + "Install app" support. Android app ke andar service worker ki zaroorat nahi.
@@ -11,6 +12,7 @@ if (!Capacitor.isNativePlatform() && location.protocol.startsWith('http')) regis
 
 applyTheme();
 onThemeChange(() => applyTheme());
+initKeyboard();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

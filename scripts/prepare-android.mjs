@@ -37,6 +37,16 @@ if (process.env.KHR_KEYSTORE && !g.includes('signingConfigs')) {
 }
 writeFileSync(gradlePath, g);
 
+// 3b) Keyboard khule to app ka layout keyboard ke upar aaye
+{
+  const mp = 'android/app/src/main/AndroidManifest.xml';
+  let m = readFileSync(mp, 'utf8');
+  if (!m.includes('windowSoftInputMode')) {
+    m = m.replace('<activity', '<activity\n            android:windowSoftInputMode="adjustResize"');
+    writeFileSync(mp, m);
+  }
+}
+
 // 4) Internet permission (template mein hoti hai, phir bhi pakka kar lein)
 const manPath = 'android/app/src/main/AndroidManifest.xml';
 let man = readFileSync(manPath, 'utf8');
