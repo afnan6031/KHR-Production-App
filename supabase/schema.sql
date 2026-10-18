@@ -481,6 +481,10 @@ create or replace function public.set_task_done(p_task uuid, p_done boolean) ret
 language plpgsql security definer set search_path = public as $$
 declare t public.tasks;
 begin
+  -- v6: role ka waqt shuru hone se pehle task complete nahi ho sakta
+  if p_done and exists (select 1 from public.tasks where id = p_task and start_at is not null and start_at > now()) then
+    raise exception 'Is task ka waqt abhi shuru nahi hua. Start time ke baad tick karein.';
+  end if;
   update public.tasks
      set status = case when p_done then 'done' else 'pending' end,
          completed_at = case when p_done then now() else null end

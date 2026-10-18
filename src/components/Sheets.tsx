@@ -3,7 +3,7 @@ import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
 import { ROLES, STAGES, type Channel, type RoleTime, type Video } from '../lib/types';
 import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
-import { Avatar, ConfirmButton, Sheet, useToast } from './ui';
+import { Avatar, ConfirmButton, Seg, Sheet, useTheme, useToast } from './ui';
 
 /* ================= Channel create / edit ================= */
 export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel | null; onClose: () => void; onSaved: (id: string) => void }) {
@@ -394,6 +394,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
   const [contact, setContact] = useState(d.me?.contact || '');
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState(false);
+  const [theme, setThemeChoice] = useTheme();
   const fileRef = useRef<HTMLInputElement>(null);
   async function pickAvatar(f: File | undefined) {
     if (!f) return;
@@ -424,6 +425,10 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
             {d.me?.avatar_url && <button type="button" className="btn sm" disabled={up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
           </div>
         </div>
+      </div>
+      <div className="f">
+        App ka rang
+        <Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} />
       </div>
       <form
         className="form"

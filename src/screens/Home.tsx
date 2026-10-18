@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import type { Task } from '../lib/types';
 import { DAYS_LONG, DAYS_UR, addDays, errorText, fmtN, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
 import { OwnerCard } from '../components/Cards';
 import { TaskBoard } from '../components/Tasks';
-import { Avatar, ConfirmButton, useNow, useToast } from '../components/ui';
+import { ConfirmButton, useNow, useToast } from '../components/ui';
 import { MiniScore } from './Progress';
 
 /** Aaj ke tasks + pichle 7 din ke jo abhi bhi pending/expired hain */
@@ -166,7 +167,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
             <div className="list">
               {pending.map((p) => (
                 <div className="li" key={p.id}>
-                  <Avatar name={p.full_name} />
+                  <UserAvatar id={p.id} />
                   <div className="grow">
                     <div className="t">{p.full_name}</div>
                     <div className="d">ID: {p.contact || '—'}{p.note ? ' · ' + p.note : ''}</div>
@@ -197,7 +198,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
                 return (
                   <div className="li" key={p.id}>
                     <button className="li-main" onClick={() => openProgress(p.id)}>
-                      <Avatar name={p.full_name} />
+                      <UserAvatar id={p.id} />
                       <span className="grow">
                         <span className="t block">{p.full_name}</span>
                         <span className="d block">{rs.length ? rs.join(' · ') : 'Kisi channel mein role nahi'}</span>
@@ -224,7 +225,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
             <div className="list">
               {rejected.map((p) => (
                 <div className="li" key={p.id}>
-                  <Avatar name={p.full_name} />
+                  <UserAvatar id={p.id} />
                   <div className="grow">
                     <div className="t">{p.full_name}</div>
                     <div className="d">ID: {p.contact || '—'}</div>

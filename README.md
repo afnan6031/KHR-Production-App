@@ -307,6 +307,51 @@ Neeche tab bar mein **Server** ka naya button hai. Ye sab ke liye hai.
 
 ---
 
+## v6: Dark/Light mode, notifications aur behtar server
+
+**Rang (theme):**
+- Upar ☀/☾ button se light aur dark mode badlein. Profile mein "Phone jaisa" bhi chun sakte hain.
+- Dark mode mein dark blue background aur dark red rang hain. Light mode mein halke shade.
+- Har channel card ka apna rang hai: dark mein gehra, light mein halka.
+
+**Profile photo:** ek dafa lagayein to poori app mein nazar aati hai: header, team, ranking, progress, chats aur server. Photo ImgBB par jati hai.
+
+**Server:**
+- Server kholte hi **pichli dafa khula channel** khul jata hai. Friends tab mein **pichli khuli DM**.
+- "Members" tab hata diya gaya. Right side par **sirf us channel ke log** nazar aate hain:
+  - private channel mein sirf add kiye gaye log aur owner
+  - public channel mein poori team
+- DM khuli ho to right side band rehti hai.
+- PC par server poori window mein Discord ki tarah chalta hai: left mein channels/friends, beech mein chat, right mein log.
+- Phone par channel ke log "👥" button mein milte hain.
+- Friend request ke liye: Friends → "Team · friend banayein", ya kisi ke naam par tap karein.
+
+**Tick ka rule:** jab tak role ka start time nahi aata, tick nahi hota. Gol nishan par 🔒 nazar aata hai. Database bhi ise rokta hai.
+
+**Notifications (🔔):** in moqon par alert aata hai:
+- naya message (server, channel chat, DM)
+- kisi ne task complete kiya (owner ko)
+- task reject hua
+- naya kaam ya role assign hua
+- friend request aayi ya accept hui
+- nayi script ya thumbnail lagi
+- deadline shuru hui
+- deadline mein 10 minute baqi
+- deadline khatam hui
+
+Notifications kaise kaam karti hain:
+- Ghanti mein "On karein" dabayein to phone/PC par bhi alert aata hai.
+- Android app mein **deadline ke alerts pehle se phone par schedule** ho jate hain, is liye app band ho tab bhi aate hain.
+- Messages aur ticks ke alerts tab aate hain jab app khuli ho ya background mein chal rahi ho.
+  - App bilkul band ho tab bhi message ka alert chahiye to Firebase push lagani hogi. Wo agla step hai.
+
+**Scripts/Thumbnails history:**
+- Aaj ki scripts aur thumbnails card par nazar aati hain. Agle din wo **History** mein chali jati hain.
+- Card par "Scripts history" aur "Thumbnails history" buttons hain. In mein har cheez title, waqt aur date ke saath hoti hai.
+- Thumbnail ka **title ab zaroori** hai, taake file ka ajeeb naam title na bane.
+
+---
+
 ## Pehle se setup kiya hua hai? Update kaise karein
 
 1. **Supabase → SQL Editor → New query** kholein. Nayi `supabase/schema.sql` poori paste kar ke **Run** karein.

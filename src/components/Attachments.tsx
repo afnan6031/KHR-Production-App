@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useData } from '../lib/data';
 import type { Attachment } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
@@ -29,7 +29,7 @@ const IconChat = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>
 );
 
-type Open = { kind: 'script' | 'thumbnail'; focus?: string } | { kind: 'chat' } | null;
+type Open = { kind: 'script' | 'thumbnail'; focus?: string; tab?: 'today' | 'history' } | { kind: 'chat' } | null;
 
 /**
  * Har channel card ke andar: Scripts / Thumbnails / Messages ke buttons.
@@ -86,14 +86,24 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
           )}
         </div>
       )}
-      {open && open.kind !== 'chat' && <AttachSheet channelId={channelId} initial={open.kind} focus={open.focus} onClose={() => setOpen(null)} />}
+      {showToday && (
+        <div className="hist-row">
+          <button type="button" className="hist-btn" onClick={() => setOpen({ kind: 'script', tab: 'history' })}>
+            <IconScript /> Scripts history <b className="num">{all.filter((a) => a.kind === 'script' && a.day !== today).length}</b>
+          </button>
+          <button type="button" className="hist-btn" onClick={() => setOpen({ kind: 'thumbnail', tab: 'history' })}>
+            <IconThumb /> Thumbnails history <b className="num">{all.filter((a) => a.kind === 'thumbnail' && a.day !== today).length}</b>
+          </button>
+        </div>
+      )}
+      {open && open.kind !== 'chat' && <AttachSheet channelId={channelId} initial={open.kind} focus={open.focus} initialTab={open.tab} onClose={() => setOpen(null)} />}
       {open?.kind === 'chat' && <ChatSheet channelId={channelId} onClose={() => setOpen(null)} />}
     </Stop>
   );
 }
 
 /** Ek channel ki saari scripts / thumbnails: aaj add karein, kisi par tap kar ke parhein/dekhein, aur poori history date ke saath */
-export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { channelId: string; initial: Kind; focus?: string; taskId?: string; onClose: () => void }) {
+export function AttachSheet({ channelId, initial, focus, taskId, initialTab, onClose }: { channelId: string; initial: Kind; focus?: string; taskId?: string; initialTab?: 'today' | 'history'; onClose: () => void }) {
   const d = useData();
   const toast = useToast();
   const [kind, setKind] = useState<Kind>(initial);
@@ -104,6 +114,7 @@ export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { ch
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<string | null>(focus || null);
+  const [tab, setTab] = useState<'today' | 'history'>(initialTab || 'today');
   const [adding, setAdding] = useState(!focus);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -113,7 +124,11 @@ export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { ch
   const myTodayTask = taskId ? d.tasks.find((t) => t.id === taskId) : d.tasks.find((t) => t.channel_id === channelId && t.user_id === d.uid && t.day === today);
   const items = d.attachments.filter((a) => a.channel_id === channelId && a.kind === kind).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const days = [...new Set(items.map((a) => a.day))].sort((a, b) => b.localeCompare(a));
+  const todayCount = items.filter((a) => a.day === today).length;
   const pv = view ? d.attachments.find((a) => a.id === view) : null;
+  useEffect(() => {
+    if (pv && pv.day !== today) setTab('history');
+  }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
   const canDelete = (a: Attachment) => d.isOwner || a.created_by === d.uid;
 
   async function add(e: FormEvent) {
@@ -131,9 +146,10 @@ export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { ch
         toast('Script add ho gayi');
       } else {
         if (!file && !/^https:\/\//i.test(link.trim())) throw new Error('Thumbnail ki image chunein (ya https image link daalein)');
+        if (!t) throw new Error('Thumbnail ka title likhein (jaise: EP 087 thumbnail)');
         let url = link.trim();
         let del = '';
-        const name = t || (file ? file.name.replace(/\.[^.]+$/, '') : 'Thumbnail');
+        const name = t;
         if (file) {
           const r = await uploadToImgBB(file, `${ch?.name || 'khr'}-${today}-${name}`);
           url = r.url;
@@ -229,7 +245,7 @@ export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { ch
             </div>
             <label className="f">
               Title
-              <input id="at-title" type="text" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === 'script' ? 'e.g. Episode 12: Best phones under 50k' : 'e.g. Episode 12 thumbnail'} />
+              <input id="at-title" type="text" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === 'script' ? 'e.g. EP 087 | California Wildfire' : 'e.g. EP 087 thumbnail'} required />
             </label>
             {kind === 'script' ? (
               <>
@@ -278,13 +294,14 @@ export function AttachSheet({ channelId, initial, focus, taskId, onClose }: { ch
         <p className="note">Scripts aur thumbnails sirf is channel ki team add kar sakti hai.</p>
       )}
 
+      <div className="seg sm">
+        <button type="button" className={tab === 'today' ? 'on' : ''} onClick={() => setTab('today')}>Aaj ({todayCount})</button>
+        <button type="button" className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>History ({items.length - todayCount})</button>
+      </div>
       <section className="sec">
-        <div className="sec-head">
-          <h3>Saari {LABEL[kind].many.toLowerCase()} (history)</h3>
-          <span className="eyebrow">{items.length}</span>
-        </div>
-        {!items.length && <div className="empty">Abhi koi {LABEL[kind].one.toLowerCase()} nahi lagayi gayi.</div>}
-        {days.map((day) => {
+        {tab === 'today' && !todayCount && <div className="empty">Aaj abhi koi {LABEL[kind].one.toLowerCase()} nahi lagayi gayi.</div>}
+        {tab === 'history' && items.length === todayCount && <div className="empty">Pichle dinon ki koi {LABEL[kind].one.toLowerCase()} nahi. Kal se aaj wali yahan aa jayengi.</div>}
+        {days.filter((day) => (tab === 'today' ? day === today : day !== today)).map((day) => {
           const list = items.filter((a) => a.day === day);
           return (
             <div key={day} className="aday">

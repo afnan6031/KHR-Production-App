@@ -11,7 +11,8 @@ import { HomeScreen, TeamScreen } from './screens/Home';
 import { LeaderboardScreen, ProgressScreen } from './screens/Progress';
 import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server';
 import { ChannelSheet, PerfSheet, ProfileSheet, VideoSheet } from './components/Sheets';
-import { Avatar, Logo, ToastProvider } from './components/ui';
+import { Avatar, Logo, ThemeButton, ToastProvider } from './components/ui';
+import { BellButton, NotificationsProvider } from './components/Notifications';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -33,7 +34,9 @@ export default function App() {
     <ToastProvider>
       {session ? (
         <DataProvider key={session.user.id} uid={session.user.id}>
-          <Shell />
+          <NotificationsProvider>
+            <Shell />
+          </NotificationsProvider>
         </DataProvider>
       ) : (
         <AuthScreen />
@@ -116,6 +119,20 @@ function Shell() {
     return () => {
       h.then((x) => x.remove());
     };
+  }, []);
+
+  // header aur neeche wali patti ki asli unchai (server ko poori window mein fit karne ke liye)
+  useEffect(() => {
+    const set = () => {
+      const h = document.querySelector('.top')?.getBoundingClientRect().height || 56;
+      const n = document.querySelector('nav.tabs')?.getBoundingClientRect().height || 60;
+      document.documentElement.style.setProperty('--hdr', h + 'px');
+      document.documentElement.style.setProperty('--navh', n + 'px');
+    };
+    set();
+    window.addEventListener('resize', set);
+    const id = window.setInterval(set, 1500);
+    return () => { window.removeEventListener('resize', set); window.clearInterval(id); };
   }, []);
 
   const signOut = async () => {
@@ -209,14 +226,16 @@ function Shell() {
               <small>{d.isOwner ? 'Owner dashboard' : 'Team dashboard'}</small>
             </div>
           </div>
+          <ThemeButton />
+          <BellButton />
           <button className="who" onClick={() => setSheet({ kind: 'profile' })} aria-label="Mera profile">
             {d.isOwner && <span className="tag-owner">Owner</span>}
-            <Avatar name={d.me.full_name || 'Owner'} />
+            <Avatar name={d.me.full_name || 'Owner'} url={d.me.avatar_url || undefined} />
           </button>
         </div>
       </header>
 
-      <main>{body}</main>
+      <main className={tab === 'server' && !channel && !openUser ? 'server-main' : ''}>{body}</main>
 
       <nav className="tabs">
         <div className="in">

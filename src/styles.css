@@ -1,14 +1,19 @@
 /* KHR Production — one-column phone-first app: sticky top bar, card stack, fixed bottom tabs, bottom-sheet editors.
    On wide screens (PC) content centers at 760px with two-column card grid. */
 :root {
-  --bg: #EEF2F4; --surface: #FFFFFF; --surface-2: #E3E9ED; --fg: #13212C; --muted: #5A6874; --line: #D3DBE1;
-  --accent: #0D6D69; --accent-fg: #FFFFFF; --accent-soft: #D5ECEA; --live: #C9480C; --live-soft: #FBE3D6;
+  --bg: #F2F4FA; --surface: #FFFFFF; --surface-2: #E7EBF5; --fg: #121A2E; --muted: #5A6479; --line: #D5DBE8;
+  --accent: #C8102E; --accent-fg: #FFFFFF; --accent-soft: #FBE1E5; --live: #D9480F; --live-soft: #FDE6D9;
+  --blue: #1D4ED8; --blue-soft: #DCE6FD;
   --good: #1F8A4C; --warn: #A86E12; --bad: #C0392B;
   --r1: #7048C8; --r2: #0B78B5; --r3: #B4471A; --r4: #B02A6E; --r5: #2C8A3F; --r6: #8A6A10;
-  --logo-bg: #13212C; --logo-fg: #EEF2F4;
-  --gold: #E3A31A; --silver: #B9C2CA; --bronze: #C98552;
+  --logo-bg: #121A2E; --logo-fg: #F2F4FA;
+  --gold: #D4930F; --silver: #9AA5B1; --bronze: #B9763F;
   --av-l: 88%; --av-t: 28%;
-  --shadow: 0 1px 2px rgba(19, 33, 44, .06), 0 6px 18px rgba(19, 33, 44, .06);
+  /* Discord jaisi teen pattiyan: list / chat / members */
+  --pane-side: #E8ECF6; --pane-chat: #FFFFFF; --pane-members: #E8ECF6; --pane-line: #D5DBE8;
+  --header-bg: #FFFFFF; --nav-bg: #FFFFFF;
+  --card-l: 96%; --card-s: 70%; --card-a: 1;
+  --shadow: 0 1px 2px rgba(18, 26, 46, .06), 0 6px 18px rgba(18, 26, 46, .07);
   --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --f-body: "Figtree", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -16,26 +21,34 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0E151B; --surface: #16212A; --surface-2: #1F2C36; --fg: #E5ECF1; --muted: #93A2AE; --line: #2A3843;
-    --accent: #3BC3B8; --accent-fg: #06201F; --accent-soft: #163C3B; --live: #FF8B4E; --live-soft: #3D2418;
-    --good: #4CC57D; --warn: #E3B04B; --bad: #F06B5B;
-    --r1: #A88BF0; --r2: #5DB7EE; --r3: #F08A5B; --r4: #EE7CB5; --r5: #6FD08A; --r6: #DDBB55;
-    --logo-bg: #E5ECF1; --logo-fg: #0E151B;
-    --gold: #F2BE45; --silver: #C9D2DA; --bronze: #D99A6A;
-    --av-l: 26%; --av-t: 80%;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+  --bg: #090E1C; --surface: #111832; --surface-2: #1A2246; --fg: #E8EBF4; --muted: #99A2BA; --line: #263056;
+  --accent: #E5383B; --accent-fg: #FFFFFF; --accent-soft: #3B1521; --live: #FF8B4E; --live-soft: #3D2418;
+  --blue: #6B95FF; --blue-soft: #1B2756;
+  --good: #4CC57D; --warn: #E3B04B; --bad: #FF6B6B;
+  --r1: #A88BF0; --r2: #5DB7EE; --r3: #F08A5B; --r4: #EE7CB5; --r5: #6FD08A; --r6: #DDBB55;
+  --logo-bg: #E8EBF4; --logo-fg: #0B1124;
+  --gold: #F2BE45; --silver: #C9D2DA; --bronze: #D99A6A;
+  --av-l: 26%; --av-t: 80%;
+  --pane-side: #0B1124; --pane-chat: #141C3B; --pane-members: #0B1124; --pane-line: #1E2850;
+  --header-bg: linear-gradient(100deg, #2B0B14 0%, #10183A 55%, #0B1230 100%); --nav-bg: #0B1124;
+  --card-l: 16%; --card-s: 45%; --card-a: 1;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 22px rgba(0, 0, 0, .3);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0E151B; --surface: #16212A; --surface-2: #1F2C36; --fg: #E5ECF1; --muted: #93A2AE; --line: #2A3843;
-  --accent: #3BC3B8; --accent-fg: #06201F; --accent-soft: #163C3B; --live: #FF8B4E; --live-soft: #3D2418;
-  --good: #4CC57D; --warn: #E3B04B; --bad: #F06B5B;
+  --bg: #090E1C; --surface: #111832; --surface-2: #1A2246; --fg: #E8EBF4; --muted: #99A2BA; --line: #263056;
+  --accent: #E5383B; --accent-fg: #FFFFFF; --accent-soft: #3B1521; --live: #FF8B4E; --live-soft: #3D2418;
+  --blue: #6B95FF; --blue-soft: #1B2756;
+  --good: #4CC57D; --warn: #E3B04B; --bad: #FF6B6B;
   --r1: #A88BF0; --r2: #5DB7EE; --r3: #F08A5B; --r4: #EE7CB5; --r5: #6FD08A; --r6: #DDBB55;
-  --logo-bg: #E5ECF1; --logo-fg: #0E151B;
+  --logo-bg: #E8EBF4; --logo-fg: #0B1124;
   --gold: #F2BE45; --silver: #C9D2DA; --bronze: #D99A6A;
   --av-l: 26%; --av-t: 80%;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+  --pane-side: #0B1124; --pane-chat: #141C3B; --pane-members: #0B1124; --pane-line: #1E2850;
+  --header-bg: linear-gradient(100deg, #2B0B14 0%, #10183A 55%, #0B1230 100%); --nav-bg: #0B1124;
+  --card-l: 16%; --card-s: 45%; --card-a: 1;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 22px rgba(0, 0, 0, .3);
   color-scheme: dark;
 }
 
@@ -620,3 +633,96 @@ a.btn { text-decoration: none; color: inherit; }
 .pair-av .av + .av { margin-left: -10px; box-shadow: 0 0 0 2px var(--surface); border-radius: 50%; }
 @media (min-width: 980px) { .srv .chat-pane .composer { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); } }
 nav.tabs button { font-size: 11.5px; }
+
+/* ================= v6: theme surfaces, per-card colors, full-window server ================= */
+.top { background: var(--header-bg); border-bottom-color: var(--pane-line); }
+body::before { background: var(--header-bg); }
+nav.tabs { background: var(--nav-bg); border-top-color: var(--pane-line); }
+.theme-btn { position: relative; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--fg); display: grid; place-items: center; padding: 0; flex: none; }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+.theme-btn .badge { top: -4px; left: auto; right: -6px; }
+.top-in { gap: 8px; }
+
+/* har channel card ka apna rang: dark mein gehra, light mein halka */
+.card.tinted { background: linear-gradient(165deg, hsl(var(--ch-h, 220) var(--card-s) var(--card-l)) 0%, var(--surface) 62%); }
+.card.tinted:hover { border-color: hsl(var(--ch-h, 220) 60% 50%); }
+.card.tinted h3 { color: var(--fg); }
+
+/* task sections ka rang */
+.bsec { border-top: 3px solid var(--blue); }
+.bsec.expired { border-top-color: var(--bad); }
+.bsec.completed { border-top-color: var(--good); }
+.bsec .dot { background: var(--blue); }
+.cgroup { background: var(--surface-2); }
+.bsec .cgroup .task { background: var(--surface); }
+.task .tick .lock { width: 14px; height: 14px; color: var(--muted); }
+.timer.running .tchip { background: var(--blue-soft); color: var(--blue); }
+.timer.running .tclock { color: var(--blue); }
+.tbar i { background: var(--blue); }
+.timer.upcoming .tchip { background: var(--surface-2); color: var(--muted); }
+.timer.upcoming .tclock { color: var(--muted); }
+
+/* history buttons on cards */
+.hist-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.hist-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 5px 10px; }
+.hist-btn svg { width: 14px; height: 14px; }
+.hist-btn b { font-size: 11px; }
+.hist-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* notifications */
+.alerts { display: flex; flex-direction: column; gap: 6px; }
+.alert-row { display: flex; gap: 10px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.alert-row.new { box-shadow: inset 3px 0 0 var(--accent); }
+.alert-ico { font-size: 18px; }
+.alert-row b { font-size: 14px; }
+
+/* ---------- KHR Server: poori window, Discord jaisi teen pattiyan ---------- */
+main.server-main { max-width: none; padding: 0; gap: 0; position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + var(--hdr, 56px)); bottom: var(--navh, 64px); }
+main.server-main .srv { height: 100%; margin: 0; gap: 0; grid-template-rows: minmax(0, 1fr); }
+.srv { display: grid; grid-template-columns: 1fr; }
+.srv-side { background: var(--pane-side); padding: 14px max(14px, env(safe-area-inset-left, 0px)) 0 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; position: static; max-height: none; }
+.srv-side-scroll { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 14px; margin-right: -6px; padding-right: 6px; }
+.srv-main { background: var(--pane-chat); min-height: 0; display: flex; overflow: hidden; }
+.srv-members { background: var(--pane-members); min-height: 0; overflow-y: auto; padding: 14px; position: static; max-height: none; display: none; }
+.srv.at-chat .srv-side { display: none; }
+.srv.at-home .srv-main { display: none; }
+.srv.at-home .srv-side { display: flex; }
+.chat-pane { height: 100%; display: flex; flex-direction: column; gap: 0; padding: 0; }
+.chat-head { padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--pane-line); background: var(--pane-chat); flex: none; }
+.chat-pane .policy-note { margin: 8px 14px 0; flex: none; }
+.chat-pane .feed { flex: 1; overflow-y: auto; min-height: 0; padding: 4px max(10px, env(safe-area-inset-right, 0px)) 8px max(10px, env(safe-area-inset-left, 0px)); }
+.chat-pane .composer { position: static; flex: none; background: var(--pane-chat); padding: 8px max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px)); border-top: 1px solid var(--pane-line); }
+.srv-placeholder { min-height: 0; height: 100%; }
+.members-btn { flex: none; }
+.mlist-title { font-family: var(--f-display); font-weight: 700; font-size: 14px; padding: 2px 6px 6px; }
+.srv .seg { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.citem.on, .citem:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.mrow-btn:not(.static):hover, .mrow-btn.on { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.presence { border-color: var(--pane-side); }
+.srv-members .presence { border-color: var(--pane-members); }
+.fmsg:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+@media (min-width: 980px) {
+  .srv { grid-template-columns: 290px minmax(0, 1fr); }
+  .srv.with-members { grid-template-columns: 290px minmax(0, 1fr) 250px; }
+  .srv.at-chat .srv-side, .srv.at-home .srv-side { display: flex; }
+  .srv.at-home .srv-main { display: flex; }
+  .srv.with-members .srv-members { display: block; border-left: 1px solid var(--pane-line); }
+  .srv-side { border-right: 1px solid var(--pane-line); }
+  .members-btn { display: none; }
+  .back-icon { display: none; }
+}
+@media (min-width: 1400px) {
+  .srv { grid-template-columns: 320px minmax(0, 1fr); }
+  .srv.with-members { grid-template-columns: 320px minmax(0, 1fr) 280px; }
+}
+main.server-main .srv { align-items: stretch; }
+main.server-main .srv > * { min-height: 0; }
+.chat-pane .feed > .empty { margin: 16px 4px; }
+.brand b { white-space: nowrap; }
+@media (max-width: 440px) {
+  .tag-owner { display: none; }
+  .brand small { white-space: nowrap; }
+  .brand b { font-size: 16.5px; }
+  .theme-btn { width: 34px; height: 34px; }
+}

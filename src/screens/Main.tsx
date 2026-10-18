@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import { STAGES, type Channel, type Stage, type Video } from '../lib/types';
 import { addDays, channelTimeline, errorText, fmtDate, fmtTime, toMin, fmtFull, inPeriod, periodOf, perfClass, roleClass, scheduleText, scoreOf, stageLabel, timeLine, todayKey, viewsFor, type PeriodKind } from '../lib/utils';
 import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
-import { Avatar, Bar, Delta, Logo, Seg, Week, useNow, useToast } from '../components/ui';
+import { Bar, Delta, Logo, Seg, Week, useNow, useToast } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
 import { ChannelTools } from '../components/Attachments';
 
@@ -314,7 +315,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
               const show = d.isOwner || m.user_id === d.uid;
               return (
                 <div className="li top" key={m.user_id}>
-                  <Avatar name={d.nameOf(m.user_id)} />
+                  <UserAvatar id={m.user_id} />
                   <div className="grow stack">
                     <button className="t linklike" onClick={() => show && openProgress(m.user_id)} disabled={!show}>
                       {d.nameOf(m.user_id)}

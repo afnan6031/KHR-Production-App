@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { UserAvatar } from './Messaging';
 import { useData } from '../lib/data';
 import type { Message } from '../lib/types';
 import { errorText, fmtClock } from '../lib/utils';
 import { dayLabel } from './Attachments';
-import { Avatar, ConfirmButton, Sheet, useToast } from './ui';
+import { ConfirmButton, Sheet, useToast } from './ui';
 
 /* ---------- "kitne naye message" (har device par alag yaad rehta hai) ---------- */
 const SEEN_EVENT = 'khr-seen';
@@ -120,7 +121,7 @@ export function ChatSheet({ channelId, onClose }: { channelId: string; onClose: 
     const name = d.nameOf(m.user_id);
     items.push(
       <div key={m.id} className={'msg' + (mine ? ' mine' : '') + (grouped ? ' grouped' : '')}>
-        {!mine && !grouped && <Avatar name={name} />}
+        {!mine && !grouped && <UserAvatar id={m.user_id} />}
         <div className="bubble">
           {!grouped && !mine && <b className="msg-name">{name}</b>}
           {parent && (

@@ -6,8 +6,16 @@ import { ChannelTools } from './Attachments';
 import type { KeyboardEvent } from 'react';
 
 /** Card poora clickable hai (channel kholta hai), andar ke Scripts/Thumbnails/Messages buttons alag kaam karte hain */
-const cardProps = (onOpen: () => void) => ({
-  className: 'card clickable',
+/** har channel ka apna halka rang (naam se) */
+export function channelHue(id: string): number {
+  let h = 0;
+  for (const c of id) h = (h * 33 + c.charCodeAt(0)) % 360;
+  return h;
+}
+
+const cardProps = (onOpen: () => void, id = '') => ({
+  className: 'card clickable tinted',
+  style: { ['--ch-h' as string]: String(channelHue(id)) },
   role: 'button',
   tabIndex: 0,
   onClick: onOpen,
@@ -27,7 +35,7 @@ export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; on
   const week = periodOf('week');
   const ws = scoreOf(d.tasks.filter((t) => t.channel_id === ch.id && t.user_id === d.uid && t.role === role && inPeriod(t, week)));
   return (
-    <div {...cardProps(onOpen)}>
+    <div {...cardProps(onOpen, ch.id)}>
       <div className="card-top">
         <span className={'role ' + roleClass(role)}>{role}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}
@@ -84,7 +92,7 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
   const avg = pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
   const ac = avg != null ? perfClass(avg) : '';
   return (
-    <div {...cardProps(onOpen)}>
+    <div {...cardProps(onOpen, ch.id)}>
       <div className="card-top">
         <span className="eyebrow">{scheduleText(ch)}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}

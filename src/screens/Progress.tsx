@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
+import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import { REJECT_PENALTY, inPeriod, periodOf, rankUsers, roleClass, scoreOf, type PeriodKind, type Score } from '../lib/utils';
 import { PeriodPicker, ScoreRing, ScoreStats, TaskItem } from '../components/Tasks';
 import { RejectSheet } from '../components/Tasks';
-import { Avatar, Bar, useNow } from '../components/ui';
+import { Bar, useNow } from '../components/ui';
 import type { Task } from '../lib/types';
 
 const cls = (v: number | null) => (v == null ? 'muted' : v >= 85 ? 'good' : v >= 65 ? 'warn' : 'bad');
@@ -47,7 +48,7 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
             {podiumOrder.map((r) => (
               <button key={r.user_id} className={'pod p' + r.rank} onClick={() => canOpen(r.user_id) && openProgress(r.user_id)} disabled={!canOpen(r.user_id)}>
                 <span className="medal" aria-hidden="true">{r.rank}</span>
-                <Avatar name={d.nameOf(r.user_id)} />
+                <UserAvatar id={r.user_id} />
                 <b className="pname">{d.nameOf(r.user_id)}</b>
                 <span className={'num pscore ' + cls(r.score)}>{r.score}%</span>
                 <small className="muted">{r.done}/{r.counted} tasks</small>
@@ -61,7 +62,7 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
               {rows.map((r) => (
                 <button className="li" key={r.user_id} onClick={() => canOpen(r.user_id) && openProgress(r.user_id)} disabled={!canOpen(r.user_id)}>
                   <span className={'rank num r' + Math.min(r.rank, 4)}>{r.rank}</span>
-                  <Avatar name={d.nameOf(r.user_id)} />
+                  <UserAvatar id={r.user_id} />
                   <span className="grow">
                     <span className="t block">{d.nameOf(r.user_id)}{r.user_id === d.uid && <span className="muted"> (aap)</span>}</span>
                     <span className="d block">
@@ -115,7 +116,7 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
     <>
       {onBack && <button className="back" onClick={onBack}>‹ Wapas</button>}
       <div className="prof-head">
-        <Avatar name={person?.full_name || 'Member'} />
+        <UserAvatar id={userId} />
         <div className="grow">
           <h1>{person?.full_name || 'Member'}{userId === d.uid && <span className="muted h-sub"> (aap)</span>}</h1>
           <p className="muted m0 small">

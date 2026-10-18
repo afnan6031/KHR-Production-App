@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useData } from '../lib/data';
 import type { Task, TaskState } from '../lib/types';
-import { REJECT_PENALTY, errorText, fmtClock, fmtDate, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score } from '../lib/utils';
+import { REJECT_PENALTY, errorText, fmtClock, fmtDate, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score } from '../lib/utils';
 import { Seg, Sheet, useToast } from './ui';
 import { TaskSheet } from './TaskSheet';
 import { TaskTimer } from './Timer';
@@ -23,7 +23,9 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   const st = taskState(task, now);
   const ch = d.channels.find((c) => c.id === task.channel_id);
   const mine = task.user_id === d.uid;
-  const canToggle = mine && st !== 'rejected';
+  const early = notStarted(task, now);
+  // waqt shuru hone se pehle tick nahi (untick hamesha ho sakta hai)
+  const canToggle = mine && st !== 'rejected' && !(early && st !== 'done');
   const canReview = d.isOwner;
   const today = todayKey();
   const atts = d.attachments.filter((a) => a.task_id === task.id);
@@ -50,7 +52,7 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
         onClick={toggle}
         aria-pressed={st === 'done'}
         aria-label={st === 'done' ? 'Complete hata dein' : 'Complete mark karein'}
-        title={canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : ''}
+        title={canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : early ? 'Waqt shuru hone ke baad tick kar sakenge' : ''}
       >
         {st === 'done' && (
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -58,6 +60,9 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
           </svg>
         )}
         {st === 'rejected' && <span aria-hidden="true">✕</span>}
+        {early && st === 'pending' && (
+          <svg viewBox="0 0 24 24" className="lock" aria-hidden="true"><rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor" /><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" fill="none" stroke="currentColor" strokeWidth="2.2" /></svg>
+        )}
       </button>
       <button className="task-body" onClick={() => setOpen(true)} aria-label={'Task kholein: ' + (ch?.name || '') + ' ' + task.role}>
         <span className="task-title">

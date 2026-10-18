@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData, type ServerChannelInput } from '../lib/data';
 import type { DirectMessage, Profile, ServerChannel } from '../lib/types';
 import { errorText, fmtClock, fmtDate } from '../lib/utils';
@@ -35,29 +35,60 @@ export function useServerBadge(): number {
 const DM_NOTICE = 'Company chat: sirf kaam ki baat karein. Company policy ke mutabiq owner ye chat review kar sakta hai.';
 
 type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'dm'; peer: string };
-type Pane = 'channels' | 'friends' | 'members';
+type Pane = 'channels' | 'friends';
+
+/* pichli dafa kya khula tha (har device par yaad) */
+type Last = { pane: Pane; channel?: string; dm?: string };
+const LAST_KEY = 'khr-srv-last';
+function readLast(): Last {
+  try { return { pane: 'channels', ...(JSON.parse(localStorage.getItem(LAST_KEY) || '{}') as Partial<Last>) }; } catch { return { pane: 'channels' }; }
+}
+function saveLast(l: Last) {
+  try { localStorage.setItem(LAST_KEY, JSON.stringify(l)); } catch { /* storage band */ }
+}
 
 export function ServerScreen() {
   const d = useData();
+  const [last, setLast] = useState<Last>(readLast);
+  const [pane, setPaneState] = useState<Pane>(last.pane);
   const [view, setView] = useState<View>({ kind: 'home' });
-  const [pane, setPane] = useState<Pane>('channels');
   const [profile, setProfile] = useState<string | null>(null);
   const [editing, setEditing] = useState<ServerChannel | 'new' | null>(null);
+  const [showMembers, setShowMembers] = useState(false);
   useSeenTick();
 
-  // pehli dafa wide screen par general khol do
-  useEffect(() => {
-    if (view.kind === 'home' && window.matchMedia('(min-width: 980px)').matches && d.server_channels.length) {
-      const g = d.server_channels.find((c) => c.name === 'general') || d.server_channels[0];
-      setView({ kind: 'channel', id: g.id });
-    }
-  }, [d.server_channels.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const remember = (patch: Partial<Last>) => setLast((l) => { const n = { ...l, ...patch }; saveLast(n); return n; });
+  const validChannel = (id?: string) => !!id && d.server_channels.some((c) => c.id === id);
+  const fallbackChannel = () => (d.server_channels.find((c) => c.name === 'general') || d.server_channels[0])?.id;
 
-  const openChannel = (id: string) => { setView({ kind: 'channel', id }); window.scrollTo(0, 0); };
-  const openDM = (peer: string) => { setProfile(null); setView({ kind: 'dm', peer }); window.scrollTo(0, 0); };
+  // Server kholte hi pichla channel / pichli DM khul jaye
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || d.loading) return;
+    if (last.pane === 'friends' && last.dm && d.profileOf(last.dm)) {
+      setView({ kind: 'dm', peer: last.dm });
+      restored.current = true;
+    } else if (d.server_channels.length) {
+      const id = validChannel(last.channel) ? last.channel! : fallbackChannel();
+      if (id) setView({ kind: 'channel', id });
+      restored.current = true;
+    }
+  }, [d.loading, d.server_channels.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openChannel = (id: string) => { setView({ kind: 'channel', id }); remember({ pane: 'channels', channel: id }); };
+  const openDM = (peer: string) => { setProfile(null); setPaneState('friends'); setView({ kind: 'dm', peer }); remember({ pane: 'friends', dm: peer }); };
+  const setPane = (p: Pane) => {
+    setPaneState(p);
+    remember({ pane: p });
+    // tab badalte hi us tab ki pichli chat khol do
+    if (p === 'channels') { const id = validChannel(last.channel) ? last.channel : fallbackChannel(); if (id) setView({ kind: 'channel', id }); }
+    if (p === 'friends') { if (last.dm && d.profileOf(last.dm)) setView({ kind: 'dm', peer: last.dm }); else setView({ kind: 'home' }); }
+  };
+
+  const channelId = view.kind === 'channel' ? view.id : '';
 
   return (
-    <div className={'srv ' + (view.kind === 'home' ? 'at-home' : 'at-chat')}>
+    <div className={'srv ' + (view.kind === 'home' ? 'at-home' : 'at-chat') + (view.kind === 'channel' ? ' with-members' : '')}>
       <aside className="srv-side">
         <div className="srv-head">
           <span className="srv-logo" aria-hidden="true">K</span>
@@ -67,22 +98,30 @@ export function ServerScreen() {
           </div>
           {d.isOwner && <button className="btn sm" onClick={() => setEditing('new')}>+ Channel</button>}
         </div>
-        <Seg label="Server" value={pane} onChange={setPane} options={[{ v: 'channels', label: 'Channels' }, { v: 'friends', label: 'Friends' }, { v: 'members', label: 'Members' }]} />
-        {pane === 'channels' && <ChannelList current={view.kind === 'channel' ? view.id : ''} onOpen={openChannel} onEdit={(c) => setEditing(c)} />}
-        {pane === 'friends' && <FriendsPane current={view.kind === 'dm' ? view.peer : ''} onOpenDM={openDM} onOpenUser={setProfile} />}
-        {pane === 'members' && <MemberList onOpenUser={setProfile} />}
+        <Seg label="Server" value={pane} onChange={setPane} options={[{ v: 'channels', label: '# Channels' }, { v: 'friends', label: '👥 Friends' }]} />
+        <div className="srv-side-scroll">
+          {pane === 'channels' && <ChannelList current={channelId} onOpen={openChannel} onEdit={(c) => setEditing(c)} />}
+          {pane === 'friends' && <FriendsPane current={view.kind === 'dm' ? view.peer : ''} onOpenDM={openDM} onOpenUser={setProfile} />}
+        </div>
       </aside>
 
       <section className="srv-main">
-        {view.kind === 'channel' && <ChannelChat key={view.id} channelId={view.id} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} onEdit={(c) => setEditing(c)} />}
+        {view.kind === 'channel' && <ChannelChat key={view.id} channelId={view.id} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} onEdit={(c) => setEditing(c)} onMembers={() => setShowMembers(true)} />}
         {view.kind === 'dm' && <DMChat key={view.peer} peer={view.peer} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} />}
-        {view.kind === 'home' && <div className="srv-placeholder muted">Koi channel ya chat chunein</div>}
+        {view.kind === 'home' && <div className="srv-placeholder muted">{pane === 'friends' ? 'Kisi friend ki chat chunein' : 'Koi channel chunein'}</div>}
       </section>
 
-      <aside className="srv-members">
-        <MemberList onOpenUser={setProfile} compact />
-      </aside>
+      {view.kind === 'channel' && (
+        <aside className="srv-members" aria-label="Is channel ke log">
+          <ChannelMembers channelId={view.id} onOpenUser={setProfile} />
+        </aside>
+      )}
 
+      {showMembers && channelId && (
+        <Sheet title="Is channel ke log" onClose={() => setShowMembers(false)}>
+          <ChannelMembers channelId={channelId} onOpenUser={(id) => { setShowMembers(false); setProfile(id); }} />
+        </Sheet>
+      )}
       {profile && <ProfileCard userId={profile} onClose={() => setProfile(null)} onMessage={openDM} />}
       {editing && <ChannelSettings channel={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); if (id) openChannel(id); else setView({ kind: 'home' }); }} />}
     </div>
@@ -125,7 +164,7 @@ function ChannelList({ current, onOpen, onEdit }: { current: string; onOpen: (id
 }
 
 /* ================= Channel chat ================= */
-function ChannelChat({ channelId, onBack, onOpenUser, onEdit }: { channelId: string; onBack: () => void; onOpenUser: (id: string) => void; onEdit: (c: ServerChannel) => void }) {
+function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { channelId: string; onBack: () => void; onOpenUser: (id: string) => void; onEdit: (c: ServerChannel) => void; onMembers: () => void }) {
   const d = useData();
   const [reply, setReply] = useState<FeedItem | null>(null);
   const [img, setImg] = useState<string | null>(null);
@@ -149,6 +188,7 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit }: { channelId: str
             {ch.is_private ? ` · 🔒 Private · ${memberCount} log` : ''}
           </small>
         </div>
+        <button className="btn sm members-btn" onClick={onMembers} aria-label="Is channel ke log">👥 {channelPeople(d, ch).length}</button>
         {d.isOwner && <button className="btn sm" onClick={() => onEdit(ch)}>Settings</button>}
       </header>
       <MessageFeed
@@ -176,18 +216,28 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit }: { channelId: str
   );
 }
 
-/* ================= Members (role ke hisaab se, online pehle) ================= */
-function MemberList({ onOpenUser, compact }: { onOpenUser: (id: string) => void; compact?: boolean }) {
-  const d = useData();
+/* ================= Is channel ke log (role ke hisaab se, online pehle) ================= */
+type DataApi = ReturnType<typeof useData>;
+/** public channel: poori team; private channel: sirf add kiye gaye log + owner */
+function channelPeople(d: DataApi, ch: ServerChannel): Profile[] {
   const team = d.profiles.filter((p) => p.status === 'approved' || p.is_owner);
+  if (!ch.is_private) return team;
+  const ids = new Set(d.server_channel_members.filter((m) => m.channel_id === ch.id).map((m) => m.user_id));
+  return team.filter((p) => p.is_owner || ids.has(p.id));
+}
+
+function ChannelMembers({ channelId, onOpenUser }: { channelId: string; onOpenUser: (id: string) => void }) {
+  const d = useData();
+  const ch = d.server_channels.find((c) => c.id === channelId);
+  if (!ch) return null;
+  const people = channelPeople(d, ch);
   const groups = new Map<string, Profile[]>();
   const offline: Profile[] = [];
-  team.forEach((p) => {
+  people.forEach((p) => {
     if (!d.online.has(p.id)) return offline.push(p);
-    const key = p.is_owner ? (p.server_role || 'Owner') : p.server_role || 'Online';
+    const key = p.server_role || (p.is_owner ? 'Owner' : 'Online');
     groups.set(key, [...(groups.get(key) || []), p]);
   });
-  // owner ka group sab se upar, "Online" (bina role) aakhir mein
   const keys = [...groups.keys()].sort((a, b) => {
     const ao = groups.get(a)!.some((p) => p.is_owner), bo = groups.get(b)!.some((p) => p.is_owner);
     if (ao !== bo) return ao ? -1 : 1;
@@ -200,12 +250,13 @@ function MemberList({ onOpenUser, compact }: { onOpenUser: (id: string) => void;
       <UserAvatar id={p.id} status />
       <span className="grow">
         <span className={'mname ' + roleTone(p.server_role, p.is_owner)}>{p.full_name || 'Member'}{p.is_owner && ' 👑'}</span>
-        {!compact && p.server_role && <small className="muted block">{p.server_role}</small>}
+        {p.server_role && <small className="muted block one-line">{p.server_role}</small>}
       </span>
     </button>
   );
   return (
     <div className="mlist">
+      <div className="mlist-title">{ch.is_private ? '🔒 ' : '#'}{ch.name} · {people.length} log</div>
       {keys.map((k) => (
         <div key={k}>
           <div className="ccat-h">{k} — {groups.get(k)!.length}</div>
@@ -236,6 +287,7 @@ function FriendsPane({ current, onOpenDM, onOpenUser }: { current: string; onOpe
   peers.delete(d.uid);
   const last = (peer: string) =>
     d.direct_messages.filter((m) => (m.from_user === peer && m.to_user === d.uid) || (m.from_user === d.uid && m.to_user === peer)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const others = d.profiles.filter((p) => (p.status === 'approved' || p.is_owner) && p.id !== d.uid && !peers.has(p.id) && !p.is_owner && !d.isOwner && d.friendState(p.id).state !== 'received');
   const list = [...peers].filter((p) => d.profileOf(p)).sort((a, b) => (last(b)?.created_at || '').localeCompare(last(a)?.created_at || ''));
   const act = (fn: () => Promise<void>, ok: string) => fn().then(() => toast(ok), (e) => toast(errorText(e)));
 
@@ -272,6 +324,22 @@ function FriendsPane({ current, onOpenDM, onOpenUser }: { current: string; onOpe
         })
       ) : (
         <p className="muted small m0 pad">Abhi koi friend nahi. "Members" mein kisi par tap kar ke friend request bhejein.</p>
+      )}
+      {others.length > 0 && (
+        <div>
+          <div className="ccat-h">Team · friend banayein</div>
+          {others.map((p) => {
+            const st = d.friendState(p.id).state;
+            return (
+              <div key={p.id} className="mrow-btn static">
+                <button className="avbtn" onClick={() => onOpenUser(p.id)}><UserAvatar id={p.id} status /></button>
+                <span className="grow"><span className={'mname ' + roleTone(p.server_role, p.is_owner)}>{p.full_name}</span><small className="muted block">{p.server_role || 'Team member'}</small></span>
+                {st === 'none' && <button className="btn sm" onClick={() => act(() => d.sendFriendRequest(p.id), 'Friend request bhej di')}>+ Request</button>}
+                {st === 'sent' && <span className="muted tiny">Request bheji</span>}
+              </div>
+            );
+          })}
+        </div>
       )}
       {outgoing.length > 0 && (
         <div>
