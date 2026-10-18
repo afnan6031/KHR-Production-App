@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { onPushOpen, takePendingOpen, type PushOpen } from '../lib/push';
 import { useData, type ServerChannelInput } from '../lib/data';
 import type { DirectMessage, Profile, ServerChannel } from '../lib/types';
 import { errorText, fmtClock, fmtDate } from '../lib/utils';
@@ -61,10 +62,12 @@ export function ServerScreen() {
   const validChannel = (id?: string) => !!id && d.server_channels.some((c) => c.id === id);
   const fallbackChannel = () => (d.server_channels.find((c) => c.name === 'general') || d.server_channels[0])?.id;
 
-  // Server kholte hi pichla channel / pichli DM khul jaye
+  // PC (badi screen): server kholte hi pichla channel / pichli DM khul jaye (list saath nazar aati hai).
+  // Phone: pehle list — # Channels ya 👥 Friends — phir jis par tap karein wahi chat khule.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current || d.loading) return;
+    if (!window.matchMedia('(min-width: 980px)').matches) { restored.current = true; return; }
     if (last.pane === 'friends' && last.dm && d.profileOf(last.dm)) {
       setView({ kind: 'dm', peer: last.dm });
       restored.current = true;
@@ -80,10 +83,26 @@ export function ServerScreen() {
   const setPane = (p: Pane) => {
     setPaneState(p);
     remember({ pane: p });
-    // tab badalte hi us tab ki pichli chat khol do
+    // phone par sirf list badlo (chat khud na khule)
+    if (!window.matchMedia('(min-width: 980px)').matches) { setView({ kind: 'home' }); return; }
+    // PC par tab badalte hi us tab ki pichli chat khol do
     if (p === 'channels') { const id = validChannel(last.channel) ? last.channel : fallbackChannel(); if (id) setView({ kind: 'channel', id }); }
     if (p === 'friends') { if (last.dm && d.profileOf(last.dm)) setView({ kind: 'dm', peer: last.dm }); else setView({ kind: 'home' }); }
   };
+
+  // notification par tap: seedha wahi DM / channel
+  const openRef = useRef({ openDM, openChannel, setPane });
+  openRef.current = { openDM, openChannel, setPane };
+  useEffect(() => {
+    const go = (p: PushOpen | null) => {
+      if (!p) return;
+      if (p.type === 'dm' && p.peer) { restored.current = true; openRef.current.openDM(p.peer); }
+      else if (p.type === 'srv' && p.channel) { restored.current = true; setPaneState('channels'); openRef.current.openChannel(p.channel); }
+      else if (p.type === 'friend') { restored.current = true; setPaneState('friends'); remember({ pane: 'friends' }); setView({ kind: 'home' }); }
+    };
+    go(takePendingOpen());
+    return onPushOpen(() => go(takePendingOpen()));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const channelId = view.kind === 'channel' ? view.id : '';
   // phone par chat khuli ho to back = server ki list (dashboard nahi)
@@ -387,7 +406,7 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
           <small className="muted block">{d.online.has(peer) ? 'Online' : 'Offline'}{p?.server_role ? ' · ' + p.server_role : ''}</small>
         </div>
       </header>
-      <div className="policy-note">🛈 {DM_NOTICE}</div>
+      <div className="policy-note"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true" style={{ verticalAlign: '-2px', marginRight: 6 }}><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>{DM_NOTICE}</div>
       <MessageFeed
         items={items}
         canDelete={(m) => m.user_id === d.uid}

@@ -67,11 +67,23 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
   const d = useData();
   const toast = useToast();
   const endRef = useRef<HTMLDivElement>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [items.length]);
+  // keyboard khulne par list chhoti ho to aakhri message nazar mein rahe (har frame par, smooth)
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const onScroll = () => { atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; };
+    const ro = new ResizeObserver(() => { if (atBottom.current) el.scrollTop = el.scrollHeight; });
+    el.addEventListener('scroll', onScroll, { passive: true });
+    ro.observe(el);
+    return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll); };
+  }, [items.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!items.length) return <div className="feed"><div className="empty">{empty}</div></div>;
+  if (!items.length) return <div className="feed" ref={feedRef}><div className="empty">{empty}</div></div>;
 
   let lastDay = '';
   const out: ReactNode[] = [];
@@ -129,7 +141,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
     );
   });
   return (
-    <div className="feed">
+    <div className="feed" ref={feedRef}>
       {out}
       <div ref={endRef} />
     </div>

@@ -5,6 +5,8 @@ import { useData } from '../lib/data';
 import type { Task } from '../lib/types';
 import { fmtClock, fmtDate, todayKey } from '../lib/utils';
 import { Sheet, useToast } from './ui';
+import { onPushChange, pushActive, pushBuilt, retryPush } from '../lib/push';
+import { desktop } from '../lib/theme';
 
 /* =========================================================================
    Notifications
@@ -30,6 +32,8 @@ interface NotifCtx {
   clear: () => void;
   permission: 'granted' | 'denied' | 'default' | 'unsupported';
   requestPermission: () => Promise<void>;
+  /** app band ho tab bhi alerts aate hain? */
+  closedApp: 'push' | 'tray' | 'local' | 'none';
 }
 const Ctx = createContext<NotifCtx | null>(null);
 export const useNotifications = () => useContext(Ctx);
@@ -46,10 +50,15 @@ function hashId(s: string): number {
 
 async function systemNotify(id: string, title: string, body: string) {
   try {
+    // server (Firebase) khud bhej raha ho to app background mein dobara na bheje (double alert nahi)
+    if (native && pushActive() && document.visibilityState !== 'visible') return;
     if (native) {
       await LocalNotifications.schedule({ notifications: [{ id: hashId(id), title, body, schedule: { at: new Date(Date.now() + 500) } }] });
-    } else if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-      new Notification(title, { body, icon: './icons/icon-192.png', tag: id });
+    } else if ('Notification' in window && Notification.permission === 'granted' && (document.visibilityState !== 'visible' || !document.hasFocus())) {
+      // PC: app tray mein ho / doosri window upar ho tab bhi Windows notification
+      const n = new Notification(title, { body, icon: './icons/icon-192.png', tag: id });
+      n.onclick = () => { desktop()?.show(); window.focus(); n.close(); };
+      desktop()?.attention();
     }
   } catch {
     /* notification na dikhe to bhi app chalti rahe */
@@ -68,6 +77,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
   });
   const [permission, setPermission] = useState<NotifCtx['permission']>('default');
+  const [serverPush, setServerPush] = useState(pushActive());
+  useEffect(() => onPushChange(() => setServerPush(pushActive())), []);
 
   useEffect(() => {
     try {
@@ -92,6 +103,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (native) {
       const p = await LocalNotifications.requestPermissions().catch(() => null);
       setPermission(p?.display === 'granted' ? 'granted' : 'denied');
+      if (pushBuilt) await retryPush();
     } else if ('Notification' in window) {
       setPermission(await Notification.requestPermission());
     }
@@ -205,14 +217,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       .filter((p) => p.at - now < 24 * 60 * MINUTE)
       .map((p) => window.setTimeout(() => push({ id: 'dl-' + p.key, kind: 'deadline', title: p.title, body: p.body }, !native), p.at - now));
 
-    // Android: phone par pehle se schedule (app band ho tab bhi aaye)
+    // Android: phone par pehle se schedule (app band ho tab bhi aaye).
+    // Server push chalu ho to server har minute khud bhejta hai -> local wale hata do (double na aayein)
     if (native && permission === 'granted') {
       (async () => {
         try {
           const pending = await LocalNotifications.getPending();
           const ours = pending.notifications.filter((n) => (n.extra as { khr?: boolean } | undefined)?.khr);
           if (ours.length) await LocalNotifications.cancel({ notifications: ours.map((n) => ({ id: n.id })) });
-          if (plans.length)
+          if (plans.length && !serverPush)
             await LocalNotifications.schedule({
               notifications: plans.slice(0, 60).map((p) => ({ id: hashId('dl-' + p.key), title: p.title, body: p.body, schedule: { at: new Date(p.at), allowWhileIdle: true }, extra: { khr: true } }))
             });
@@ -222,7 +235,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       })();
     }
     return () => timers.forEach((x) => window.clearTimeout(x));
-  }, [d.loading, d.tasks, d.channels, d.uid, permission, push]);
+  }, [d.loading, d.tasks, d.channels, d.uid, permission, push, serverPush]);
 
   const value: NotifCtx = {
     alerts,
@@ -230,7 +243,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     markAllRead: () => setAlerts((p) => p.map((a) => ({ ...a, read: true }))),
     clear: () => setAlerts([]),
     permission,
-    requestPermission
+    requestPermission,
+    closedApp: serverPush ? 'push' : desktop() ? 'tray' : native ? 'local' : 'none'
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -262,6 +276,9 @@ export function BellButton() {
               <button className="btn primary sm" onClick={n.requestPermission}>On karein</button>
             </div>
           )}
+          {n.permission === 'granted' && n.closedApp === 'push' && <p className="muted tiny m0">✓ App band ho tab bhi messages, kaam aur deadlines ke alerts is phone par aayenge.</p>}
+          {n.permission === 'granted' && n.closedApp === 'local' && <p className="muted tiny m0">Deadline alerts app band hone par bhi aate hain. Messages ke alerts ke liye owner ko server notifications (Firebase) on karni hain.</p>}
+          {n.closedApp === 'tray' && <p className="muted tiny m0">✓ Window band karne par bhi KHR Production tray (ghadi ke paas) mein chalti rehti hai aur alerts dikhati hai.</p>}
           {n.permission === 'denied' && <p className="muted tiny m0">Notifications band hain. Phone ki Settings → Apps → KHR Production → Notifications se on karein.</p>}
           {n.alerts.length ? (
             <>

@@ -763,3 +763,311 @@ begin
     end;
   end loop;
 end $$;
+
+-- ============================================================
+-- v8: APP BAND HO TAB BHI NOTIFICATIONS (Android push via Firebase)
+--   Har event (message, DM, script, assign, tick, reject, friend request, deadline)
+--   push_outbox mein aata hai -> "khr-push" Edge Function Firebase se phone par bhejta hai.
+--   Setup: README ka "v8" hissa (Firebase + Edge Function + neeche wali push_config line).
+-- ============================================================
+create table if not exists public.push_tokens (
+  token       text primary key,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  platform    text not null default 'android',
+  updated_at  timestamptz not null default now()
+);
+create index if not exists push_tokens_user_idx on public.push_tokens(user_id);
+alter table public.push_tokens enable row level security;   -- koi direct access nahi, sirf neeche wale functions
+
+create table if not exists public.push_outbox (
+  id          bigserial primary key,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  title       text not null,
+  body        text not null default '',
+  data        jsonb not null default '{}'::jsonb,
+  created_at  timestamptz not null default now(),
+  sent_at     timestamptz
+);
+create index if not exists push_outbox_pending_idx on public.push_outbox(id) where sent_at is null;
+alter table public.push_outbox enable row level security;   -- app se koi parh/likh nahi sakta
+
+-- Edge Function ka pata + secret (sirf database ke andar, app ko kabhi nazar nahi aata)
+create schema if not exists khr_private;
+revoke all on schema khr_private from public;
+do $$ begin execute 'revoke all on schema khr_private from anon, authenticated'; exception when others then null; end $$;
+create table if not exists khr_private.push_config (
+  id            int primary key default 1 check (id = 1),
+  function_url  text not null,
+  secret        text not null
+);
+
+-- deadline alerts ek hi dafa jayein (1 = shuru, 2 = 10 minute pehle, 4 = khatam)
+alter table public.tasks add column if not exists push_sent smallint not null default 0;
+
+create or replace function public.register_push_token(p_token text, p_platform text default 'android') returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Login zaroori hai'; end if;
+  if p_token is null or char_length(p_token) < 10 or char_length(p_token) > 4096 then raise exception 'Galat token'; end if;
+  insert into public.push_tokens(token, user_id, platform, updated_at)
+  values (p_token, auth.uid(), coalesce(nullif(p_platform, ''), 'android'), now())
+  on conflict (token) do update set user_id = excluded.user_id, platform = excluded.platform, updated_at = now();
+  -- true = server par push chalu hai (app phir deadline khud schedule nahi karti, double na aayein)
+  return exists (select 1 from khr_private.push_config);
+end $$;
+
+create or replace function public.unregister_push_token(p_token text) returns void
+language sql security definer set search_path = public as $$
+  delete from public.push_tokens where token = p_token and user_id = auth.uid();
+$$;
+grant execute on function public.register_push_token(text, text) to authenticated;
+grant execute on function public.unregister_push_token(text) to authenticated;
+
+-- Edge Function ko jagao (pg_net). Kuch bhi galat ho to asal kaam (message bhejna waghera) kabhi na ruke.
+create or replace function public.khr_push_kick() returns void
+language plpgsql security definer set search_path = public as $$
+declare v_url text; v_secret text;
+begin
+  select function_url, secret into v_url, v_secret from khr_private.push_config where id = 1;
+  if v_url is null then return; end if;
+  begin
+    perform net.http_post(url := v_url, body := '{}'::jsonb,
+      headers := jsonb_build_object('Content-Type', 'application/json', 'x-khr-secret', v_secret));
+  exception when others then null;
+  end;
+end $$;
+
+create or replace function public.khr_push_outbox_kick() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.khr_push_kick();
+  return null;
+end $$;
+drop trigger if exists push_outbox_kick on public.push_outbox;
+create trigger push_outbox_kick after insert on public.push_outbox for each statement execute function public.khr_push_outbox_kick();
+
+-- Kin logon ko bhejna hai (sirf jin ke phone register hain, aur jo khud ye kaam karne wala nahi)
+create or replace function public.khr_notify(p_users uuid[], p_except uuid, p_title text, p_body text, p_data jsonb default '{}'::jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.push_outbox(user_id, title, body, data)
+  select distinct u, left(p_title, 120), left(coalesce(p_body, ''), 240), coalesce(p_data, '{}'::jsonb)
+  from unnest(p_users) as u
+  where u is not null and u is distinct from p_except
+    and exists (select 1 from public.push_tokens t where t.user_id = u);
+exception when others then
+  raise warning 'khr_notify: %', sqlerrm;   -- notification fail ho to bhi asal kaam ho jaye
+end $$;
+
+create or replace function public.khr_name(p uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce((select nullif(btrim(full_name), '') from public.profiles where id = p), 'Koi member');
+$$;
+
+-- channel (card) ke log + owner
+create or replace function public.khr_channel_people(ch uuid) returns uuid[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(distinct u), '{}') from (
+    select user_id as u from public.channel_members where channel_id = ch and coalesce(array_length(roles, 1), 0) > 0
+    union select id from public.profiles where is_owner
+  ) x;
+$$;
+
+-- server channel dekhne wale log
+create or replace function public.khr_server_people(ch uuid) returns uuid[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(distinct p.id), '{}')
+  from public.profiles p, public.server_channels c
+  where c.id = ch and (p.is_owner or (p.status = 'approved' and (not c.is_private
+        or exists (select 1 from public.server_channel_members m where m.channel_id = c.id and m.user_id = p.id))));
+$$;
+
+revoke execute on function public.khr_notify(uuid[], uuid, text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.khr_push_kick() from public, anon, authenticated;
+revoke execute on function public.khr_channel_people(uuid) from public, anon, authenticated;
+revoke execute on function public.khr_server_people(uuid) from public, anon, authenticated;
+
+create or replace function public.khr_ev_dm() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.khr_notify(array[new.to_user], new.from_user, public.khr_name(new.from_user),
+    case when btrim(new.body) <> '' then new.body else '📷 Photo' end,
+    jsonb_build_object('type', 'dm', 'peer', new.from_user));
+  return null;
+end $$;
+drop trigger if exists push_dm on public.direct_messages;
+create trigger push_dm after insert on public.direct_messages for each row execute function public.khr_ev_dm();
+
+create or replace function public.khr_ev_server_msg() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  select name into v_name from public.server_channels where id = new.channel_id;
+  perform public.khr_notify(public.khr_server_people(new.channel_id), new.user_id,
+    '#' || coalesce(v_name, 'channel') || ' · ' || public.khr_name(new.user_id),
+    case when btrim(new.body) <> '' then new.body else '📷 Photo' end,
+    jsonb_build_object('type', 'srv', 'channel', new.channel_id));
+  return null;
+end $$;
+drop trigger if exists push_server_msg on public.server_messages;
+create trigger push_server_msg after insert on public.server_messages for each row execute function public.khr_ev_server_msg();
+
+create or replace function public.khr_ev_card_msg() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  select name into v_name from public.channels where id = new.channel_id;
+  perform public.khr_notify(public.khr_channel_people(new.channel_id), new.user_id,
+    '💬 ' || coalesce(v_name, 'Channel') || ' · ' || public.khr_name(new.user_id), new.body,
+    jsonb_build_object('type', 'chat', 'channel', new.channel_id));
+  return null;
+end $$;
+drop trigger if exists push_card_msg on public.messages;
+create trigger push_card_msg after insert on public.messages for each row execute function public.khr_ev_card_msg();
+
+create or replace function public.khr_ev_attachment() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  select name into v_name from public.channels where id = new.channel_id;
+  perform public.khr_notify(public.khr_channel_people(new.channel_id), new.created_by,
+    coalesce(v_name, 'Channel') || ': nayi ' || case when new.kind = 'script' then 'script 📄' else 'thumbnail 🖼' end,
+    new.title || ' · ' || public.khr_name(new.created_by),
+    jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  return null;
+end $$;
+drop trigger if exists push_attachment on public.attachments;
+create trigger push_attachment after insert on public.attachments for each row execute function public.khr_ev_attachment();
+
+create or replace function public.khr_ev_assign() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text; v_new text[];
+begin
+  if coalesce(array_length(new.roles, 1), 0) = 0 then return null; end if;
+  if tg_op = 'UPDATE' then
+    select coalesce(array_agg(r), '{}') into v_new from unnest(new.roles) r where not (r = any(coalesce(old.roles, '{}')));
+  else
+    v_new := new.roles;
+  end if;
+  if coalesce(array_length(v_new, 1), 0) = 0 then return null; end if;
+  select name into v_name from public.channels where id = new.channel_id;
+  perform public.khr_notify(array[new.user_id], auth.uid(), '📌 Naya kaam assign hua',
+    coalesce(v_name, 'Channel') || ' mein aap ka role: ' || array_to_string(v_new, ', '),
+    jsonb_build_object('type', 'assign', 'channel', new.channel_id));
+  return null;
+end $$;
+drop trigger if exists push_assign on public.channel_members;
+create trigger push_assign after insert or update of roles on public.channel_members for each row execute function public.khr_ev_assign();
+
+create or replace function public.khr_ev_task() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  if new.status is not distinct from old.status then return null; end if;
+  select name into v_name from public.channels where id = new.channel_id;
+  if new.status = 'done' then
+    perform public.khr_notify((select coalesce(array_agg(id), '{}') from public.profiles where is_owner), new.user_id,
+      '✅ Task complete', public.khr_name(new.user_id) || ' ne ' || coalesce(v_name, 'channel') || ' (' || new.role || ') complete kiya',
+      jsonb_build_object('type', 'task', 'channel', new.channel_id));
+  elsif new.status = 'rejected' then
+    perform public.khr_notify(array[new.user_id], null, '✕ Task reject hua',
+      coalesce(v_name, 'Channel') || ' (' || new.role || ')' || case when new.rejected_reason <> '' then ': ' || new.rejected_reason else '' end,
+      jsonb_build_object('type', 'task', 'channel', new.channel_id));
+  end if;
+  return null;
+end $$;
+drop trigger if exists push_task on public.tasks;
+create trigger push_task after update of status on public.tasks for each row execute function public.khr_ev_task();
+
+create or replace function public.khr_ev_friend() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' and new.status = 'pending' then
+    perform public.khr_notify(array[new.to_user], new.from_user, '🤝 Friend request',
+      public.khr_name(new.from_user) || ' ne aap ko friend request bheji', jsonb_build_object('type', 'friend'));
+  elsif tg_op = 'UPDATE' and new.status = 'accepted' and old.status is distinct from 'accepted' then
+    perform public.khr_notify(array[new.from_user], new.to_user, '🤝 Request accept',
+      public.khr_name(new.to_user) || ' ne aap ki friend request accept kar li', jsonb_build_object('type', 'friend'));
+  end if;
+  return null;
+end $$;
+drop trigger if exists push_friend on public.friend_requests;
+create trigger push_friend after insert or update of status on public.friend_requests for each row execute function public.khr_ev_friend();
+
+-- Har minute: deadline shuru / 10 minute baqi / khatam (sirf pichle 15 minute ke andar wale, purane nahi)
+create or replace function public.khr_deadline_tick() returns void
+language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    update public.tasks t set push_sent = push_sent | 1
+    where status = 'pending' and (push_sent & 1) = 0 and start_at is not null
+      and start_at <= now() and start_at > now() - interval '15 minutes' and due_at > now()
+    returning t.id, t.user_id, t.channel_id, t.role, t.due_at
+  loop
+    perform public.khr_notify(array[r.user_id], null, '▶ Kaam ka waqt shuru',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' · deadline ' || to_char(r.due_at at time zone public.app_tz(), 'HH12:MI AM'),
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  for r in
+    update public.tasks t set push_sent = push_sent | 2
+    where status = 'pending' and (push_sent & 2) = 0
+      and due_at - interval '10 minutes' <= now() and due_at - interval '10 minutes' > now() - interval '15 minutes' and due_at > now()
+    returning t.id, t.user_id, t.channel_id, t.role, t.due_at
+  loop
+    perform public.khr_notify(array[r.user_id], null, '⏰ 10 minute baqi',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' ki deadline ' || to_char(r.due_at at time zone public.app_tz(), 'HH12:MI AM') || ' par khatam',
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  for r in
+    update public.tasks t set push_sent = push_sent | 4
+    where status = 'pending' and (push_sent & 4) = 0
+      and due_at <= now() and due_at > now() - interval '15 minutes'
+    returning t.id, t.user_id, t.channel_id, t.role
+  loop
+    perform public.khr_notify(array[r.user_id], null, '⛔ Deadline khatam',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' — abhi tak complete nahi hua',
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  -- koi purani notification atki ho to dobara bhejne ki koshish, aur 3 din purani saaf
+  if exists (select 1 from public.push_outbox where sent_at is null and created_at < now() - interval '1 minute') then
+    perform public.khr_push_kick();
+  end if;
+  delete from public.push_outbox where created_at < now() - interval '3 days';
+end $$;
+revoke execute on function public.khr_deadline_tick() from public, anon, authenticated;
+
+-- Edge Function bhejne se pehle notifications "claim" karta hai (do dafa na jayein)
+create or replace function public.khr_claim_push(p_limit int default 200)
+returns table (id bigint, user_id uuid, title text, body text, data jsonb, tokens text[])
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with c as (
+    update public.push_outbox o set sent_at = now()
+    where o.id in (select x.id from public.push_outbox x where x.sent_at is null order by x.id limit p_limit for update skip locked)
+    returning o.id, o.user_id, o.title, o.body, o.data
+  )
+  select c.id, c.user_id, c.title, c.body, c.data,
+         coalesce((select array_agg(t.token) from public.push_tokens t where t.user_id = c.user_id), '{}')
+  from c order by c.id;
+end $$;
+create or replace function public.khr_drop_token(p_token text) returns void
+language sql security definer set search_path = public as $$ delete from public.push_tokens where token = p_token; $$;
+revoke execute on function public.khr_claim_push(int) from public, anon, authenticated;
+revoke execute on function public.khr_drop_token(text) from public, anon, authenticated;
+do $$ begin
+  execute 'grant execute on function public.khr_claim_push(int) to service_role';
+  execute 'grant execute on function public.khr_drop_token(text) to service_role';
+exception when others then null; end $$;
+
+do $$
+begin
+  create extension if not exists pg_net;
+exception when others then
+  raise notice 'pg_net enable nahi hua (%). Dashboard > Database > Extensions mein "pg_net" on karein.', sqlerrm;
+end $$;
+do $$
+begin
+  perform cron.schedule('khr-deadline-alerts', '* * * * *', 'select public.khr_deadline_tick()');
+exception when others then
+  raise notice 'Deadline alerts ka cron set nahi hua (%). Dashboard > Integrations > Cron enable kar ke ye file dobara Run karein.', sqlerrm;
+end $$;
+
+-- SETUP (sirf ek dafa, apni values ke saath — README "v8" dekhein):
+-- insert into khr_private.push_config (id, function_url, secret)
+-- values (1, 'https://APNA-PROJECT.supabase.co/functions/v1/khr-push', 'APNA-LAMBA-SECRET')
+-- on conflict (id) do update set function_url = excluded.function_url, secret = excluded.secret;

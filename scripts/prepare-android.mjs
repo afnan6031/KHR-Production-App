@@ -1,7 +1,7 @@
 // Android project tayyar karta hai: platform add/sync, KHR icons + splash, version number, aur release signing.
 // Use: npm run android:prepare   (pehle .env mein Supabase keys honi chahiye)
 import { execSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const run = (cmd) => execSync(cmd, { stdio: 'inherit' });
 
@@ -45,6 +45,41 @@ writeFileSync(gradlePath, g);
     m = m.replace('<activity', '<activity\n            android:windowSoftInputMode="adjustResize"');
     writeFileSync(mp, m);
   }
+}
+
+// 3c) KHR native code: smooth keyboard + status bar ka rang (resources/android/java)
+{
+  const dir = 'android/app/src/main/java/com/khr/production';
+  mkdirSync(dir, { recursive: true });
+  cpSync('resources/android/java', dir, { recursive: true, force: true });
+}
+
+// 3d) Firebase (app band ho tab bhi notifications) — google-services.json GitHub secret se
+{
+  const b64 = process.env.GOOGLE_SERVICES_JSON_BASE64;
+  if (b64) {
+    writeFileSync('android/app/google-services.json', Buffer.from(b64, 'base64'));
+    console.log('Firebase google-services.json added (push notifications ON)');
+  } else if (existsSync('google-services.json')) {
+    cpSync('google-services.json', 'android/app/google-services.json');
+    console.log('Firebase google-services.json added from project folder');
+  } else {
+    console.log('WARNING: google-services.json nahi mila — app band hone par notifications nahi aayenge (README dekhein)');
+  }
+  const mp = 'android/app/src/main/AndroidManifest.xml';
+  let m = readFileSync(mp, 'utf8');
+  if (!m.includes('default_notification_icon')) {
+    m = m.replace(
+      '</application>',
+      `    <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_khr" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/khr_accent" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="khr_alerts" />
+    </application>`
+    );
+  }
+  if (!m.includes('POST_NOTIFICATIONS')) m = m.replace('</manifest>', '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>');
+  writeFileSync(mp, m);
+  writeFileSync('android/app/src/main/res/values/khr_colors.xml', '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="khr_accent">#E5383B</color>\n</resources>\n');
 }
 
 // 4) Internet permission (template mein hoti hai, phir bhi pakka kar lein)

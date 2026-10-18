@@ -13,6 +13,7 @@ import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server'
 import { ChannelSheet, PerfSheet, ProfileSheet, VideoSheet } from './components/Sheets';
 import { Avatar, Logo, ThemeButton, ToastProvider, runBackHandler } from './components/ui';
 import { BellButton, NotificationsProvider } from './components/Notifications';
+import { initPush, onPushOpen, stopPush, takePendingOpen, type PushOpen } from './lib/push';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -149,8 +150,33 @@ function Shell() {
 
   const signOut = async () => {
     setSheet(null);
+    await stopPush();
     await supabase.auth.signOut();
   };
+
+  // App band ho tab bhi notifications: login + approve ke baad phone register
+  const canUse = !d.loading && !!d.me && (d.isOwner || d.me.status === 'approved');
+  useEffect(() => {
+    if (canUse) initPush();
+  }, [canUse]);
+  // notification par tap -> sahi jagah kholo
+  const channelsRef = useRef(d.channels);
+  channelsRef.current = d.channels;
+  useEffect(() => {
+    const handle = (p: PushOpen) => {
+      setSheet(null);
+      setOpenUser(null);
+      if (p.type === 'dm' || p.type === 'srv' || p.type === 'friend') {
+        setOpenId(null);
+        setTab('server'); // Server screen khud DM / channel kholti hai
+        return;
+      }
+      takePendingOpen();
+      if (p.channel && channelsRef.current.some((c) => c.id === p.channel)) setOpenId(p.channel);
+      else { setOpenId(null); setTab('home'); }
+    };
+    return onPushOpen(handle);
+  }, []);
 
   if (d.loading)
     return (

@@ -70,3 +70,16 @@ for folder, (w, h) in SPLASH.items():
     im.alpha_composite(fit(MAIN, s), ((w - s) // 2, (h - s) // 2))
     save(im.convert('RGB'), res, folder, 'splash.png')
 print('KHR icons ready')
+
+# notification ka chhota icon (Android sirf safed shakal dikhata hai): logo ka laal "K" safed kar ke
+px = WHITE.load()
+mono = Image.new('RGBA', WHITE.size, (0, 0, 0, 0))
+mp = mono.load()
+for y in range(WHITE.size[1]):
+    for x in range(WHITE.size[0]):
+        r, g, b, a = px[x, y]
+        if a > 100 and r > 150 and g < 120:
+            mp[x, y] = (255, 255, 255, 255)
+for k, s in {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}.items():
+    save(mono.resize((s, s), Image.LANCZOS), res, f'drawable-{k}', 'ic_stat_khr.png')
+print('notification icon ready')

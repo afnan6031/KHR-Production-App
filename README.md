@@ -368,6 +368,64 @@ Notifications kaise kaam karti hain:
 
 ---
 
+## v8: Smooth keyboard, server list, app band ho tab bhi notifications, Windows ki patti
+
+**Kya badla:**
+- **Keyboard smooth:** typing box ab keyboard ke saath **har frame par** upar aata hai (jhatka nahi). Ye kaam app ka apna Android code karta hai (`resources/android/java/`). Phone ka status bar bhi app ke rang mein hai.
+- **Server pehle list dikhata hai (phone):** Server kholne par seedha kisi ki chat nahi khulti. Pehle **# Channels / 👥 Friends** aate hain. Friends dabayein to saare friends, Channels dabayein to saare channels; phir jis par tap karein wahi chat khulti hai. PC par (badi screen) pichli chat saath khuli rehti hai kyunke list bhi saath nazar aati hai.
+- **App band ho tab bhi notifications:**
+  - **Android:** Firebase (FCM) ke zariye. Message, DM, nayi script/thumbnail, card ki chat, naya kaam assign, task tick/reject, friend request, aur deadline (shuru, 10 minute pehle, khatam) — sab ke alert phone par aate hain, chahe app band ho. Notification par tap karne se app usi jagah khulti hai.
+  - **Windows:** window ka X dabane par app band nahi hoti, **tray** (ghadi ke paas) mein chalti rehti hai aur Windows notifications dikhati hai. Computer on hote hi khud (chupke se) chal jati hai. Poori tarah band: tray icon par right-click → **Band karein**.
+- **Windows ki upar wali patti:** ab safed nahi. App ke rang mein hai (dark mein gehra neela, light mein safed) aur theme badalne par saath badalti hai, Discord ki tarah.
+
+### v8 setup — app band hone par Android notifications (ek dafa, ~20 minute)
+
+Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (app ek dafa khulne par schedule hote hain), aur Windows tray wala kaam bina setup chalta hai. Lekin **app band hone par message waghera ke alerts** ke liye ye zaroori hai.
+
+**1) Supabase database update**
+1. **SQL Editor** mein nayi `supabase/schema.sql` poori paste kar ke **Run** karein.
+2. **Database → Extensions** mein `pg_net` aur `pg_cron` dono **on** hon. (Na hon to on kar ke schema.sql dobara Run karein.)
+
+**2) Firebase project (muft)**
+1. https://console.firebase.google.com par **Add project** → naam `KHR Production` → Create.
+2. Project mein **Android** icon dabayein → package name **`com.khr.production`** (bilkul yahi) → Register.
+3. **google-services.json** download karein.
+4. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - Name: `GOOGLE_SERVICES_JSON_BASE64`
+   - Value: file ka base64. Windows PowerShell mein file wale folder mein ye chalayein, phir paste karein:
+     ```
+     [Convert]::ToBase64String([IO.File]::ReadAllBytes("google-services.json")) | Set-Clipboard
+     ```
+5. Firebase → ⚙ **Project settings → Service accounts → Generate new private key** → ek `.json` file download hogi. (Ye kisi ko na dein.)
+
+**3) Supabase Edge Function (notification bhejne wala)**
+1. Supabase → **Edge Functions → Deploy a new function → Via Editor**.
+2. Naam: **`khr-push`**. Editor mein `supabase/functions/khr-push/index.ts` ka poora code paste karein → **Deploy**.
+3. Function ki **Details / Settings** mein **"Verify JWT" / "Enforce JWT verification" OFF** karein → Save. (Function apna secret khud check karta hai.)
+4. **Edge Functions → Secrets** mein do secrets add karein:
+   - `FCM_SERVICE_ACCOUNT` = step 2.5 wali json file ka **poora text** (Notepad mein khol kar copy).
+   - `KHR_PUSH_SECRET` = koi lamba secret, jaise `khr-9f3k2-x8qp-47zz-m1n0-lahore` (khud banayein).
+5. **SQL Editor** mein ye chalayein (apna project URL aur wahi secret likhein):
+   ```sql
+   insert into khr_private.push_config (id, function_url, secret)
+   values (1, 'https://APNA-PROJECT.supabase.co/functions/v1/khr-push', 'WAHI-LAMBA-SECRET')
+   on conflict (id) do update set function_url = excluded.function_url, secret = excluded.secret;
+   ```
+   Project URL: **Project Settings → API** (wahi jo `VITE_SUPABASE_URL` hai).
+
+**4) Nayi app**
+1. Files GitHub par upload karein → Actions nayi APK bana dega (log mein "push notifications ON" likha aayega).
+2. Phone par nayi APK install karein, kholein, login karein, **notifications Allow** karein.
+3. Ghanti (🔔) kholein: **"✓ App band ho tab bhi … alerts aayenge"** likha ho to sab set hai.
+
+**Test:** phone par app band kar dein (recent apps se swipe). Doosre account se is user ko DM bhejein — 1–2 second mein notification aana chahiye.
+
+**Masla?**
+- Notification nahi aaya: Supabase → Edge Functions → `khr-push` → **Logs** dekhein. `forbidden` = secret SQL aur function mein alag hai. `FCM error 403` = service account galat project ka hai.
+- Kuch phones (Xiaomi, Oppo, Vivo, Infinix) band apps ko rokte hain: Settings → Apps → KHR Production → **Battery: No restrictions / Autostart on** karein.
+
+---
+
 ## Pehle se setup kiya hua hai? Update kaise karein
 
 1. **Supabase → SQL Editor → New query** kholein. Nayi `supabase/schema.sql` poori paste kar ke **Run** karein.

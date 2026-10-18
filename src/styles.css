@@ -728,12 +728,17 @@ main.server-main .srv > * { min-height: 0; }
 }
 
 /* ================= v7: keyboard ke upar typing ================= */
-body.kb-open nav.tabs { display: none; }
-body.kb-open main.server-main { bottom: var(--kb, 0px); }
+/* v8: smooth — box keyboard ke saath chalta hai; neeche ki tabs keyboard ke peeche chhup jati hain (gayab hone ka jhatka nahi) */
+.kb-web body.kb-open nav.tabs { display: none; }
+main.server-main { bottom: max(var(--navh, 64px), var(--kb, 0px)); }
+.kb-web body.kb-open main.server-main { bottom: var(--kb, 0px); }
 body.kb-open main:not(.server-main) { padding-bottom: calc(var(--kb, 0px) + 24px); }
 .sheet-bg { padding-bottom: var(--kb, 0px); }
 .sheet { max-height: calc(92vh - var(--kb, 0px)); }
 body.kb-open .toast { bottom: calc(var(--kb, 0px) + 16px); }
+main.server-main, .sheet-bg, .sheet { transition: bottom .24s cubic-bezier(.2, .8, .2, 1), padding-bottom .24s cubic-bezier(.2, .8, .2, 1), max-height .24s cubic-bezier(.2, .8, .2, 1); }
+.kb-live main.server-main, .kb-live .sheet-bg, .kb-live .sheet { transition: none; }
+.chat-pane .feed { overflow-anchor: auto; }
 
 /* ================= v7: KHR logo ================= */
 .logo-img, .logo-auto img { display: block; object-fit: contain; flex: none; }
@@ -771,3 +776,20 @@ body.kb-open .toast { bottom: calc(var(--kb, 0px) + 16px); }
 .tbtn { gap: 5px; font-size: 12.5px; }
 .tbtn b { min-width: 18px; padding: 0 5px !important; }
 @container (max-width: 330px) { .tbtn { font-size: 12px; gap: 4px; padding: 7px 6px !important; } }
+
+/* ================= v8: Windows app ki upar wali patti (Discord jaisi, app ke rang mein) ================= */
+:root { --tb-bg: #FFFFFF; --tb-fg: #5A6479; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tb-bg: #0B1124; --tb-fg: #99A2BA; } }
+:root[data-theme="dark"] { --tb-bg: #0B1124; --tb-fg: #99A2BA; }
+.titlebar {
+  position: fixed; top: 0; left: 0; right: 0; height: 32px; z-index: 60;
+  display: flex; align-items: center; gap: 8px; padding: 0 150px 0 12px;
+  background: var(--tb-bg); color: var(--tb-fg); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  -webkit-app-region: drag; user-select: none; border-bottom: 1px solid var(--line);
+}
+.titlebar img { border-radius: 50%; display: block; }
+.desktop body { padding-top: 32px; }
+.desktop body::before { display: none; }
+.desktop .top { top: 32px; }
+.desktop main.server-main { top: calc(32px + var(--hdr, 56px)); }
+.desktop .sheet-bg, .desktop .lightbox { top: 32px; }

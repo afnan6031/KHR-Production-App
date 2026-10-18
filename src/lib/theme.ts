@@ -1,3 +1,4 @@
+import { syncSystemBars } from './keyboard';
 /** Light / Dark / System theme — har device par yaad rehta hai */
 export type ThemeChoice = 'system' | 'light' | 'dark';
 const KEY = 'khr-theme';
@@ -20,8 +21,18 @@ export function applyTheme(choice = getTheme()) {
   const root = document.documentElement;
   if (choice === 'system') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', choice);
+  const dark = isDark(choice);
   const meta = document.querySelector('meta[name="theme-color"]');
-  meta?.setAttribute('content', isDark(choice) ? '#0B1124' : '#FFFFFF');
+  meta?.setAttribute('content', dark ? '#0B1124' : '#FFFFFF');
+  // Windows app ki upar wali patti + Android status bar bhi isi rang mein
+  desktop()?.setTheme(dark);
+  syncSystemBars(dark);
+}
+
+type Desktop = { isDesktop: boolean; setTheme: (dark: boolean) => void; attention: () => void; show: () => void };
+/** Windows (Electron) app mein chal rahe hain? */
+export function desktop(): Desktop | undefined {
+  return (window as unknown as { khrDesktop?: Desktop }).khrDesktop;
 }
 
 export function setTheme(choice: ThemeChoice) {

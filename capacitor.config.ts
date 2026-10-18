@@ -5,13 +5,13 @@ const config: CapacitorConfig = {
   appName: 'KHR Production',
   webDir: 'dist',
   plugins: {
-    // keyboard ki jagah app khud sambhalti hai (src/lib/keyboard.ts)
-    Keyboard: { resizeOnFullScreen: true }
+    // App band ho tab bhi notification (Firebase) — foreground mein app khud dikhati hai
+    PushNotifications: { presentationOptions: [] }
   },
   android: {
     backgroundColor: '#090C24',
-    // Android 15+ par content status bar ke neeche na chhupe
-    adjustMarginsForEdgeToEdge: 'auto'
+    // har Android par content status/navigation bar ke neeche na chhupe (keyboard KHR plugin sambhalta hai)
+    adjustMarginsForEdgeToEdge: 'force'
   }
 };
 
