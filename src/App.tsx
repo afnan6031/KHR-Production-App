@@ -9,6 +9,7 @@ import { AuthScreen, NotConfigured } from './screens/Auth';
 import { ChannelScreen, ChannelsScreen, GateScreen, MyCardsScreen } from './screens/Main';
 import { HomeScreen, TeamScreen } from './screens/Home';
 import { LeaderboardScreen, ProgressScreen } from './screens/Progress';
+import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server';
 import { ChannelSheet, PerfSheet, ProfileSheet, VideoSheet } from './components/Sheets';
 import { Avatar, Logo, ToastProvider } from './components/ui';
 
@@ -49,7 +50,7 @@ function Splash() {
   );
 }
 
-type Tab = 'home' | 'cards' | 'channels' | 'team' | 'rank' | 'progress';
+type Tab = 'home' | 'cards' | 'channels' | 'team' | 'rank' | 'progress' | 'server';
 type SheetState = { kind: 'channel'; id: string | null } | { kind: 'perf' } | { kind: 'video'; video: Video | null } | { kind: 'profile' } | null;
 
 const ICON = {
@@ -62,6 +63,12 @@ const ICON = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <rect x="3" y="4" width="18" height="7" rx="2" />
       <rect x="3" y="13" width="18" height="7" rx="2" />
+    </svg>
+  ),
+  server: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+      <path d="M8 11h.01M12 11h.01M16 11h.01" strokeLinecap="round" strokeWidth="3" />
     </svg>
   ),
   rank: (
@@ -86,6 +93,8 @@ const ICON = {
 
 function Shell() {
   const d = useData();
+  const serverBadge = useServerBadge();
+  const [records, setRecords] = useState(false);
   const [tab, setTab] = useState<Tab>('home');
   const [openId, setOpenId] = useState<string | null>(null);
   const [openUser, setOpenUser] = useState<string | null>(null);
@@ -157,13 +166,15 @@ function Shell() {
         { k: 'home', label: 'Aaj', icon: ICON.home },
         { k: 'channels', label: 'Channels', icon: ICON.cards },
         { k: 'team', label: 'Team', icon: ICON.team, badge: pending },
-        { k: 'rank', label: 'Ranking', icon: ICON.rank }
+        { k: 'rank', label: 'Ranking', icon: ICON.rank },
+        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge }
       ]
     : [
         { k: 'home', label: 'Aaj', icon: ICON.home },
         { k: 'cards', label: 'Mere cards', icon: ICON.cards },
         { k: 'rank', label: 'Ranking', icon: ICON.rank },
-        { k: 'progress', label: 'Progress', icon: ICON.progress }
+        { k: 'progress', label: 'Progress', icon: ICON.progress },
+        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge }
       ];
 
   let body: JSX.Element;
@@ -183,6 +194,7 @@ function Shell() {
   else if (tab === 'team' && d.isOwner) body = <TeamScreen openProgress={openProgress} />;
   else if (tab === 'cards') body = <MyCardsScreen openChannel={open} />;
   else if (tab === 'rank') body = <LeaderboardScreen openProgress={openProgress} />;
+  else if (tab === 'server') body = <ServerScreen />;
   else if (tab === 'progress') body = <ProgressScreen userId={d.uid} openChannel={open} />;
   else body = <HomeScreen openChannel={open} openProgress={openProgress} goTeam={() => go('team')} newChannel={() => setSheet({ kind: 'channel', id: null })} />;
 
@@ -238,8 +250,13 @@ function Shell() {
             setSheet(null);
             openProgress(d.uid);
           }}
+          onRecords={() => {
+            setSheet(null);
+            setRecords(true);
+          }}
         />
       )}
+      {records && d.isOwner && <ChatReviewSheet onClose={() => setRecords(false)} />}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Channel } from '../lib/types';
 import { DAYS_SHORT, scheduleText, todayKey, weekdayOf } from '../lib/utils';
 
@@ -60,7 +61,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       document.body.classList.remove('locked');
     };
   }, [onClose]);
-  return (
+  // body par portal: card ke andar se khule tab bhi poori screen par aaye
+  return createPortal(
     <div className="sheet-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-h">
@@ -71,6 +73,16 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
+    </div>,
+    document.body
+  );
+}
+
+/** Andar ke buttons/sheets ka click bahar wale card tak na pahunche */
+export function Stop({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={className} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      {children}
     </div>
   );
 }
@@ -135,7 +147,8 @@ export function Delta({ d }: { d: number | null }) {
   return <span className={d >= 0 ? 'up' : 'down'}>{(d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toLocaleString('en')}</span>;
 }
 
-export function Avatar({ name }: { name: string }) {
+export function Avatar({ name, url, online }: { name: string; url?: string; online?: boolean }) {
+  const [broken, setBroken] = useState(false);
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -145,8 +158,9 @@ export function Avatar({ name }: { name: string }) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
   return (
-    <span className="av" style={{ ['--h' as string]: String(h) }} aria-hidden="true">
-      {initials}
+    <span className={'av' + (url && !broken ? ' img' : '')} style={{ ['--h' as string]: String(h) }} aria-hidden="true">
+      {url && !broken ? <img src={url} alt="" loading="lazy" onError={() => setBroken(true)} /> : initials}
+      {online !== undefined && <i className={'presence' + (online ? ' on' : '')} />}
     </span>
   );
 }

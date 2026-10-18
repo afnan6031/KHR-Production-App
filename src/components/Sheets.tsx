@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
-import { ROLES, STAGES, type Channel, type Video } from '../lib/types';
-import { DAYS_LONG, errorText, fmtDate, roleClass } from '../lib/utils';
-import { ConfirmButton, Sheet, useToast } from './ui';
+import { ROLES, STAGES, type Channel, type RoleTime, type Video } from '../lib/types';
+import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
+import { Avatar, ConfirmButton, Sheet, useToast } from './ui';
 
 /* ================= Channel create / edit ================= */
 export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel | null; onClose: () => void; onSaved: (id: string) => void }) {
@@ -12,8 +13,12 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
   const [about, setAbout] = useState(channel?.about || '');
   const [type, setType] = useState<'daily' | 'days'>(channel?.schedule_type || 'days');
   const [days, setDays] = useState<number[]>(channel?.work_days?.length ? channel.work_days : [1, 4]);
-  const [from, setFrom] = useState(channel?.time_from?.slice(0, 5) || '10:00');
-  const [to, setTo] = useState(channel?.time_to?.slice(0, 5) || '18:00');
+  // v3: har role ka apna start aur deadline
+  const [times, setTimes] = useState<Record<string, RoleTime>>(() => {
+    const t: Record<string, RoleTime> = {};
+    if (channel) ROLES.forEach((r) => (t[r] = roleTime(channel, r)));
+    return t;
+  });
   const [deadline, setDeadline] = useState(channel?.deadline || '');
   const [members, setMembers] = useState<Record<string, string[]>>(() => {
     const m: Record<string, string[]> = {};
@@ -27,6 +32,22 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
     .sort((a, b) => Number(b.is_owner) - Number(a.is_owner) || a.full_name.localeCompare(b.full_name));
 
   const assigned = people.map((p) => [p.id, ROLES.filter((r) => (members[p.id] || []).includes(r))] as [string, string[]]).filter(([, rs]) => rs.length);
+
+  const usedSet = ROLES.filter((r) => assigned.some(([, rs]) => rs.includes(r)));
+  // timeline ki tarteeb: khulte waqt start time ke hisaab se, naye roles neeche (likhte waqt jagah na badle)
+  const [order] = useState<string[]>(() =>
+    channel ? channelTimeline(channel, [...new Set(d.channel_members.filter((m) => m.channel_id === channel.id).flatMap((m) => m.roles))]).map((r) => r.role) : []
+  );
+  const usedRoles: string[] = [...order.filter((r) => (usedSet as readonly string[]).includes(r)), ...usedSet.filter((r) => !order.includes(r))];
+  /** naye role ka default waqt: pichle role ki deadline se 3 ghante */
+  const timeOf = (role: string): RoleTime => {
+    if (times[role]) return times[role];
+    const before = usedRoles.slice(0, usedRoles.indexOf(role)).map((r) => times[r]).filter(Boolean);
+    const start = before.length ? before[before.length - 1].end : '10:00';
+    const h = (Math.floor(toMin(start) / 60) + 3) % 24;
+    return { start, end: String(h).padStart(2, '0') + ':' + start.slice(3, 5) };
+  };
+  const setTime = (role: string, key: 'start' | 'end', v: string) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), [key]: v } }));
 
   const toggleRole = (uid: string, role: string) =>
     setMembers((m) => {
@@ -42,15 +63,23 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
     try {
       const ordered: Record<string, string[]> = {};
       Object.entries(members).forEach(([u, rs]) => (ordered[u] = ROLES.filter((r) => rs.includes(r))));
+      const role_times: Record<string, RoleTime> = {};
+      usedRoles.forEach((r) => (role_times[r] = timeOf(r)));
+      for (const r of usedRoles) if (!role_times[r].start || !role_times[r].end) throw new Error(`${r} ka start aur deadline dono likhein`);
+      // card par dikhane ke liye poore din ka waqt: sab se pehla start aur sab se aakhri deadline
+      const list = usedRoles.map((r) => role_times[r]);
+      const from = list.length ? list.reduce((a, b) => (toMin(b.start) < toMin(a.start) ? b : a)).start : null;
+      const to = list.length ? list.reduce((a, b) => (toMin(b.end) > toMin(a.end) ? b : a)).end : null;
       const id = await d.saveChannel({
         id: channel?.id,
         name: name.trim(),
         about: about.trim(),
         schedule_type: type,
         work_days: [...days].sort(),
-        time_from: from || null,
-        time_to: to || null,
+        time_from: from,
+        time_to: to,
         deadline: deadline || null,
+        role_times,
         members: ordered
       });
       toast(channel ? 'Channel update ho gaya' : 'Channel card ban gaya');
@@ -92,16 +121,6 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
               ))}
             </div>
           )}
-        </div>
-        <div className="two">
-          <label className="f">
-            Kaam shuru
-            <input id="c-from" type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="f">
-            Kaam khatam
-            <input id="c-to" type="time" value={to} onChange={(e) => setTo(e.target.value)} />
-          </label>
         </div>
         <label className="f">
           Deadline <span className="h">Optional: agle upload ya project ki aakhri date</span>
@@ -146,6 +165,43 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
             <p className="muted small m0">Abhi kisi ko role nahi diya. Upar har bande ke neeche role chunein.</p>
           )}
           {channel && <p className="muted tiny m0">Team ya roles ki tabdeeli aaj se lagu hogi. Purane tasks aur progress ki history waisi hi rahegi.</p>}
+        </div>
+        <div className="f">
+          Har role ka waqt (daily timeline)
+          <span className="h">Har role ka task isi waqt shuru hoga aur isi deadline par khatam. Deadline start se pehle rakhein to wo agle din ki maani jayegi (raat ki shift).</span>
+          {usedRoles.length ? (
+            <div className="rt-list">
+              {usedRoles.map((r, i) => {
+                const t = timeOf(r);
+                const overnight = toMin(t.end) <= toMin(t.start);
+                const who = assigned.filter(([, rs]) => rs.includes(r)).map(([u]) => d.nameOf(u));
+                return (
+                  <div className="rt-row" key={r}>
+                    <div className="rt-head">
+                      <span className="rt-step num">{i + 1}</span>
+                      <span className={'role sm ' + roleClass(r)}>{r}</span>
+                      <span className="muted tiny">{who.join(", ")}</span>
+                    </div>
+                    <div className="two">
+                      <label className="f">
+                        Start
+                        <input id={'rt-s-' + i} type="time" value={t.start} onChange={(e) => setTime(r, 'start', e.target.value)} />
+                      </label>
+                      <label className="f">
+                        Deadline
+                        <input id={'rt-e-' + i} type="time" value={t.end} onChange={(e) => setTime(r, 'end', e.target.value)} />
+                      </label>
+                    </div>
+                    <span className={'tiny ' + (overnight ? 'warn' : 'muted')}>
+                      {fmtTime(t.start)} se {fmtTime(t.end)}{overnight ? ' (agle din)' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted small m0">Pehle upar team ko roles dein, phir har role ka waqt yahan set hoga.</p>
+          )}
         </div>
         <button className="btn primary block" type="submit" disabled={busy}>
           {busy ? 'Save ho raha hai…' : channel ? 'Changes save karein' : `Channel card launch karein${assigned.length ? ` (${assigned.length} log)` : ''}`}
@@ -331,14 +387,44 @@ export function VideoSheet({ channelId, video, onClose }: { channelId: string; v
 }
 
 /* ================= My profile ================= */
-export function ProfileSheet({ onClose, onSignOut, onProgress }: { onClose: () => void; onSignOut: () => void; onProgress: () => void }) {
+export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { onClose: () => void; onSignOut: () => void; onProgress: () => void; onRecords?: () => void }) {
   const d = useData();
   const toast = useToast();
   const [name, setName] = useState(d.me?.full_name || '');
   const [contact, setContact] = useState(d.me?.contact || '');
   const [busy, setBusy] = useState(false);
+  const [up, setUp] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  async function pickAvatar(f: File | undefined) {
+    if (!f) return;
+    setUp(true);
+    try {
+      const r = await uploadToImgBB(f, 'avatar-' + d.uid.slice(0, 8));
+      await d.setMyAvatar(r.url);
+      toast('Profile photo lag gayi');
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setUp(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
   return (
     <Sheet title="Mera profile" onClose={onClose}>
+      <div className="avatar-edit">
+        <span className="avatar-big"><Avatar name={d.me?.full_name || 'Owner'} url={d.me?.avatar_url || undefined} /></span>
+        <div className="grow">
+          <b>{d.me?.full_name}</b>
+          <small className="muted block">{d.me?.server_role || (d.isOwner ? 'Owner' : 'Server role abhi nahi')}</small>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickAvatar(e.target.files?.[0])} />
+          <div className="row">
+            <button type="button" className="btn sm primary" disabled={up || !imgbbReady} onClick={() => fileRef.current?.click()}>
+              {up ? 'Upload ho rahi hai…' : d.me?.avatar_url ? 'Photo badlein' : 'Profile photo lagayein'}
+            </button>
+            {d.me?.avatar_url && <button type="button" className="btn sm" disabled={up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
+          </div>
+        </div>
+      </div>
       <form
         className="form"
         onSubmit={async (e) => {
@@ -372,6 +458,11 @@ export function ProfileSheet({ onClose, onSignOut, onProgress }: { onClose: () =
         <button className="btn block" type="button" onClick={onSignOut}>
           Logout
         </button>
+        {d.isOwner && onRecords && (
+          <button type="button" className="records-link" onClick={onRecords}>
+            Company records
+          </button>
+        )}
       </form>
     </Sheet>
   );

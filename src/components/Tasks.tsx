@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useData } from '../lib/data';
 import type { Task, TaskState } from '../lib/types';
-import { REJECT_PENALTY, errorText, fmtClock, fmtDate, fmtDur, isLate, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score } from '../lib/utils';
+import { REJECT_PENALTY, errorText, fmtClock, fmtDate, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score } from '../lib/utils';
 import { Seg, Sheet, useToast } from './ui';
+import { TaskSheet } from './TaskSheet';
+import { TaskTimer } from './Timer';
+import { ChannelTools } from './Attachments';
 
 /* ================= One task row ================= */
 export function TaskItem({ task, now, showName, showChannel = true, onOpenChannel, onReject }: {
@@ -16,19 +19,16 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   const d = useData();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const st = taskState(task, now);
   const ch = d.channels.find((c) => c.id === task.channel_id);
   const mine = task.user_id === d.uid;
   const canToggle = mine && st !== 'rejected';
   const canReview = d.isOwner;
-  const due = new Date(task.due_at).getTime();
   const today = todayKey();
-
-  let line: string;
-  if (st === 'pending') line = `Deadline ${fmtClock(task.due_at)} · ${fmtDur(due - now)} baqi`;
-  else if (st === 'expired') line = `Deadline ${task.day !== today ? fmtDate(task.day) + ' ' : ''}${fmtClock(task.due_at)} nikal gayi · ${fmtDur(now - due)} pehle`;
-  else if (st === 'done') line = `Complete ${fmtClock(task.completed_at)}${isLate(task) ? ' · deadline ke baad' : ''}`;
-  else line = `Rejected${task.rejected_reason ? ': ' + task.rejected_reason : ''} · −${REJECT_PENALTY}%`;
+  const atts = d.attachments.filter((a) => a.task_id === task.id);
+  const nScripts = atts.filter((a) => a.kind === 'script').length;
+  const thumbs = atts.filter((a) => a.kind === 'thumbnail');
 
   async function toggle() {
     setBusy(true);
@@ -59,18 +59,26 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
         )}
         {st === 'rejected' && <span aria-hidden="true">✕</span>}
       </button>
-      <button className="task-body" onClick={() => onOpenChannel?.(task.channel_id)} disabled={!onOpenChannel}>
+      <button className="task-body" onClick={() => setOpen(true)} aria-label={'Task kholein: ' + (ch?.name || '') + ' ' + task.role}>
         <span className="task-title">
           {showName && <b>{d.nameOf(task.user_id)}</b>}
           {showName && showChannel && <span className="muted"> · </span>}
           {showChannel && <span>{ch?.name || 'Channel'}</span>}
+          {!showName && !showChannel && <span className={'role ' + roleClass(task.role)}>{task.role}</span>}
         </span>
         <span className="task-meta">
-          <span className={'role sm ' + roleClass(task.role)}>{task.role}</span>
-          {task.day !== today && st !== 'expired' && <span className="muted">{fmtDate(task.day)}</span>}
-          <span className={'task-line ' + st + (st === 'done' && isLate(task) ? ' late' : '')}>{line}</span>
+          {(showName || showChannel) && <span className={'role sm ' + roleClass(task.role)}>{task.role}</span>}
+          {task.day !== today && <span className="muted">{fmtDate(task.day)}</span>}
         </span>
+        <TaskTimer task={task} />
+        {(nScripts > 0 || thumbs.length > 0) && (
+          <span className="att-ind">
+            {nScripts > 0 && <span className="att-chip">{nScripts} script{nScripts > 1 ? 's' : ''}</span>}
+            {thumbs.slice(0, 3).map((a) => <img key={a.id} src={a.url} alt={a.title} loading="lazy" />)}
+          </span>
+        )}
       </button>
+      {open && <TaskSheet taskId={task.id} onClose={() => setOpen(false)} onOpenChannel={onOpenChannel} onReject={onReject} />}
       {canReview && (st === 'done' || st === 'expired') && onReject && (
         <button className="btn sm danger" onClick={() => onReject(task)}>
           Reject
@@ -106,39 +114,70 @@ const SECTIONS: { key: 'pending' | 'expired' | 'completed'; title: string; empty
   { key: 'completed', title: 'Completed', empty: 'Abhi koi task complete nahi hua.' }
 ];
 
-export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string }) {
+/** Har section ke andar pehle channel ka card, phir us channel ke tasks (tick ke saath) */
+export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, groupByChannel = true }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; groupByChannel?: boolean }) {
+  const d = useData();
   const [rejecting, setRejecting] = useState<Task | null>(null);
   const groups: Record<string, Task[]> = { pending: [], expired: [], completed: [] };
   tasks.forEach((t) => {
     const st: TaskState = taskState(t, now);
     groups[st === 'done' || st === 'rejected' ? 'completed' : st].push(t);
   });
-  groups.pending.sort((a, b) => a.due_at.localeCompare(b.due_at));
+  const byStart = (a: Task, b: Task) => (a.start_at || a.due_at).localeCompare(b.start_at || b.due_at) || a.due_at.localeCompare(b.due_at);
+  groups.pending.sort(byStart);
   groups.expired.sort((a, b) => a.due_at.localeCompare(b.due_at));
   groups.completed.sort((a, b) => (b.completed_at || b.rejected_at || '').localeCompare(a.completed_at || a.rejected_at || ''));
 
   if (!tasks.length) return <div className="empty"><b>Aaj koi task nahi</b>{emptyAll}</div>;
 
+  const chName = (id: string) => d.channels.find((c) => c.id === id)?.name || 'Channel';
+
   return (
     <div className="board">
-      {SECTIONS.map((s) => (
-        <section key={s.key} className={'bsec ' + s.key}>
-          <div className="bsec-h">
-            <span className="dot" aria-hidden="true" />
-            <h3>{s.title}</h3>
-            <span className="count num">{groups[s.key].length}</span>
-          </div>
-          {groups[s.key].length ? (
-            <div className="tasks">
-              {groups[s.key].map((t) => (
-                <TaskItem key={t.id} task={t} now={now} showName={showName} onOpenChannel={onOpenChannel} onReject={setRejecting} />
-              ))}
+      {SECTIONS.map((s) => {
+        const list = groups[s.key];
+        // channel-wise groups (pehla task jis channel ka, wo channel pehle)
+        const order: string[] = [];
+        list.forEach((t) => !order.includes(t.channel_id) && order.push(t.channel_id));
+        return (
+          <section key={s.key} className={'bsec ' + s.key}>
+            <div className="bsec-h">
+              <span className="dot" aria-hidden="true" />
+              <h3>{s.title}</h3>
+              <span className="count num">{list.length}</span>
             </div>
-          ) : (
-            <p className="muted small m0 bsec-empty">{s.empty}</p>
-          )}
-        </section>
-      ))}
+            {!list.length && <p className="muted small m0 bsec-empty">{s.empty}</p>}
+            {list.length > 0 && !groupByChannel && (
+              <div className="tasks">
+                {list.map((t) => (
+                  <TaskItem key={t.id} task={t} now={now} showName={showName} onOpenChannel={onOpenChannel} onReject={setRejecting} />
+                ))}
+              </div>
+            )}
+            {list.length > 0 &&
+              groupByChannel &&
+              order.map((cid) => {
+                const ts = list.filter((t) => t.channel_id === cid);
+                return (
+                  <div className="cgroup" key={cid}>
+                    <div className="cgroup-h">
+                      <button className="cgroup-name" onClick={() => onOpenChannel?.(cid)} disabled={!onOpenChannel}>
+                        {chName(cid)}
+                      </button>
+                      <span className="muted tiny">{ts.length} task{ts.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <ChannelTools channelId={cid} showToday={false} compact />
+                    <div className="tasks">
+                      {ts.map((t) => (
+                        <TaskItem key={t.id} task={t} now={now} showName={showName} showChannel={false} onOpenChannel={onOpenChannel} onReject={setRejecting} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+          </section>
+        );
+      })}
       {rejecting && <RejectSheet task={rejecting} onClose={() => setRejecting(null)} />}
     </div>
   );

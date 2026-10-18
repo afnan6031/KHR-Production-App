@@ -1,7 +1,23 @@
 import { useData } from '../lib/data';
 import type { Channel } from '../lib/types';
-import { fmtDate, fmtN, inPeriod, isToday, periodOf, perfClass, roleClass, scheduleText, scoreOf, timeLine, viewsFor } from '../lib/utils';
+import { fmtDate, fmtN, inPeriod, isToday, periodOf, perfClass, roleClass, roleTimeText, scheduleText, scoreOf, timeLine, viewsFor } from '../lib/utils';
 import { Bar, Delta, Week } from './ui';
+import { ChannelTools } from './Attachments';
+import type { KeyboardEvent } from 'react';
+
+/** Card poora clickable hai (channel kholta hai), andar ke Scripts/Thumbnails/Messages buttons alag kaam karte hain */
+const cardProps = (onOpen: () => void) => ({
+  className: 'card clickable',
+  role: 'button',
+  tabIndex: 0,
+  onClick: onOpen,
+  onKeyDown: (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen();
+    }
+  }
+});
 
 export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; onOpen: () => void }) {
   const d = useData();
@@ -11,7 +27,7 @@ export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; on
   const week = periodOf('week');
   const ws = scoreOf(d.tasks.filter((t) => t.channel_id === ch.id && t.user_id === d.uid && t.role === role && inPeriod(t, week)));
   return (
-    <button className="card" onClick={onOpen}>
+    <div {...cardProps(onOpen)}>
       <div className="card-top">
         <span className={'role ' + roleClass(role)}>{role}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}
@@ -49,9 +65,10 @@ export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; on
       </div>
       <div className="foot">
         <Week ch={ch} />
-        <span>{timeLine(ch)}</span>
+        <span>{roleTimeText(ch, role)}{ch.deadline ? ' · Deadline ' + fmtDate(ch.deadline) : ''}</span>
       </div>
-    </button>
+      <ChannelTools channelId={ch.id} />
+    </div>
   );
 }
 
@@ -67,7 +84,7 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
   const avg = pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
   const ac = avg != null ? perfClass(avg) : '';
   return (
-    <button className="card" onClick={onOpen}>
+    <div {...cardProps(onOpen)}>
       <div className="card-top">
         <span className="eyebrow">{scheduleText(ch)}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}
@@ -103,7 +120,8 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
         <Week ch={ch} />
         <span>{timeLine(ch)}</span>
       </div>
-    </button>
+      <ChannelTools channelId={ch.id} />
+    </div>
   );
 }
 

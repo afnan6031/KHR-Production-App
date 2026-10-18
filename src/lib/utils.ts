@@ -1,4 +1,4 @@
-import { ROLES, STAGES, type Channel, type Perf, type Task, type TaskState, type ViewRow } from './types';
+import { ROLES, STAGES, type Channel, type Perf, type RoleTime, type Task, type TaskState, type ViewRow } from './types';
 
 export const DAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -178,6 +178,40 @@ export function timeLine(ch: Channel): string {
   const t = ch.time_from || ch.time_to ? fmtTime(ch.time_from) + (ch.time_to ? ' – ' + fmtTime(ch.time_to) : '') : '';
   const dl = ch.deadline ? 'Deadline ' + fmtDate(ch.deadline) : '';
   return [t, dl].filter(Boolean).join(' · ') || 'Time set nahi';
+}
+
+/* ---------------- v3: role timeline ---------------- */
+const hhmm = (t: string | null | undefined) => (t ? t.slice(0, 5) : '');
+
+/** Is channel mein is role ka start/deadline (na ho to channel ka time, phir 10:00–18:00) */
+export function roleTime(ch: Channel, role: string): RoleTime {
+  const r = ch.role_times?.[role];
+  return {
+    start: hhmm(r?.start) || hhmm(ch.time_from) || '10:00',
+    end: hhmm(r?.end) || hhmm(ch.time_to) || '18:00'
+  };
+}
+
+export function toMin(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+/** "9:00 AM – 12:00 PM" (+ "agle din" jab deadline raat 12 ke baad ho) */
+export function roleTimeText(ch: Channel, role: string): string {
+  const t = roleTime(ch, role);
+  return `${fmtTime(t.start)} – ${fmtTime(t.end)}${toMin(t.end) <= toMin(t.start) ? ' (agle din)' : ''}`;
+}
+
+/** Channel ke roles, start time ke hisaab se tarteeb mein */
+export function channelTimeline(ch: Channel, roles: string[]) {
+  return roles
+    .map((role) => ({ role, ...roleTime(ch, role) }))
+    .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
+}
+
+export function notStarted(t: Task, now = Date.now()): boolean {
+  return t.status === 'pending' && !!t.start_at && new Date(t.start_at).getTime() > now;
 }
 
 /** latest perf row per channel|user|role, plus short history */

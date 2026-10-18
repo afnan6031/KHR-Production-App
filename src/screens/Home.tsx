@@ -15,7 +15,7 @@ function boardTasks(tasks: Task[], today: string, userId?: string) {
 
 export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
   const d = useData();
-  const now = useNow();
+  const now = useNow(5000);
   const today = todayKey();
   const [scope, setScope] = useState<'team' | 'mine'>('team');
   const greet = (

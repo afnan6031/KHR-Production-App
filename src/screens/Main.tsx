@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useData } from '../lib/data';
 import { STAGES, type Channel, type Stage, type Video } from '../lib/types';
-import { addDays, errorText, fmtDate, fmtFull, inPeriod, periodOf, perfClass, roleClass, scheduleText, scoreOf, stageLabel, timeLine, todayKey, viewsFor, type PeriodKind } from '../lib/utils';
+import { addDays, channelTimeline, errorText, fmtDate, fmtTime, toMin, fmtFull, inPeriod, periodOf, perfClass, roleClass, scheduleText, scoreOf, stageLabel, timeLine, todayKey, viewsFor, type PeriodKind } from '../lib/utils';
 import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
 import { Avatar, Bar, Delta, Logo, Seg, Week, useNow, useToast } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
+import { ChannelTools } from '../components/Attachments';
 
 /* ================= Pending / Rejected ================= */
 export function GateScreen({ onSignOut }: { onSignOut: () => void }) {
@@ -176,6 +177,9 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
             {scheduleText(channel)} · {timeLine(channel)}
           </span>
         </div>
+        <div className="panel tools-panel">
+          <ChannelTools channelId={channel.id} />
+        </div>
         {d.isOwner && (
           <div className="row">
             <button className="btn sm" onClick={onEdit}>
@@ -188,12 +192,51 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
         )}
       </div>
 
+      {members.length > 0 && (
+        <section className="panel">
+          <div className="sec-head wrap">
+            <h2>Roz ki timeline</h2>
+            {d.isOwner && (
+              <button className="btn sm" onClick={onEdit}>
+                Waqt badlein
+              </button>
+            )}
+          </div>
+          <div className="tl">
+            <div className="tl-scale" aria-hidden="true">
+              {[0, 6, 12, 18, 24].map((h) => (
+                <span key={h} style={{ left: (h / 24) * 100 + '%' }}>{h === 24 ? '' : fmtTime(String(h).padStart(2, '0') + ':00').replace(':00', '')}</span>
+              ))}
+            </div>
+            {channelTimeline(channel, [...new Set(members.flatMap((m) => m.roles))]).map((r) => {
+              const a = toMin(r.start), b0 = toMin(r.end), b = b0 <= a ? b0 + 1440 : b0;
+              const who = members.filter((m) => m.roles.includes(r.role)).map((m) => d.nameOf(m.user_id)).join(', ');
+              return (
+                <div className="tl-row" key={r.role}>
+                  <div className="tl-label">
+                    <span className={'role sm ' + roleClass(r.role)}>{r.role}</span>
+                    <span className="muted tiny">{who}</span>
+                  </div>
+                  <div className="tl-track">
+                    <i className={roleClass(r.role)} style={{ left: (a / 1440) * 100 + '%', width: (Math.min(b, 1440) - a) / 14.4 + '%' }} />
+                    {b > 1440 && <i className={roleClass(r.role)} style={{ left: 0, width: (b - 1440) / 14.4 + '%' }} />}
+                  </div>
+                  <span className="tl-time num">
+                    {fmtTime(r.start)} – {fmtTime(r.end)}{b0 <= a ? ' +1' : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="sec">
         <div className="sec-head">
           <h2>Aaj ke tasks</h2>
           <span className="eyebrow">{scheduleText(channel)}</span>
         </div>
-        <TaskBoard tasks={todayTasks} now={now} showName emptyAll={members.length ? 'Aaj is channel ka kaam ka din nahi.' : 'Is channel mein abhi team add nahi.'} />
+        <TaskBoard tasks={todayTasks} now={now} showName groupByChannel={false} emptyAll={members.length ? 'Aaj is channel ka kaam ka din nahi.' : 'Is channel mein abhi team add nahi.'} />
       </section>
 
       <section className="panel">

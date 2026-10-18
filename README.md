@@ -44,6 +44,18 @@ Backend: **Supabase** (login, database, live sync). Free plan kaafi hai.
 4. Is zip ko unzip karein aur `khr-production` folder ke **andar ki saari files aur folders** drag kar ke daal dein, phir **Commit changes** dabayein.
    - `.github` folder bhi upload hona zaroori hai. Agar wo nazar na aaye to neeche "Agar .github upload na ho" dekhein.
 
+### Step 2.5: ImgBB setup (thumbnails ke liye)
+
+> **v4:** KHR ki ImgBB key app mein pehle se lagi hui hai, is liye ye step ab zaroori nahi. Key badalni ho to neeche wala tareeqa use karein. GitHub secret `VITE_IMGBB_API_KEY` dene se wo purani key ki jagah le leti hai.
+
+1. **imgbb.com** par jayein aur **Sign up** kar ke free account banayein.
+2. **api.imgbb.com** kholein aur **"Get API key"** dabayein.
+3. Wahan jo lambi key aaye, use copy kar lein. Ye Step 3 mein `VITE_IMGBB_API_KEY` secret mein jayegi.
+
+Thumbnail upload hone par seedha ImgBB par jati hai. Wahan se jo image link milta hai, wo Supabase mein usi din ke task mein save hota hai.
+
+> Note: ye key app ke andar hoti hai, is liye koi technical banda app khol kar ise nikal sakta hai aur aap ke ImgBB account par images daal sakta hai. Is ke liye ImgBB ka alag account banayein, apna personal account use na karein. Key leak ho jaye to api.imgbb.com par nayi key bana kar GitHub secret badal dein.
+
 ### Step 3: Secrets add karein (keys chhupa kar)
 
 Repo mein **Settings → Secrets and variables → Actions → New repository secret** kholein. Ye secrets ek ek kar ke add karein:
@@ -52,6 +64,7 @@ Repo mein **Settings → Secrets and variables → Actions → New repository se
 |---|---|
 | `VITE_SUPABASE_URL` | Step 1 wala Project URL |
 | `VITE_SUPABASE_ANON_KEY` | Step 1 wali anon public key |
+| `VITE_IMGBB_API_KEY` | ImgBB ki API key (neeche "ImgBB setup" dekhein) |
 | `KHR_KEY_ALIAS` | `KHR-signing-secrets.txt` file se |
 | `KHR_KEYSTORE_PASSWORD` | `KHR-signing-secrets.txt` file se |
 | `KHR_KEY_PASSWORD` | `KHR-signing-secrets.txt` file se |
@@ -179,6 +192,118 @@ Progress % = (complete tasks ÷ jin tasks ki deadline guzar chuki) × 100  −  
   - Hataye gaye role ka aaj ka pending task hat jata hai.
   - Naye role ka task aaj se banta hai.
   - Purani history aur progress waisi hi rehti hai.
+
+---
+
+## v3: Har role ka apna waqt + Task attachments
+
+### Role-wise timeline
+
+- Channel ka ab ek single time nahi. **Channel edit → "Har role ka waqt (daily timeline)"** mein har role ka apna **Start** aur **Deadline** set hota hai.
+  - Misal: Script Writer 9:00–12:00, Voice Over 12:00–2:00, Editor 2:00–8:00.
+- Daily tasks inhi waqt ke hisaab se bante hain. Pending mein "Shuru 2:00 PM" nazar aata hai jab tak us role ka waqt shuru na ho.
+- Agar deadline start se pehle ho (misal: 11 PM se 1 AM), to deadline **agle din** ki maani jati hai, jo raat ki shift ke liye hai.
+- Channel page par **"Roz ki timeline"** mein sab roles ek 24 ghante ki line par nazar aate hain: kaun kab shuru karta hai aur kab khatam.
+- Aaj waqt badlein to aaj ke pending tasks ki deadline bhi foran badal jati hai. Complete ho chuke tasks waise hi rehte hain.
+
+### Task attachments (Script link + Thumbnail)
+
+- Kisi bhi task par tap karein. **Attachments** section khulta hai.
+- **Script ka link:** Google Docs, Drive ya Notion ka link paste kar ke Save karein.
+- **Thumbnail:** "Thumbnail upload karein" dabayein aur phone ya PC se image chunein.
+  - Image ImgBB par chali jati hai, aur us ka link isi task mein save ho jata hai.
+- Ye attachments **sirf usi din ke usi task** ke saath hain. Raat ko jab agle din ka naya task banta hai, us ki attachments **khaali** hoti hain.
+- Us channel ki poori team aur owner attachments laga, badal aur hata sakte hain. Sab ko ye foran (real-time) nazar aata hai.
+- Task row par chhota "Script link" chip aur thumbnail ki tasveer nazar aati hai.
+
+---
+
+## v4: Channel ki scripts, thumbnails, live timer aur messages
+
+### Har channel card mein 3 buttons: Scripts · Thumbnails · Messages
+
+Ye buttons in jagahon par hain:
+- dashboard ke channel cards par
+- Aaj ke tasks ke har channel group mein
+- channel page par
+- task kholne par
+
+**Scripts:**
+- Button par aaj ki scripts ki ginti hoti hai. Agar aaj 3 scripts lagi hain to card par **3** aur un ke **titles** nazar aate hain.
+- Button dabane par aaj ki aur **pichli saari scripts** khulti hain, har din ki alag list mein, title, waqt aur lagane wale ke naam ke saath.
+- Kisi script par tap karein to wo khul jati hai:
+  - link wali script ka link aur "Script kholein" button
+  - app mein likhi script poori parhne ke liye
+- Nayi script do tarah add hoti hai:
+  - **Link daalein:** Google Docs / Drive
+  - **Yahin likhein:** script seedha app mein likhein
+
+**Thumbnails:**
+- Isi tarah aaj ke thumbnails card par chhoti tasveeron ke saath nazar aate hain, aur button mein poori history date ke saath hoti hai.
+- Tap karne par thumbnail bara khulta hai.
+- Upload hone par image ImgBB par jati hai.
+
+**Naya din:** naye din ki list khaali shuru hoti hai. Purani scripts aur thumbnails history mein rehti hain.
+
+**Messages:**
+- Har channel ki apni chat hai. Sirf us channel ki team aur owner use dekh sakte hain.
+- Kisi message par **Reply** kar sakte hain.
+- Link bhejein to wo khud clickable ban jata hai.
+- Naye messages ho to button par laal ginti nazar aati hai.
+- Apna message delete kar sakte hain. Owner kisi ka bhi message delete kar sakta hai.
+
+### Dashboard: pehle channel, phir us ke tasks
+
+Pending, Deadline expired aur Completed, teeno sections mein tasks ab **channel ke hisaab se group** hain:
+1. Upar channel ka naam aur us ke Scripts / Thumbs / Chat buttons hote hain.
+2. Neeche us channel ke tasks, tick ke saath.
+
+### Live timer (har task par)
+
+| Halat | Kya nazar aata hai |
+|---|---|
+| Waqt abhi shuru nahi hua | **ABHI WAQT NAHI** · "01:12:30 mein shuru" (neela) |
+| Waqt chal raha hai | **WAQT CHAL RAHA HAI** · "02:14:09 baqi" har second kam hota hai, aur progress bar (aakhri 30 minute mein peela) |
+| Deadline guzar gayi | **DEADLINE GUZAR GAYI** · "00:42:10 se late" (laal) |
+| Complete | **WAQT PAR COMPLETE** ya **LATE COMPLETE**, aur deadline se kitna pehle ya baad hua |
+
+Task kholne par timer bara nazar aata hai.
+
+---
+
+## v5: KHR Server (Discord jaisa)
+
+Neeche tab bar mein **Server** ka naya button hai. Ye sab ke liye hai.
+
+### Channels
+- Owner **+ Channel** se server channel banata hai. Har channel ki settings mein ye hota hai:
+  - **Naam aur maqsad (topic)**
+  - **Category**, jaise Information, Team 1, Team 2. Channels category ke hisaab se group hote hain.
+  - **Sirf owner message kare (📢):** baaqi sab parh sakte hain, likh nahi sakte, jaise announcement.
+  - **Private (🔒):** sirf chune hue log aur owner channel dekh sakte hain. Kisi ko list se hatayein to channel us se foran chhup jata hai.
+- Pehli dafa server mein 2 channel khud ban jate hain: `announcement` (sirf owner) aur `general`.
+- Channel mein message, **reply**, aur **image** (📷 button) bhej sakte hain. Links khud clickable bante hain.
+- Naye messages wale channel ke aage laal ginti aati hai.
+
+### Roles aur members
+- Owner kisi member par tap kar ke us ka **server role** likhta hai, jaise Co-Founder, GM, Script Writer.
+- Members list role ke hisaab se group hoti hai. Online log upar hare nishan ke saath, offline neeche halke rang mein.
+- Har banda apni **profile photo** laga sakta hai: upar apni photo → "Profile photo lagayein".
+
+### Friends aur DMs
+- Kisi se alag baat karni ho to pehle **friend request** bhejein: Members → us par tap → "+ Friend request".
+- Samne wala **Accept** kare to dono jitne chahein message aur image bhej sakte hain.
+- Owner se baat ke liye friend request ki zaroorat nahi.
+- DM mein "Bheja" aur "Parh liya" nazar aata hai.
+
+### Images aur photos kahan jati hain
+- Saari images (chat, DM, profile photo) **ImgBB** par upload hoti hain.
+- Supabase mein sirf message ka text aur image ka **link** save hota hai, image ki file nahi.
+
+### Owner: Company records
+- Owner apne profile mein neeche **"Company records"** se kisi bhi do logon ki DM parh sakta hai, naam ya baat se dhoond kar.
+- Ye option sirf owner ko nazar aata hai.
+- Har DM screen par team ko ye line dikhti hai: "Company chat: sirf kaam ki baat karein. Company policy ke mutabiq owner ye chat review kar sakta hai."
 
 ---
 
