@@ -53,7 +53,7 @@ export function initKeyboard() {
 }
 
 /** Android status bar / navigation bar ka rang app ke theme jaisa */
-export function syncSystemBars(dark: boolean) {
+export function syncSystemBars(dark: boolean, color?: string) {
   if (!Capacitor.isNativePlatform()) return;
-  KhrNative.setBars({ color: dark ? '#0E1430' : '#FFFFFF', dark }).catch(() => {});
+  KhrNative.setBars({ color: color || (dark ? '#0E1430' : '#FFFFFF'), dark }).catch(() => {});
 }

@@ -18,9 +18,6 @@ import { VideoCard, VideoField } from './VideoUpload';
 export const IconVideo = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2" /><path d="m17 10 4-2.5v9L17 14" /></svg>
 );
-const IconScript = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5M9 13h7M9 17h5" /></svg>
-);
 const IconChat = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>
 );
@@ -28,22 +25,34 @@ const IconHistory = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>
 );
 
-type Open = { kind: 'videos'; tab?: 'today' | 'history'; focus?: string; create?: boolean } | { kind: 'chat' } | null;
+type Tab = 'today' | 'history';
+type Open = { kind: 'videos'; tab?: Tab; focus?: string; create?: boolean } | { kind: 'chat' } | null;
 
-/** Channel card ke andar: Videos + Chat, aur aaj ki videos (thumbnail + title) */
+/** video kis ne banayi — team se nikal bhi jaye to naam rahe */
+export function useMaker() {
+  const d = useData();
+  return (v: Video, edit = false) => {
+    const id = edit ? v.updated_by : v.created_by;
+    const live = d.profileOf(id)?.full_name;
+    return live || (edit ? v.updated_by_name : v.created_by_name) || d.nameOf(id);
+  };
+}
+
+/** Channel card ke andar: Videos + Chat, aaj ki har video ka chhota card, aur purani videos ka button */
 export function ChannelTools({ channelId, showToday = true, compact }: { channelId: string; showToday?: boolean; compact?: boolean }) {
   const d = useData();
   const [open, setOpen] = useState<Open>(null);
   const today = todayKey();
   const all = d.videos.filter((v) => v.channel_id === channelId);
   const todays = all.filter((v) => v.day === today).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const old = all.length - todays.length;
   const msgCount = d.messages.filter((m) => m.channel_id === channelId).length;
   const unread = useUnread(channelId);
 
   return (
     <Stop className={'tools' + (compact ? ' compact' : '')}>
       <div className="tools-btns two-btns">
-        <button type="button" className="tbtn" onClick={() => setOpen({ kind: 'videos' })} aria-label={`Videos: aaj ${todays.length}`}>
+        <button type="button" className="tbtn" onClick={() => setOpen({ kind: 'videos', tab: 'today' })} aria-label={`Videos: aaj ${todays.length}`}>
           <IconVideo />
           <span className="tlabel">Videos</span>
           <b className="num">{todays.length}</b>
@@ -56,21 +65,28 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
         </button>
       </div>
       {showToday && todays.length > 0 && (
-        <div className="today-vids">
-          {todays.slice(0, 6).map((v) => (
-            <button type="button" key={v.id} className="tv" onClick={() => setOpen({ kind: 'videos', focus: v.id })} title={v.title}>
-              <span className="tv-img">{v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <IconVideo />}</span>
-              <span className="tv-t">{v.title}</span>
-              {v.script_url || v.script ? <span className="tv-s" title="Script lagi hui"><IconScript /></span> : null}
-              {v.video_url ? <span className="tv-v" title="Video lagi hui">🎬</span> : null}
+        <div className="mini-vids">
+          {todays.slice(0, 4).map((v) => (
+            <button type="button" key={v.id} className="mv" onClick={() => setOpen({ kind: 'videos', tab: 'today', focus: v.id })} title={v.title}>
+              <span className="mv-img">{v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <IconVideo />}</span>
+              <span className="mv-body">
+                <span className="mv-t" data-notr>{v.title}</span>
+                <span className="mv-tags">
+                  {v.script_url || v.script ? <i title="Script lagi hui">📄</i> : null}
+                  {v.thumbnail_url ? <i title="Thumbnail">🖼</i> : null}
+                  {v.video_url ? <i title="Video lagi hui">🎬</i> : null}
+                </span>
+              </span>
             </button>
           ))}
-          {todays.length > 6 && <span className="muted tiny">+{todays.length - 6} aur</span>}
+          {todays.length > 4 && (
+            <button type="button" className="linkbtn tiny" onClick={() => setOpen({ kind: 'videos', tab: 'today' })}>+{todays.length - 4} aur</button>
+          )}
         </div>
       )}
       {showToday && (
         <button type="button" className="hist-btn" onClick={() => setOpen({ kind: 'videos', tab: 'history' })}>
-          <IconHistory /> Videos history <b className="num">{all.filter((v) => v.day !== today).length}</b>
+          <IconHistory /> Purani videos <b className="num">{old}</b>
         </button>
       )}
       {open?.kind === 'videos' && <VideosSheet channelId={channelId} initialTab={open.tab} focus={open.focus} create={open.create} onClose={() => setOpen(null)} />}
@@ -79,105 +95,147 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
   );
 }
 
-/** Videos ki list: din ke hisaab se groups (har din ek dropdown) */
-export function VideoList({ videos, onOpen, foldPrefix, openDays = 2 }: { videos: Video[]; onOpen: (v: Video) => void; foldPrefix: string; openDays?: number }) {
-  const d = useData();
-  const days = [...new Set(videos.map((v) => v.day))].sort((a, b) => b.localeCompare(a));
-  if (!videos.length) return null;
+/** Ek video ka card: thumbnail, title, kis ne banayi, kya kya laga hai */
+export function VideoTile({ v, onOpen, showDay }: { v: Video; onOpen: () => void; showDay?: boolean }) {
+  const maker = useMaker();
   return (
-    <div className="vlist">
-      {days.map((day, i) => {
-        const list = videos.filter((v) => v.day === day).sort((a, b) => b.created_at.localeCompare(a.created_at));
-        return (
-          <Fold key={day} id={foldPrefix + day} title={dayLabel(day)} count={list.length} defaultOpen={i < openDays} className="vday">
-            <div className="vrows">
-              {list.map((v) => (
-                <button type="button" key={v.id} className="vrow" onClick={() => onOpen(v)}>
-                  <span className="vrow-img">{v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <IconVideo />}</span>
-                  <span className="grow">
-                    <span className="t block">{v.title}</span>
-                    <span className="d block">
-                      {fmtClock(v.created_at)} · {d.nameOf(v.created_by)}
-                      {v.script_url || v.script ? ' · 📄 script' : ''}
-                      {v.thumbnail_url ? ' · 🖼 thumbnail' : ''}
-                      {v.video_url ? ' · 🎬 video' : ''}
-                    </span>
-                  </span>
-                  <span className={'stage ' + v.stage}>{stageLabel(v.stage)}</span>
-                </button>
-              ))}
-            </div>
-          </Fold>
-        );
-      })}
+    <button type="button" className="vtile" onClick={onOpen}>
+      <span className="vtile-img">
+        {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <span className="vtile-ph"><IconVideo /></span>}
+        <span className={'stage ' + v.stage}>{stageLabel(v.stage)}</span>
+      </span>
+      <span className="vtile-body">
+        <span className="vtile-t" data-notr>{v.title}</span>
+        <span className="vtile-d">
+          {showDay ? dayLabel(v.day) + ' · ' : ''}
+          {fmtClock(v.created_at)}
+        </span>
+        <span className="vtile-by"><span>by</span> <b data-notr>{maker(v)}</b></span>
+        <span className="vtile-tags">
+          <i className={v.script_url || v.script ? 'on' : ''}>📄 <span>Script</span></i>
+          <i className={v.thumbnail_url ? 'on' : ''}>🖼 <span>Thumbnail</span></i>
+          <i className={v.video_url ? 'on' : ''}>🎬 <span>Video</span></i>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** Videos dekhne ki jagah: Aaj ki videos / Purani videos (date, search, tarteeb, stage) */
+export function VideoBrowser({ channelId, tab, setTab, onOpen, onCreate }: {
+  channelId: string;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  onOpen: (v: Video) => void;
+  onCreate?: () => void;
+}) {
+  const d = useData();
+  const today = todayKey();
+  const [day, setDay] = useState('');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<'new' | 'old'>('new');
+  const [stage, setStage] = useState<Stage | 'all'>('all');
+  const all = useMemo(() => d.videos.filter((v) => v.channel_id === channelId), [d.videos, channelId]);
+  const todays = all.filter((v) => v.day === today).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const olds = all.filter((v) => v.day !== today);
+  const ql = q.trim().toLowerCase();
+  const list = olds
+    .filter((v) => (!day || v.day === day) && (stage === 'all' || v.stage === stage) && (!ql || v.title.toLowerCase().includes(ql)))
+    .sort((a, b) => (sort === 'new' ? b.day.localeCompare(a.day) || b.created_at.localeCompare(a.created_at) : a.day.localeCompare(b.day) || a.created_at.localeCompare(b.created_at)));
+
+  return (
+    <div className="vbrowser">
+      <div className="vb-tabs">
+        <button type="button" className={'vb-tab' + (tab === 'today' ? ' on' : '')} onClick={() => setTab('today')}>
+          🎬 Aaj ki videos <b className="num">{todays.length}</b>
+        </button>
+        <button type="button" className={'vb-tab' + (tab === 'history' ? ' on' : '')} onClick={() => setTab('history')}>
+          <IconHistory /> Purani videos <b className="num">{olds.length}</b>
+        </button>
+        {onCreate && <button type="button" className="btn primary sm vb-new" onClick={onCreate}>+ Nai video</button>}
+      </div>
+
+      {tab === 'today' &&
+        (todays.length ? (
+          <div className="vgrid">{todays.map((v) => <VideoTile key={v.id} v={v} onOpen={() => onOpen(v)} />)}</div>
+        ) : (
+          <div className="empty">Aaj abhi koi video nahi.{onCreate ? ' Upar "+ Nai video" se banayein.' : ''}</div>
+        ))}
+
+      {tab === 'history' && (
+        <>
+          <div className="vb-filters">
+            <DateFilter value={day} onChange={setDay} label="Kis din ki" />
+            <label className="f vb-sort">
+              Tarteeb
+              <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')}>
+                <option value="new">Nayi pehle (latest → old)</option>
+                <option value="old">Purani pehle (old → latest)</option>
+              </select>
+            </label>
+            <label className="f vb-q">
+              Dhoondein
+              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title dhoondein…" aria-label="Title dhoondein" />
+            </label>
+          </div>
+          <div className="chips scroll">
+            <button type="button" className={'chip ' + (stage === 'all' ? 'on' : '')} onClick={() => setStage('all')}>Sab<span className="c">{olds.length}</span></button>
+            {STAGES.map((s) => (
+              <button type="button" key={s.key} className={'chip ' + (stage === s.key ? 'on' : '')} onClick={() => setStage(s.key)}>
+                {s.label}<span className="c">{olds.filter((v) => v.stage === s.key).length}</span>
+              </button>
+            ))}
+          </div>
+          {list.length ? (
+            <div className="vgrid">{list.map((v) => <VideoTile key={v.id} v={v} showDay onOpen={() => onOpen(v)} />)}</div>
+          ) : (
+            <div className="empty">{day ? fmtDate(day) + ' ki koi video nahi.' : olds.length ? 'Is filter mein koi video nahi' : 'Pichle dinon ki koi video nahi.'}</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-/** Ek channel ki saari videos: upar "+ Nai video", phir Aaj / History (date ke saath) */
+/** Ek channel ki saari videos (card ke Videos button se) */
 export function VideosSheet({ channelId, initialTab, focus, create, taskId, onClose }: {
   channelId: string;
-  initialTab?: 'today' | 'history';
+  initialTab?: Tab;
   focus?: string;
   create?: boolean;
   taskId?: string;
   onClose: () => void;
 }) {
   const d = useData();
-  const today = todayKey();
-  const [tab, setTab] = useState<'today' | 'history'>(initialTab || 'today');
-  const [day, setDay] = useState('');
-  const [q, setQ] = useState('');
+  const [tab, setTab] = useState<Tab>(initialTab || 'today');
   const [view, setView] = useState<string | null>(focus || null);
   const [editing, setEditing] = useState<Video | 'new' | null>(create ? 'new' : null);
   const ch = d.channels.find((c) => c.id === channelId);
   const canWork = d.isOwner || d.realOwner || d.rolesOf(channelId).length > 0;
-  const all = useMemo(() => d.videos.filter((v) => v.channel_id === channelId), [d.videos, channelId]);
-  const todays = all.filter((v) => v.day === today);
-  const ql = q.trim().toLowerCase();
-  const history = all.filter((v) => v.day !== today && (!day || v.day === day) && (!ql || v.title.toLowerCase().includes(ql)));
-  const cur = view ? all.find((v) => v.id === view) : null;
+  const cur = view ? d.videos.find((v) => v.id === view) : null;
 
   if (editing) return <VideoForm channelId={channelId} video={editing === 'new' ? null : editing} taskId={taskId} onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); setView(id); }} />;
-
+  if (cur)
+    return (
+      <Sheet title={(ch?.name || 'Channel') + ' · Video'} onClose={() => (focus && view === focus ? onClose() : setView(null))}>
+        <VideoView video={cur} canEdit={canWork} onEdit={() => setEditing(cur)} onClose={() => setView(null)} />
+      </Sheet>
+    );
   return (
     <Sheet title={(ch?.name || 'Channel') + ' · Videos'} onClose={onClose}>
-      {canWork && (
-        <button className="btn primary block" onClick={() => setEditing('new')}>
-          + Nai video (title, script, thumbnail, video)
-        </button>
-      )}
-      {cur && <VideoView video={cur} canEdit={canWork} onEdit={() => setEditing(cur)} onClose={() => setView(null)} />}
-      <div className="seg sm">
-        <button type="button" className={tab === 'today' ? 'on' : ''} onClick={() => setTab('today')}>Aaj ({todays.length})</button>
-        <button type="button" className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>History ({all.length - todays.length})</button>
-      </div>
-      {tab === 'today' &&
-        (todays.length ? (
-          <VideoList videos={todays} onOpen={(v) => setView(v.id)} foldPrefix={'vt-' + channelId} />
-        ) : (
-          <div className="empty">Aaj abhi koi video nahi.{canWork && ' Upar "+ Nai video" se banayein.'}</div>
-        ))}
-      {tab === 'history' && (
-        <>
-          <div className="hist-filters">
-            <DateFilter value={day} onChange={setDay} label="Kis din ki" />
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title dhoondein…" aria-label="Title dhoondein" />
-          </div>
-          {history.length ? (
-            <VideoList videos={history} onOpen={(v) => setView(v.id)} foldPrefix={'vh-' + channelId} openDays={day ? 1 : 1} />
-          ) : (
-            <div className="empty">{day ? fmtDate(day) + ' ki koi video nahi.' : 'Pichle dinon ki koi video nahi.'}</div>
-          )}
-        </>
-      )}
+      <VideoBrowser channelId={channelId} tab={tab} setTab={setTab} onOpen={(v) => setView(v.id)} onCreate={canWork ? () => setEditing('new') : undefined} />
     </Sheet>
   );
 }
 
+/** purana naam (dusri files ke liye) */
+export function VideoList({ videos, onOpen }: { videos: Video[]; onOpen: (v: Video) => void; foldPrefix?: string; openDays?: number }) {
+  return <div className="vgrid">{videos.map((v) => <VideoTile key={v.id} v={v} showDay onOpen={() => onOpen(v)} />)}</div>;
+}
+
 /** Ek video: thumbnail, script, notes, aur Edit */
 export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; canEdit: boolean; onEdit: () => void; onClose: () => void }) {
-  const d = useData();
+  const maker = useMaker();
   const toast = useToast();
   const [img, setImg] = useState(false);
   const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua'));
@@ -188,8 +246,8 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
           <span className="eyebrow">{dayLabel(video.day)} · {fmtClock(video.created_at)}</span>
           <h3 className="viewer-t">{video.title}</h3>
           <span className="muted tiny">
-            {d.nameOf(video.created_by)} ne banayi
-            {video.updated_by && video.updated_by !== video.created_by ? ' · aakhri edit ' + d.nameOf(video.updated_by) : ''}
+            <span data-notr>{maker(video)}</span> ne banayi
+            {video.updated_by && video.updated_by !== video.created_by ? <> · aakhri edit <span data-notr>{maker(video, true)}</span></> : null}
           </span>
         </div>
         <button className="x" onClick={onClose} aria-label="Band karein">×</button>

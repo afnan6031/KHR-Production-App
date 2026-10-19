@@ -1434,6 +1434,28 @@ end $$;
 drop trigger if exists push_video on public.videos;
 create trigger push_video after insert or update of thumbnail_url, script_url, video_url on public.videos for each row execute function public.khr_ev_video();
 
+-- ---------- v11: video banane / badalne wale ka naam video ke saath (banda team se nikal bhi jaye to naam rahe) ----------
+alter table public.videos add column if not exists created_by_name text not null default '';
+alter table public.videos add column if not exists updated_by_name text not null default '';
+create or replace function public.stamp_video_names() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' or new.created_by is distinct from old.created_by or coalesce(new.created_by_name, '') = '' then
+    new.created_by_name := coalesce((select nullif(btrim(full_name), '') from public.profiles where id = new.created_by), coalesce(new.created_by_name, ''));
+  elsif tg_op = 'UPDATE' then
+    new.created_by_name := old.created_by_name;   -- app se badla nahi ja sakta
+  end if;
+  new.updated_by_name := coalesce((select nullif(btrim(full_name), '') from public.profiles where id = new.updated_by), coalesce(new.updated_by_name, ''));
+  return new;
+end $$;
+drop trigger if exists videos_names on public.videos;
+-- "z" naam: purane stamp trigger ke BAAD chale (created_by / updated_by pehle lag chuke hon)
+drop trigger if exists videos_zz_names on public.videos;
+create trigger videos_zz_names before insert or update on public.videos for each row execute function public.stamp_video_names();
+-- purani videos mein naam bhar do (ek dafa)
+update public.videos v set created_by_name = coalesce(p.full_name, '')
+  from public.profiles p where p.id = v.created_by and v.created_by_name = '';
+
 -- realtime: naye tables
 do $$
 declare t text;

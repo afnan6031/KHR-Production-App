@@ -5,6 +5,7 @@
  * titles waghera kabhi nahi badalte ([data-notr] aur input / textarea ko chhor diya jata hai).
  */
 import { EN, EN_PATTERNS } from './i18n-en';
+import { UR, UR_PATTERNS } from './i18n-ur';
 
 export type Lang = 'ur' | 'en';
 let lang: Lang = 'ur';
@@ -16,13 +17,12 @@ const shownText = new WeakMap<Text, string>();
 const origAttr = new WeakMap<Element, Record<string, string>>();
 const shownAttr = new WeakMap<Element, Record<string, string>>();
 
-/** ek jumla English mein (na mile to null) */
-export function toEnglish(s: string): string | null {
+function lookup(s: string, dict: Record<string, string>, pats: [RegExp, (m: RegExpMatchArray) => string | null][]): string | null {
   const t = s.trim();
   if (!t || t.length > 400) return null;
-  const hit = EN[t];
+  const hit = dict[t];
   if (hit != null) return s.replace(t, hit);
-  for (const [re, fn] of EN_PATTERNS) {
+  for (const [re, fn] of pats) {
     const m = t.match(re);
     if (m) {
       const out = fn(m);
@@ -32,9 +32,15 @@ export function toEnglish(s: string): string | null {
   return null;
 }
 
+/** ek jumla English mein (na mile to null) */
+export const toEnglish = (s: string) => lookup(s, EN, EN_PATTERNS);
+/** code mein English likha label Roman Urdu mein (na mile to null) */
+export const toUrdu = (s: string) => lookup(s, UR, UR_PATTERNS);
+const tr = (s: string) => (lang === 'en' ? toEnglish(s) : toUrdu(s)) ?? s;
+
 /** code ke andar se: t('Roman Urdu') -> zabaan ke hisaab se */
 export function t(s: string): string {
-  return lang === 'en' ? toEnglish(s) ?? s : s;
+  return tr(s);
 }
 export const getLang = () => lang;
 
@@ -50,7 +56,7 @@ function doText(n: Text) {
   const cur = n.data;
   if (shownText.get(n) !== cur) origText.set(n, cur); // React ne naya text likha
   const src = origText.get(n) ?? cur;
-  const want = lang === 'en' ? toEnglish(src) ?? src : src;
+  const want = tr(src);
   if (want !== cur) n.data = want;
   shownText.set(n, want);
 }
@@ -64,7 +70,7 @@ function doAttrs(el: Element) {
     if (cur == null) continue;
     if (s[a] !== cur) o[a] = cur;
     const src = o[a] ?? cur;
-    const want = lang === 'en' ? toEnglish(src) ?? src : src;
+    const want = tr(src);
     if (want !== cur) el.setAttribute(a, want);
     s[a] = want;
   }

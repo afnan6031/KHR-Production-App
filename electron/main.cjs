@@ -107,6 +107,10 @@ ipcMain.on('khr-theme', (_e, dark) => {
   try { win.setTitleBarOverlay({ color: t.color, symbolColor: t.symbolColor, height: 32 }); } catch { /* purana Windows */ }
   win.setBackgroundColor(t.bg);
 });
+ipcMain.on('khr-bar', (_e, o) => {
+  if (!win || !o || !/^#[0-9a-f]{6}$/i.test(o.color)) return;
+  try { win.setTitleBarOverlay({ color: o.color, symbolColor: o.dark ? '#E8EBF4' : '#121A2E', height: 32 }); } catch { /* purana Windows */ }
+});
 ipcMain.on('khr-attention', () => { if (win && !win.isFocused()) win.flashFrame(true); });
 ipcMain.on('khr-show', showWindow);
 
@@ -117,6 +121,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
   app.on('before-quit', () => { quitting = true; });
   app.whenReady().then(() => {
+    // v11: Catbox (music upload / offline download) browser ki CORS rukawat ke baghair
+    session.defaultSession.webRequest.onHeadersReceived({ urls: ['https://catbox.moe/*', 'https://*.catbox.moe/*'] }, (det, cb) => {
+      const h = { ...det.responseHeaders };
+      for (const k of Object.keys(h)) if (k.toLowerCase().startsWith('access-control-')) delete h[k];
+      h['Access-Control-Allow-Origin'] = ['*'];
+      h['Access-Control-Allow-Headers'] = ['*'];
+      h['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS'];
+      cb({ responseHeaders: h });
+    });
     // v9 music: YouTube player ko "Referer" chahiye (file:// se khulne wali app ke paas nahi hota)
     session.defaultSession.webRequest.onBeforeSendHeaders(
       { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*'] },

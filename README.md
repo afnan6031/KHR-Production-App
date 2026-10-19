@@ -448,6 +448,34 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v12: Naya music player
+
+- **Timeline:** gaane ki patti (bare player mein waveform) par tap ya khinch kar gaana aage / peeche — YouTube aur audio (mp3 / Catbox / offline) dono mein.
+- **⏪ 10s / 10s ⏩**, **🔀 Shuffle**, **🔁 Repeat** (poori playlist / 🔂 yehi gaana / off), pichla / agla.
+- **Tairta player:** ab chat ya kisi screen ko chhota nahi karta. Upar wali patti (⠿) se khinch kar screen par kahin bhi rakhein; **📌** dabane se qareeb wali side (daayein / baayein) se chipak jata hai. Jagah yaad rehti hai.
+- ▴ / ▾ se chhota ya bara ("Now playing": gol tasveer, waveform, bare buttons).
+- SoundCloud / Spotify ke apne player hote hain, un mein timeline aur 10s wale buttons nahi chalte.
+
+---
+
+## v11: Video cards, theme sync + blur, poori English / Roman Urdu, Catbox music + offline gaane
+
+**Update:** Supabase SQL Editor mein nayi `supabase/schema.sql` Run karein (videos par banane wale ka naam save hota hai). Phir files GitHub par upload karein.
+
+- **Videos:** har video ka apna card (thumbnail, title, kis ne banayi, 📄 script / 🖼 thumbnail / 🎬 video laga hai ya nahi).
+  - Channel card par aaj ki har video ka chhota card; tap karein to us ki poori detail (title, script, thumbnail, video) aur **Edit**.
+  - **🎬 Aaj ki videos** aur **Purani videos** (kal se pichli) alag buttons. Purani mein: date chunein, title dhoondein, **Nayi pehle / Purani pehle**, aur stage.
+  - Video par hamesha us bande ka naam rehta hai jis ne banayi — chahe baad mein use channel ya team se nikal diya ho.
+  - Card ke andar titles / icons ab bahar nahi nikalte (lambe title 2 line mein kat jate hain).
+- **Theme:** apna background lagane par header, neeche ki patti, cards, Windows ki upar wali patti aur Android status bar sab usi rang mein mil jate hain (Profile → Theme: "rang background ke saath milayein"). Tasveer ke liye **Blur** slider (0–30px) aur Andhera slider.
+- **Zabaan:** English mein poori app English; Roman Urdu mein Pending / Completed / Approve / Edit jaise labels bhi Roman Urdu (Baqi / Mukammal / Manzoor / Badlein). Roles (Script Writer…), platforms ke naam aur team ka likha text waisa hi rehta hai. Phone ke push notifications pehle jaise Roman Urdu mein.
+- **Music (Catbox.moe):** 🎵 → "⬆ Audio upload": phone / PC se MP3, M4A, WAV, OGG, MP4 audio (200 MB tak) Catbox par upload, aur playlist mein naam + link save (Supabase par sirf link; file nahi). Har gaane par ▶ / ⏸, ✕ delete, aur **📥 Offline** — gaana is phone / PC mein save ho jata hai aur internet ke baghair bhi chalta hai.
+  - Playlist pehle wale `music_tracks` table mein hai (har user sirf apni dekh / add / delete kar sakta hai — RLS), is liye naya table nahi chahiye.
+  - Android app aur Windows app se upload / offline save hota hai. Web browser kabhi Catbox ko rok deta hai — aisa ho to app se karein ya link paste karein.
+  - Catbox userhash app mein laga hai; badalna ho to GitHub secret `VITE_CATBOX_USERHASH`.
+
+---
+
 ## v10: Internet ke baghair bhi app + GitHub build fix
 
 - **Offline:** app har dafa apna data phone / PC mein save karti hai. Internet na ho to app pichla data dikhati hai (upar patti: "📴 Internet nahi"). Pehli dafa ya logout ke baad internet zaroori hai.

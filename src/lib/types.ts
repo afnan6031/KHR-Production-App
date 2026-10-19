@@ -21,7 +21,7 @@ export interface Profile {
 /** v9: user ki apni pasand (har device par saath) */
 export interface Prefs {
   lang?: 'ur' | 'en';
-  bg?: { type: 'none' | 'color' | 'gradient' | 'image'; c1?: string; c2?: string; angle?: number; image?: string; dim?: number };
+  bg?: { type: 'none' | 'color' | 'gradient' | 'image'; c1?: string; c2?: string; angle?: number; image?: string; dim?: number; blur?: number; sync?: boolean };
   accent?: string;
 }
 
@@ -110,6 +110,9 @@ export interface Video {
   task_id: string | null;
   /** v9: video file ka link (Gofile / Drive / YouTube) */
   video_url: string;
+  /** v11: banane / aakhri edit karne wale ka naam (banda team se nikal jaye to bhi rahe) */
+  created_by_name?: string;
+  updated_by_name?: string;
 }
 
 export interface Task {

@@ -367,7 +367,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
     setUp('bg');
     try {
       const r = await uploadToImgBB(f, 'bg-' + d.uid.slice(0, 8));
-      await savePrefs({ ...prefs, bg: { type: 'image', image: r.url, dim: bg.dim ?? 0.35 } });
+      await savePrefs({ ...prefs, bg: { type: 'image', image: r.url, dim: bg.dim ?? 0.35, blur: bg.blur ?? 8, sync: bg.sync } });
       toast('Background lag gaya');
     } catch (e) {
       toast(errorText(e));
@@ -482,6 +482,18 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
             {bg.image && <img className="bg-thumb" src={bg.image} alt="" />}
             <button type="button" className="btn sm" disabled={!!up} onClick={() => bgRef.current?.click()}>{up === 'bg' ? 'Upload…' : 'Pic badlein'}</button>
           </div>
+        )}
+        {bg.type === 'image' && (
+          <label className="f">
+            <span className="muted tiny">Blur (tasveer dhundli, taake text aur cards saaf nazar aayein): {bg.blur ?? 8}px</span>
+            <input type="range" min={0} max={30} step={1} value={bg.blur ?? 8} onChange={(e) => setBg({ blur: Number(e.target.value) })} />
+          </label>
+        )}
+        {bg.type !== 'none' && (
+          <label className="row check">
+            <input type="checkbox" checked={bg.sync !== false} onChange={(e) => setBg({ sync: e.target.checked })} />
+            <span>Header, neeche ki patti aur cards ka rang background ke saath milayein</span>
+          </label>
         )}
         {bg.type !== 'none' && (
           <label className="f">

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
-import { STAGES, type Channel, type Stage } from '../lib/types';
+import type { Channel } from '../lib/types';
 import { channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
 import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
-import { Bar, DateFilter, Fold, Logo, Seg, Week, useNow } from '../components/ui';
+import { Bar, Fold, Logo, Seg, Week, useNow } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
-import { ChannelTools, VideoList, VideosSheet } from '../components/Videos';
+import { VideoBrowser, VideosSheet } from '../components/Videos';
+import { ChatSheet } from '../components/Chat';
 import { AssignTaskSheet } from '../components/Assign';
 import { boardTasks } from './Home';
 
@@ -112,18 +113,13 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
   const period = periodOf(pk);
   const chTasks = d.tasks.filter((t) => t.channel_id === channel.id);
   const todayTasks = boardTasks(chTasks, todayKey());
-  const [stage, setStage] = useState<Stage | 'all'>('all');
-  const [vday, setVday] = useState('');
-  const [vq, setVq] = useState('');
+  const [vTab, setVTab] = useState<'today' | 'history'>('today');
+  const [chat, setChat] = useState(false);
   const [vOpen, setVOpen] = useState<{ focus?: string; create?: boolean } | null>(null);
   const [assign, setAssign] = useState(false);
   const mine = d.rolesOf(channel.id);
   const members = d.channel_members.filter((m) => m.channel_id === channel.id && m.roles.length);
   const vids = d.videos.filter((v) => v.channel_id === channel.id);
-  const counts: Record<string, number> = {};
-  vids.forEach((v) => (counts[v.stage] = (counts[v.stage] || 0) + 1));
-  const ql = vq.trim().toLowerCase();
-  const shown = vids.filter((v) => (stage === 'all' || v.stage === stage) && (!vday || v.day === vday) && (!ql || v.title.toLowerCase().includes(ql)));
   const canWork = d.isOwner || d.realOwner || mine.length > 0;
 
   return (
@@ -158,40 +154,19 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
         )}
       </div>
 
-      {/* v9: Videos sab se upar — script link + thumbnail ek hi jagah */}
+      {/* v11: Videos sab se upar — Aaj ki videos / Purani videos, har video ka apna card */}
       <section className="panel vids-panel">
         <div className="sec-head wrap">
           <h2>🎬 Videos</h2>
-          {canWork && (
-            <button className="btn primary sm" onClick={() => setVOpen({ create: true })}>
-              + Nai video
-            </button>
-          )}
+          <button className="btn sm" onClick={() => setChat(true)}>💬 Messages</button>
         </div>
-        <div className="chips scroll">
-          <button className={'chip ' + (stage === 'all' ? 'on' : '')} onClick={() => setStage('all')}>
-            Sab<span className="c">{vids.length}</span>
-          </button>
-          {STAGES.map((s) => (
-            <button key={s.key} className={'chip ' + (stage === s.key ? 'on' : '')} onClick={() => setStage(s.key)}>
-              {s.label}
-              <span className="c">{counts[s.key] || 0}</span>
-            </button>
-          ))}
-        </div>
-        <div className="hist-filters">
-          <DateFilter value={vday} onChange={setVday} label="Kis din ki" />
-          <input type="search" value={vq} onChange={(e) => setVq(e.target.value)} placeholder="Title dhoondein…" aria-label="Video dhoondein" />
-        </div>
-        {shown.length ? (
-          <VideoList videos={shown} onOpen={(v) => setVOpen({ focus: v.id })} foldPrefix={'cv-' + channel.id} openDays={vday ? 1 : 2} />
-        ) : (
-          <div className="empty">
-            <b>{vids.length ? 'Is filter mein koi video nahi' : 'Abhi koi video nahi'}</b>
-            {canWork && !vids.length && 'Script Writer "+ Nai video" se title aur script ka link lagaye; baad mein Graphic Designer usi video mein thumbnail laga de.'}
-          </div>
-        )}
-        <ChannelTools channelId={channel.id} showToday={false} />
+        <VideoBrowser
+          channelId={channel.id}
+          tab={vTab}
+          setTab={setVTab}
+          onOpen={(v) => setVOpen({ focus: v.id })}
+          onCreate={canWork ? () => setVOpen({ create: true }) : undefined}
+        />
       </section>
 
       <section className="sec">
@@ -280,6 +255,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
           <div className="muted">Abhi koi member nahi. {d.isOwner && '"Channel edit karein" se add karein.'}</div>
         )}
       </Fold>
+      {chat && <ChatSheet channelId={channel.id} onClose={() => setChat(false)} />}
       {vOpen && <VideosSheet channelId={channel.id} focus={vOpen.focus} create={vOpen.create} initialTab={vOpen.focus && vids.find((v) => v.id === vOpen.focus)?.day !== todayKey() ? 'history' : 'today'} onClose={() => setVOpen(null)} />}
       {assign && <AssignTaskSheet channelId={channel.id} onClose={() => setAssign(false)} />}
     </>
