@@ -87,6 +87,22 @@ export interface FeedItem {
   edited_at?: string | null;
   pinned_at?: string | null;
   fwd_from?: string | null;
+  /** v10: internet ka intezar (🕓) / nahi gaya */
+  pending?: boolean;
+  failed?: string;
+}
+
+/** WhatsApp jaisa: 🕓 internet ka intezar, ya ⚠ nahi gaya + dobara */
+export function SendState({ pending, failed }: { pending?: boolean; failed?: string }) {
+  const d = useData();
+  if (failed)
+    return (
+      <span className="send-state bad">
+        ⚠ Nahi gaya <button className="linkbtn" onClick={() => d.retryPending()}>Dobara bhejein</button>
+      </span>
+    );
+  if (pending) return <span className="send-state" title="Internet aate hi khud chala jayega">🕓 Internet ka intezar — aate hi chala jayega</span>;
+  return null;
 }
 
 /** Discord jaisi message list: photo, naam (role ke rang mein), waqt, text, image, reply */
@@ -153,6 +169,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
     const p = d.profileOf(m.user_id);
     const parent = m.reply_to && byId ? byId.get(m.reply_to) : null;
     const isEditing = editing?.id === m.id;
+    const local = !!(m.pending || m.failed);
     out.push(
       <div
         key={m.id}
@@ -220,14 +237,15 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
             </button>
           )}
           {m.pinned_at && <span className="fmsg-pin">📌 Pinned</span>}
+          {local && <SendState pending={m.pending} failed={m.failed} />}
           <div className="fmsg-actions" role="toolbar" aria-label="Message options">
-            {onReply && <button className="act" onClick={() => { onReply(m); setSel(null); }} title="Reply">↩ Reply</button>}
+            {onReply && !local && <button className="act" onClick={() => { onReply(m); setSel(null); }} title="Reply">↩ Reply</button>}
             {m.body && <button className="act" onClick={() => { copy(m); setSel(null); }} title="Copy text">⧉ Copy</button>}
-            {kind && m.user_id === d.uid && m.body !== undefined && (
+            {kind && !local && m.user_id === d.uid && m.body !== undefined && (
               <button className="act" onClick={() => { setEditing({ id: m.id, text: m.body }); setSel(null); }} title="Edit">✎ Edit</button>
             )}
-            {onForward && <button className="act" onClick={() => { onForward(m); setSel(null); }} title="Forward">↪ Forward</button>}
-            {kind && canPin && (
+            {onForward && !local && <button className="act" onClick={() => { onForward(m); setSel(null); }} title="Forward">↪ Forward</button>}
+            {kind && canPin && !local && (
               <button
                 className="act"
                 title={m.pinned_at ? 'Unpin' : 'Pin'}
@@ -240,7 +258,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
               <ConfirmButton className="act danger" label="🗑 Delete" confirmLabel="Pakka?" onConfirm={() => onDelete(m).catch((e) => toast(errorText(e)))} />
             )}
           </div>
-          {showRead && m.user_id === d.uid && <span className="fmsg-read muted">{m.read_at ? 'Parh liya' : 'Bheja'}</span>}
+          {showRead && !local && m.user_id === d.uid && <span className="fmsg-read muted">{m.read_at ? 'Parh liya' : 'Bheja'}</span>}
         </div>
       </div>
     );

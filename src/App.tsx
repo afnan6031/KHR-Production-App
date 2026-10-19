@@ -15,6 +15,7 @@ import { applyPrefs } from './lib/appearance';
 import { Avatar, Logo, ThemeButton, ToastProvider, runBackHandler } from './components/ui';
 import { BellButton, NotificationsProvider } from './components/Notifications';
 import { initPush, onPushOpen, stopPush, takePendingOpen, type PushOpen } from './lib/push';
+import { clearSnapshot } from './lib/offline';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -209,6 +210,8 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
       const n = document.querySelector('nav.tabs')?.getBoundingClientRect().height || 60;
       document.documentElement.style.setProperty('--hdr', h + 'px');
       document.documentElement.style.setProperty('--navh', n + 'px');
+      const o = document.querySelector('.offline-bar')?.getBoundingClientRect().height || 0;
+      document.documentElement.style.setProperty('--offh', o + 'px');
     };
     set();
     window.addEventListener('resize', set);
@@ -216,9 +219,19 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
     return () => { window.removeEventListener('resize', set); window.clearInterval(id); };
   }, []);
 
+  // offline patti aaye / jaye to server ki jagah foran theek
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => {
+      const o = document.querySelector('.offline-bar')?.getBoundingClientRect().height || 0;
+      document.documentElement.style.setProperty('--offh', o + 'px');
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [d.offline, d.pendingCount]);
+
   const signOut = async () => {
     setSheet(null);
     await stopPush();
+    await clearSnapshot(d.uid);
     await supabase.auth.signOut();
   };
 
@@ -254,10 +267,21 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
       </div>
     );
 
+  if (!d.me && d.offline)
+    return (
+      <div className="splash offline-screen">
+        <Logo size={72} />
+        <h2>Internet nahi mila</h2>
+        <p className="muted">Is phone par abhi koi save kiya hua data nahi. Pehli dafa (ya logout ke baad) app kholne ke liye internet chahiye — uske baad app internet ke baghair bhi khulegi.</p>
+        <button className="btn primary" onClick={() => d.reload().catch(() => {})}>Dobara try karein</button>
+      </div>
+    );
+
   if (!d.me)
     return (
       <div className="auth">
         <div className="alert">Aap ka profile nahi mila. Owner se check karwayein ke database setup (schema.sql) chal chuka hai.</div>
+        <button className="btn primary" onClick={() => d.reload().catch(() => {})}>Dobara try karein</button>
         <button className="btn" onClick={signOut}>
           Logout
         </button>
@@ -341,6 +365,12 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
         </div>
       </header>
 
+      {d.offline && (
+        <div className="offline-bar" role="status">
+          📴 Internet nahi — aakhri save kiya hua data dikh raha hai.{' '}
+          {d.pendingCount > 0 ? <b>{d.pendingCount} message internet ka intezar kar rahe hain.</b> : 'Message bhejein, internet aate hi chale jayenge.'}
+        </div>
+      )}
       <main className={tab === 'server' && !channel && !openUser ? 'server-main' : ''}>{body}</main>
 
       <nav className="tabs">

@@ -161,6 +161,9 @@ export interface Message {
   body: string;
   reply_to: string | null;
   created_at: string;
+  /** v10: internet nahi tha, abhi bheja jana baqi (🕓) */
+  pending?: boolean;
+  failed?: string;
 }
 
 /** Screen par dikhne wali halat */
@@ -204,6 +207,8 @@ export interface ServerMessage {
   pinned_at?: string | null;
   pinned_by?: string | null;
   fwd_from?: string | null;
+  pending?: boolean;
+  failed?: string;
 }
 export interface FriendRequest {
   id: string;
@@ -225,4 +230,6 @@ export interface DirectMessage {
   pinned_at?: string | null;
   pinned_by?: string | null;
   fwd_from?: string | null;
+  pending?: boolean;
+  failed?: string;
 }

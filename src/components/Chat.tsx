@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { SendState } from './Messaging';
 import { VideoCard, videoLinksIn } from './VideoUpload';
 import { UserAvatar } from './Messaging';
 import { useData } from '../lib/data';
@@ -134,8 +135,9 @@ export function ChatSheet({ channelId, onClose }: { channelId: string; onClose: 
           <div className="msg-body"><Linkify text={m.body} /></div>
           {videoLinksIn(m.body).map((u) => <VideoCard key={u} url={u} compact />)}
           <div className="msg-meta">
-            <span>{fmtClock(m.created_at)}</span>
-            {canWrite && (
+            <span>{m.pending || m.failed ? '' : fmtClock(m.created_at)}</span>
+            {(m.pending || m.failed) && <SendState pending={m.pending} failed={m.failed} />}
+            {canWrite && !m.pending && !m.failed && (
               <button className="linkbtn" onClick={() => { setReplyTo(m); inputRef.current?.focus(); }}>Reply</button>
             )}
             {(mine || d.isOwner) && (

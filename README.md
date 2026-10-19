@@ -448,6 +448,16 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v10: Internet ke baghair bhi app + GitHub build fix
+
+- **Offline:** app har dafa apna data phone / PC mein save karti hai. Internet na ho to app pichla data dikhati hai (upar patti: "📴 Internet nahi"). Pehli dafa ya logout ke baad internet zaroori hai.
+- **Pending messages (WhatsApp jaisa):** internet na ho to server chat, DM ya channel chat ka message 🕓 ke saath ruka rehta hai aur internet aate hi khud chala jata hai, chahe app band kar ke dobara kholi ho. Server mana kare (misal ijazat nahi) to "⚠ Nahi gaya — Dobara bhejein".
+- Internet ke baghair photo / video upload, task tick waghera nahi hote (in ke liye server chahiye); aisa karne par "Internet check karein" aata hai.
+- **GitHub build fix:** purani `src/components/Attachments.tsx` (v8 tak ki) ab khaali file se badal di gayi hai. Ye zip upload karne se wo khud theek ho jati hai. (Chahein to GitHub se delete bhi kar sakte hain.)
+- Database (schema.sql) mein is dafa koi tabdeeli nahi.
+
+---
+
 ## Pehle se setup kiya hua hai? Update kaise karein
 
 1. **Supabase → SQL Editor → New query** kholein. Nayi `supabase/schema.sql` poori paste kar ke **Run** karein.

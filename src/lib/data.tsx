@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from './supabase';
 import type { Channel, DeadlineRequest, DirectMessage, FriendRequest, Member, Message, MusicTrack, Perf, Prefs, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video } from './types';
 import { addDays, perfIndex, todayKey, type PerfIndex } from './utils';
+import { isLocalId, isNetErr, loadOutbox, loadSnapshot, newLocalId, saveOutbox, saveSnapshot, type OutItem, type OutKind } from './offline';
 
 type Tables = {
   profiles: Profile[];
@@ -78,6 +79,11 @@ export interface ProfilePatch {
 
 interface DataCtx extends Tables {
   loading: boolean;
+  /** v10: internet nahi (purana save kiya hua data dikh raha hai) */
+  offline: boolean;
+  /** kitne messages internet ka intezar kar rahe hain */
+  pendingCount: number;
+  retryPending: () => void;
   me: Profile | null;
   uid: string;
   isOwner: boolean;
@@ -146,7 +152,28 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   const [t, setT] = useState<Tables>(EMPTY);
   const [online, setOnline] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   const timers = useRef<Partial<Record<TableName, number>>>({});
+  // v10: outbox — internet ke intezar wale messages
+  const outbox = useRef<OutItem[]>(loadOutbox(uid));
+  const [outVer, setOutVer] = useState(0);
+  const flushing = useRef(false);
+  const TABLE_OF: Record<OutKind, 'server_messages' | 'direct_messages' | 'messages'> = { srv: 'server_messages', dm: 'direct_messages', msg: 'messages' };
+  const localRow = (o: OutItem) => ({
+    ...o.payload, id: o.lid, created_at: o.created_at, pending: !o.failed, failed: o.failed,
+    ...(o.kind === 'dm' ? { from_user: uid, read_at: null } : { user_id: uid }),
+    edited_at: null, pinned_at: null, pinned_by: null
+  });
+  /** server ki list + abhi tak na gaye local messages */
+  const withPending = (name: TableName, rows: unknown[]) => {
+    const mine = outbox.current.filter((o) => TABLE_OF[o.kind] === name).map(localRow);
+    return mine.length ? [...mine.reverse(), ...rows] : rows;
+  };
+  const setOutbox = (items: OutItem[]) => {
+    outbox.current = items;
+    saveOutbox(uid, items);
+    setOutVer((v) => v + 1);
+  };
 
   const fetchTable = useCallback(async (name: TableName) => {
     let q = supabase.from(name).select('*');
@@ -163,8 +190,8 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     if (name === 'server_channels') q = q.order('position', { ascending: true });
     const { data, error } = await q;
     if (error) throw error;
-    setT((prev) => ({ ...prev, [name]: data || [] }));
-  }, []);
+    setT((prev) => ({ ...prev, [name]: INCREMENTAL.includes(name) ? withPending(name, data || []) : data || [] }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Aaj (aur chhoote hue dinon) ke tasks server par bana do — dobara chalana safe hai */
   const ensureTasks = useCallback(async () => {
@@ -173,13 +200,91 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   }, []);
 
   const reload = useCallback(async () => {
-    await ensureTasks();
-    await Promise.all(TABLES.map((n) => fetchTable(n)));
+    try {
+      await ensureTasks();
+      await Promise.all(TABLES.map((n) => fetchTable(n)));
+      setOffline(false);
+    } catch (e) {
+      if (isNetErr(e)) setOffline(true);
+      throw e;
+    }
   }, [fetchTable, ensureTasks]);
+
+  /** outbox ke messages ek ek kar ke bhejo (purane pehle) */
+  const flush = useCallback(async () => {
+    if (flushing.current || !outbox.current.some((o) => !o.failed)) return;
+    flushing.current = true;
+    try {
+      for (const o of [...outbox.current]) {
+        if (o.failed) continue;
+        const table = TABLE_OF[o.kind];
+        const { data, error } = await supabase.from(table).insert(o.payload).select('*').single();
+        if (error) {
+          if (isNetErr(error)) { setOffline(true); break; }
+          // internet theek hai magar server ne mana kiya (misal ijazat nahi) -> nakaam dikhao
+          setOutbox(outbox.current.map((x) => (x.lid === o.lid ? { ...x, failed: error.message } : x)));
+          setT((prev) => ({ ...prev, [table]: (prev[table] as { id: string }[]).map((m) => (m.id === o.lid ? { ...m, pending: false, failed: error.message } : m)) }));
+          continue;
+        }
+        setOffline(false);
+        setOutbox(outbox.current.filter((x) => x.lid !== o.lid));
+        const row = data as { id: string };
+        setT((prev) => {
+          const list = (prev[table] as { id: string }[]).filter((m) => m.id !== o.lid && m.id !== row.id);
+          return { ...prev, [table]: [row, ...list] };
+        });
+      }
+    } finally {
+      flushing.current = false;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** message bhejo; internet na ho to outbox mein (🕓) aur baad mein khud */
+  const sendOrQueue = useCallback(async (kind: OutKind, payload: Record<string, unknown>) => {
+    const table = TABLE_OF[kind];
+    const queue = () => {
+      const o: OutItem = { lid: newLocalId(), kind, created_at: new Date().toISOString(), payload };
+      setOutbox([...outbox.current, o]);
+      setT((prev) => ({ ...prev, [table]: [localRow(o), ...(prev[table] as unknown[])] }));
+      setOffline(true);
+    };
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return queue();
+    const { data, error } = await supabase.from(table).insert(payload).select('*').single();
+    if (error) {
+      if (isNetErr(error)) return queue();
+      throw error;
+    }
+    const row = data as { id: string };
+    setT((prev) => ((prev[table] as { id: string }[]).some((x) => x.id === row.id) ? prev : { ...prev, [table]: [row, ...(prev[table] as unknown[])] }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** local (abhi na gaya) message hatao */
+  const dropLocal = (table: TableName, id: string) => {
+    setOutbox(outbox.current.filter((o) => o.lid !== id));
+    setT((prev) => ({ ...prev, [table]: (prev[table] as { id: string }[]).filter((x) => x.id !== id) }));
+  };
 
   useEffect(() => {
     let alive = true;
-    reload().catch(console.error).finally(() => alive && setLoading(false));
+    let gotFresh = false;
+    // pehle phone mein save kiya hua data (internet na ho to bhi app foran khule)
+    loadSnapshot<Tables>(uid).then((snap) => {
+      if (!alive || gotFresh || !snap?.profiles?.length) return;
+      const fixed = { ...EMPTY, ...snap } as Tables;
+      INCREMENTAL.forEach((n) => { (fixed as Record<string, unknown[]>)[n] = withPending(n, (fixed[n] as { id: string }[]).filter((x) => !isLocalId(x.id))); });
+      setT(fixed);
+      setLoading(false);
+    });
+    reload()
+      .then(() => { gotFresh = true; flush(); })
+      .catch(console.error)
+      .finally(() => alive && setLoading(false));
+    // internet wapas aaye: pending messages bhejo + fresh data
+    const onOnline = () => { setOffline(false); flush().then(() => reload().catch(console.error)); };
+    const onOffline = () => setOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    const retry = window.setInterval(() => { if (outbox.current.some((o) => !o.failed)) flush(); }, 15000);
     // Realtime: koi bhi table badle to wahi table dobara load ho (RLS ke mutabiq)
     const ch = supabase.channel('khr-live');
     const refetch = (name: TableName) => {
@@ -219,7 +324,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       if (status === 'SUBSCRIBED') pres.track({ at: new Date().toISOString() }).catch(() => {});
     });
     // App wapas khulne par fresh data
-    const onVis = () => document.visibilityState === 'visible' && reload().catch(console.error);
+    const onVis = () => document.visibilityState === 'visible' && reload().then(() => flush()).catch(console.error);
     document.addEventListener('visibilitychange', onVis);
     // Raat 12 baje naya din: naye tasks bana kar load karo
     let day = todayKey();
@@ -232,11 +337,25 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     return () => {
       alive = false;
       window.clearInterval(tick);
+      window.clearInterval(retry);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
       supabase.removeChannel(ch);
       supabase.removeChannel(pres);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [uid, reload, fetchTable]);
+
+  // har tabdeeli ke 2 second baad phone mein save (local / pending messages ke baghair)
+  useEffect(() => {
+    if (loading || !t.profiles.length) return;
+    const id = window.setTimeout(() => {
+      const clean = { ...t } as Record<string, unknown[]>;
+      INCREMENTAL.forEach((n) => { clean[n] = (t[n] as { id: string }[]).filter((x) => !isLocalId(x.id)); });
+      saveSnapshot(uid, clean);
+    }, 2000);
+    return () => window.clearTimeout(id);
+  }, [t, loading, uid]);
 
   const me = useMemo(() => t.profiles.find((p) => p.id === uid) || null, [t.profiles, uid]);
   const isOwner = !!me?.is_owner;
@@ -315,6 +434,17 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   const value: DataCtx = {
     ...t,
     loading,
+    offline,
+    pendingCount: outVer >= 0 ? outbox.current.filter((o) => !o.failed).length : 0,
+    retryPending() {
+      setOutbox(outbox.current.map((o) => ({ ...o, failed: undefined })));
+      setT((prev) => {
+        const n = { ...prev } as Record<string, unknown[]>;
+        INCREMENTAL.forEach((k) => { n[k] = (prev[k] as { id: string; failed?: string }[]).map((m) => (isLocalId(m.id) ? { ...m, failed: undefined, pending: true } : m)); });
+        return n as Tables;
+      });
+      window.setTimeout(() => flush(), 50);
+    },
     me,
     uid,
     isOwner,
@@ -364,10 +494,10 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));
     },
     async sendMessage(channelId, body, replyTo) {
-      const row = must(await supabase.from('messages').insert({ channel_id: channelId, body, reply_to: replyTo }).select('*').single()) as Message;
-      setT((prev) => (prev.messages.some((x) => x.id === row.id) ? prev : { ...prev, messages: [row, ...prev.messages] }));
+      await sendOrQueue('msg', { channel_id: channelId, body, reply_to: isLocalId(replyTo) ? null : replyTo });
     },
     async deleteMessage(id) {
+      if (isLocalId(id)) return dropLocal('messages', id);
       must(await supabase.from('messages').delete().eq('id', id));
       setT((prev) => ({ ...prev, messages: prev.messages.filter((x) => x.id !== id) }));
     },
@@ -393,10 +523,10 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       await Promise.all([fetchTable('server_channels'), fetchTable('server_messages')]);
     },
     async sendServerMessage(channelId, body, imageUrl, replyTo) {
-      const row = must(await supabase.from('server_messages').insert({ channel_id: channelId, body, image_url: imageUrl, reply_to: replyTo }).select('*').single()) as ServerMessage;
-      setT((prev) => (prev.server_messages.some((x) => x.id === row.id) ? prev : { ...prev, server_messages: [row, ...prev.server_messages] }));
+      await sendOrQueue('srv', { channel_id: channelId, body, image_url: imageUrl, reply_to: isLocalId(replyTo) ? null : replyTo });
     },
     async deleteServerMessage(id) {
+      if (isLocalId(id)) return dropLocal('server_messages', id);
       must(await supabase.from('server_messages').delete().eq('id', id));
       setT((prev) => ({ ...prev, server_messages: prev.server_messages.filter((x) => x.id !== id) }));
     },
@@ -421,10 +551,10 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       await fetchTable('friend_requests');
     },
     async sendDM(to, body, imageUrl) {
-      const row = must(await supabase.from('direct_messages').insert({ to_user: to, body, image_url: imageUrl }).select('*').single()) as DirectMessage;
-      setT((prev) => (prev.direct_messages.some((x) => x.id === row.id) ? prev : { ...prev, direct_messages: [row, ...prev.direct_messages] }));
+      await sendOrQueue('dm', { to_user: to, body, image_url: imageUrl });
     },
     async deleteDM(id) {
+      if (isLocalId(id)) return dropLocal('direct_messages', id);
       must(await supabase.from('direct_messages').delete().eq('id', id));
       setT((prev) => ({ ...prev, direct_messages: prev.direct_messages.filter((x) => x.id !== id) }));
     },
@@ -479,13 +609,8 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     },
     async forwardChat(to, m) {
       const fwd = m.user_id || null;
-      if (to.kind === 'srv') {
-        const row = must(await supabase.from('server_messages').insert({ channel_id: to.channel, body: m.body, image_url: m.image_url || '', fwd_from: fwd }).select('*').single()) as ServerMessage;
-        setT((prev) => (prev.server_messages.some((x) => x.id === row.id) ? prev : { ...prev, server_messages: [row, ...prev.server_messages] }));
-      } else {
-        const row = must(await supabase.from('direct_messages').insert({ to_user: to.peer, body: m.body, image_url: m.image_url || '', fwd_from: fwd }).select('*').single()) as DirectMessage;
-        setT((prev) => (prev.direct_messages.some((x) => x.id === row.id) ? prev : { ...prev, direct_messages: [row, ...prev.direct_messages] }));
-      }
+      if (to.kind === 'srv') await sendOrQueue('srv', { channel_id: to.channel, body: m.body, image_url: m.image_url || '', fwd_from: fwd });
+      else await sendOrQueue('dm', { to_user: to.peer, body: m.body, image_url: m.image_url || '', fwd_from: fwd });
     },
     async addTrack(title, url) {
       const pos = t.music_tracks.reduce((a, x) => Math.max(a, x.position), 0) + 1;

@@ -1022,3 +1022,13 @@ body.kb-open:has(.mplayer) main.server-main { bottom: max(var(--navh, 64px), var
 }
 @media (max-width: 520px) { .hide-sm { display: none; } }
 body.custom-bg .hello { text-shadow: 0 1px 12px rgba(0, 0, 0, .45); }
+
+/* ================= v10: offline ================= */
+.offline-bar { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--hdr, 56px)); z-index: 4; background: #5A3A0A; color: #FFE8B0; font-size: 13px; padding: 7px 16px; text-align: center; line-height: 1.4; }
+.desktop .offline-bar { top: calc(32px + var(--hdr, 56px)); }
+body:has(.offline-bar) main.server-main { top: calc(env(safe-area-inset-top, 0px) + var(--hdr, 56px) + var(--offh, 34px)); }
+.desktop body:has(.offline-bar) main.server-main { top: calc(32px + var(--hdr, 56px) + var(--offh, 34px)); }
+.offline-screen { gap: 14px; text-align: center; padding: 24px; max-width: 460px; margin: 0 auto; }
+.send-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.send-state.bad { color: var(--bad); }
+.send-state .linkbtn { font-size: 12px; }
