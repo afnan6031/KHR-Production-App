@@ -21,6 +21,7 @@ env:
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
   VITE_IMGBB_API_KEY: ${{ secrets.VITE_IMGBB_API_KEY }}
   VITE_GOFILE_TOKEN: ${{ secrets.VITE_GOFILE_TOKEN }}
+  VITE_CATBOX_USERHASH: ${{ secrets.VITE_CATBOX_USERHASH }}
   VERSION_CODE: ${{ github.run_number }}
   VERSION_NAME: 1.0.${{ github.run_number }}
 
