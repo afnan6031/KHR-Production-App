@@ -1,7 +1,7 @@
 // KHR Production — Windows / PC desktop app (Electron wrapper around the same app)
 // v8: upar ki patti app ke rang mein (Discord jaisi), aur window band karne par app tray mein
 //     chalti rehti hai taake messages / deadlines ke notifications aate rahein.
-const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -47,7 +47,8 @@ function createWindow(startHidden) {
       contextIsolation: true,
       sandbox: true,
       preload: path.join(__dirname, 'preload.cjs'),
-      backgroundThrottling: false // window chhupi ho tab bhi timers / deadline alerts chalte rahein
+      backgroundThrottling: false, // window chhupi ho tab bhi timers / deadline alerts chalte rahein
+      autoplayPolicy: 'no-user-gesture-required' // music player
     }
   });
   Menu.setApplicationMenu(null);
@@ -116,6 +117,14 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
   app.on('before-quit', () => { quitting = true; });
   app.whenReady().then(() => {
+    // v9 music: YouTube player ko "Referer" chahiye (file:// se khulne wali app ke paas nahi hota)
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*'] },
+      (details, cb) => {
+        if (!details.requestHeaders.Referer) details.requestHeaders.Referer = 'https://khr-production.app/';
+        cb({ requestHeaders: details.requestHeaders });
+      }
+    );
     settings = readSettings();
     applyAutostart();
     buildTray();

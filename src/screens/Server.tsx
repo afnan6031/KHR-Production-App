@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { onPushOpen, takePendingOpen, type PushOpen } from '../lib/push';
-import { useData, type ServerChannelInput } from '../lib/data';
+import { useData, type ChatTarget, type ServerChannelInput } from '../lib/data';
 import type { DirectMessage, Profile, ServerChannel } from '../lib/types';
 import { errorText, fmtClock, fmtDate } from '../lib/utils';
 import { Avatar, ConfirmButton, Logo, Seg, Sheet, useBackHandler, useToast } from '../components/ui';
@@ -33,7 +33,6 @@ export function useServerBadge(): number {
   return dms + reqs;
 }
 
-const DM_NOTICE = 'Company chat: sirf kaam ki baat karein. Company policy ke mutabiq owner ye chat review kar sakta hai.';
 
 type View = { kind: 'home' } | { kind: 'channel'; id: string } | { kind: 'dm'; peer: string };
 type Pane = 'channels' | 'friends';
@@ -190,6 +189,8 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
   const d = useData();
   const [reply, setReply] = useState<FeedItem | null>(null);
   const [img, setImg] = useState<string | null>(null);
+  const [fwd, setFwd] = useState<FeedItem | null>(null);
+  const [pins, setPins] = useState(false);
   const ch = d.server_channels.find((c) => c.id === channelId);
   const items = useMemo(() => d.server_messages.filter((m) => m.channel_id === channelId).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-400), [d.server_messages, channelId]);
   const byId = useMemo(() => new Map(d.server_messages.map((m) => [m.id, m as FeedItem])), [d.server_messages]);
@@ -210,8 +211,9 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
             {ch.is_private ? ` · 🔒 Private · ${memberCount} log` : ''}
           </small>
         </div>
+        {items.some((m) => m.pinned_at) && <button className="btn sm" onClick={() => setPins(true)} aria-label="Pin kiye hue messages">📌 {items.filter((m) => m.pinned_at).length}</button>}
         <button className="btn sm members-btn" onClick={onMembers} aria-label="Is channel ke log">👥 {channelPeople(d, ch).length}</button>
-        {d.isOwner && <button className="btn sm" onClick={() => onEdit(ch)}>Settings</button>}
+        {d.isOwner && <button className="btn sm" onClick={() => onEdit(ch)} aria-label="Channel settings" title="Channel settings">⚙<span className="hide-sm"> Settings</span></button>}
       </header>
       <MessageFeed
         items={items}
@@ -221,7 +223,10 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
         onDelete={(m) => d.deleteServerMessage(m.id)}
         onOpenUser={onOpenUser}
         onImage={setImg}
-        empty={<><b>#{ch.name} mein khush aamdeed</b>{canPost ? 'Pehla message likhein.' : 'Yahan owner ke announcements aayenge.'}</>}
+        kind="srv"
+        canPin={canPost}
+        onForward={setFwd}
+        empty={<><b>#{ch.name} mein khush aamdeed</b>{canPost ? 'Pehla message likhein. Tip: "# " se bara heading, **bold**, *italic*.' : 'Yahan owner ke announcements aayenge.'}</>}
       />
       <Composer
         placeholder={'#' + ch.name}
@@ -234,6 +239,8 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
         }}
       />
       {img && <ImageViewer url={img} onClose={() => setImg(null)} />}
+      {fwd && <ForwardSheet msg={fwd} onClose={() => setFwd(null)} />}
+      {pins && <PinnedSheet items={items.filter((m) => m.pinned_at)} onClose={() => setPins(false)} />}
     </div>
   );
 }
@@ -272,7 +279,7 @@ function ChannelMembers({ channelId, onOpenUser }: { channelId: string; onOpenUs
       <UserAvatar id={p.id} status />
       <span className="grow">
         <span className={'mname ' + roleTone(p.server_role, p.is_owner)}>{p.full_name || 'Member'}{p.is_owner && ' 👑'}</span>
-        {p.server_role && <small className="muted block one-line">{p.server_role}</small>}
+        {(p.title || p.server_role) && <small className="muted block one-line">{p.title ? '🏆 ' + p.title : p.server_role}</small>}
       </span>
     </button>
   );
@@ -382,6 +389,9 @@ function FriendsPane({ current, onOpenDM, onOpenUser }: { current: string; onOpe
 function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void; onOpenUser: (id: string) => void }) {
   const d = useData();
   const [img, setImg] = useState<string | null>(null);
+  const [reply, setReply] = useState<FeedItem | null>(null);
+  const [fwd, setFwd] = useState<FeedItem | null>(null);
+  const [pins, setPins] = useState(false);
   const p = d.profileOf(peer);
   const items = useMemo(
     () =>
@@ -392,6 +402,7 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
         .map((m) => ({ ...m, user_id: m.from_user })),
     [d.direct_messages, peer, d.uid]
   );
+  const dmById = useMemo(() => new Map(items.map((m) => [m.id, m as FeedItem])), [items]);
   useEffect(() => { d.markDMRead(peer).catch(() => {}); }, [peer, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const allowed = d.canDM(peer);
   const fs = d.friendState(peer);
@@ -405,8 +416,8 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
           <b>{p?.full_name || 'Member'}</b>
           <small className="muted block">{d.online.has(peer) ? 'Online' : 'Offline'}{p?.server_role ? ' · ' + p.server_role : ''}</small>
         </div>
+        {items.some((m) => m.pinned_at) && <button className="btn sm" onClick={() => setPins(true)} aria-label="Pin kiye hue messages">📌 {items.filter((m) => m.pinned_at).length}</button>}
       </header>
-      <div className="policy-note"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true" style={{ verticalAlign: '-2px', marginRight: 6 }}><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>{DM_NOTICE}</div>
       <MessageFeed
         items={items}
         canDelete={(m) => m.user_id === d.uid}
@@ -414,14 +425,28 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
         onOpenUser={onOpenUser}
         onImage={setImg}
         showRead
+        kind="dm"
+        canPin
+        byId={dmById}
+        onReply={allowed ? setReply : undefined}
+        onForward={setFwd}
         empty={<><b>{p?.full_name} ke saath baat shuru karein</b>Kaam ki update, sawal, link ya image bhejein.</>}
       />
       <Composer
         placeholder="Message likhein…"
+        replyTo={reply}
+        onCancelReply={() => setReply(null)}
         disabledNote={allowed ? undefined : fs.state === 'sent' ? 'Friend request bheji hui hai. Accept hone ke baad message kar sakenge.' : 'Message karne ke liye pehle friend banein (profile se request bhejein).'}
-        onSend={(body, url) => d.sendDM(peer, body, url)}
+        onSend={async (body, url) => {
+          // DM mein reply: quote ke saath
+          const q = reply ? '> ' + d.nameOf(reply.user_id) + ': ' + (reply.body || 'Image').split('\n')[0].slice(0, 80) + '\n' : '';
+          await d.sendDM(peer, q + body, url);
+          setReply(null);
+        }}
       />
       {img && <ImageViewer url={img} onClose={() => setImg(null)} />}
+      {fwd && <ForwardSheet msg={fwd} onClose={() => setFwd(null)} />}
+      {pins && <PinnedSheet items={items.filter((m) => m.pinned_at)} onClose={() => setPins(false)} />}
     </div>
   );
 }
@@ -432,6 +457,7 @@ function ProfileCard({ userId, onClose, onMessage }: { userId: string; onClose: 
   const toast = useToast();
   const p = d.profileOf(userId);
   const [role, setRole] = useState(p?.server_role || '');
+  const [title, setTitle] = useState(p?.title || '');
   const [busy, setBusy] = useState(false);
   if (!p) return null;
   const me = userId === d.uid;
@@ -441,20 +467,26 @@ function ProfileCard({ userId, onClose, onMessage }: { userId: string; onClose: 
     setBusy(true);
     try { await fn(); toast(ok); } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
-  const channels = d.channels.filter((c) => d.rolesOf(c.id, userId).length).map((c) => c.name + ': ' + d.rolesOf(c.id, userId).join(', '));
+  const channels = d.channels.filter((c) => d.rolesOf(c.id, userId).length).map((c) => c.name);
 
   return (
     <Sheet title="Profile" onClose={onClose}>
       <div className="pcard">
-        <div className="pcard-banner" />
-        <div className="pcard-av"><UserAvatar id={userId} status /></div>
+        <div className="pcard-banner" style={p.banner_url ? { backgroundImage: `url("${p.banner_url}")` } : undefined} />
+        <div className="pcard-av big"><UserAvatar id={userId} status /></div>
         <div className="pcard-body">
-          <h2>{p.full_name || 'Member'}{p.is_owner && ' 👑'}</h2>
+          <h2 data-notr>{p.full_name || 'Member'}{p.is_owner && ' 👑'}</h2>
+          {p.title && <div className="ptitle" data-notr>🏆 {p.title}</div>}
           <div className="row">
             {p.server_role && <span className={'rtag ' + roleTone(p.server_role, p.is_owner)}>{p.server_role}</span>}
             <span className="muted small">{d.online.has(userId) ? '🟢 Online' : 'Offline'}</span>
           </div>
-          {channels.length > 0 && <p className="muted small m0">{channels.join(' · ')}</p>}
+          {p.about && <p className="pabout" data-notr>{p.about}</p>}
+          {channels.length > 0 && (
+            <div className="pchans" data-notr>
+              {channels.map((c) => <span key={c} className="chip sm">{c}</span>)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -477,6 +509,12 @@ function ProfileCard({ userId, onClose, onMessage }: { userId: string; onClose: 
             <input id="srv-role" type="text" list="srv-roles" maxLength={40} value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Co-Founder" />
             <datalist id="srv-roles">{roles.map((r) => <option key={r} value={r} />)}</datalist>
             <button className="btn primary sm" disabled={busy || role === p.server_role} onClick={() => act(() => d.setServerRole(userId, role.trim()), 'Role save ho gaya')}>Save</button>
+          </div>
+          Title / award
+          <span className="h">Jaise "Best Editor (September)", "Best Performance — Oct". Profile par naam ke neeche nazar aata hai.</span>
+          <div className="att-row">
+            <input id="srv-title" type="text" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Best Editor (September)" />
+            <button className="btn primary sm" disabled={busy || title === p.title} onClick={() => act(() => d.setTitle(userId, title.trim()), 'Title de diya')}>Save</button>
           </div>
         </div>
       )}
@@ -600,7 +638,7 @@ export function ChatReviewSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <Sheet title="Company chat review" onClose={onClose}>
-      <div className="note">Ye hissa sirf owner ko nazar aata hai. Team ko DM screen par bataya gaya hai ke company chat review ho sakti hai.</div>
+      <div className="note">Ye hissa sirf owner ko nazar aata hai.</div>
       {!pair ? (
         <>
           <input id="rv-q" type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Naam ya baat dhoondein…" />
@@ -629,6 +667,86 @@ export function ChatReviewSheet({ onClose }: { onClose: () => void }) {
         </>
       )}
       {img && <ImageViewer url={img} onClose={() => setImg(null)} />}
+    </Sheet>
+  );
+}
+
+/* ================= v9: Forward (kisi channel ya DM mein) ================= */
+function ForwardSheet({ msg, onClose }: { msg: FeedItem; onClose: () => void }) {
+  const d = useData();
+  const toast = useToast();
+  const [busy, setBusy] = useState('');
+  const chans = d.server_channels.filter((c) => d.isOwner || !c.read_only);
+  const peers = d.profiles.filter((p) => p.id !== d.uid && (p.status === 'approved' || p.is_owner) && d.canDM(p.id));
+  const send = async (key: string, to: ChatTarget) => {
+    setBusy(key);
+    try {
+      await d.forwardChat(to, { body: msg.body, image_url: msg.image_url, user_id: msg.fwd_from || msg.user_id });
+      toast('Forward ho gaya');
+      onClose();
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setBusy('');
+    }
+  };
+  return (
+    <Sheet title="Forward karein" onClose={onClose}>
+      <div className="fwd-preview" data-notr>
+        <b>{d.nameOf(msg.user_id)}</b>
+        <span className="one-line">{msg.body || '📷 Image'}</span>
+      </div>
+      <div className="ccat-h">Server channels</div>
+      <div className="list">
+        {chans.map((c) => (
+          <button key={c.id} className="li" disabled={!!busy} onClick={() => send('c' + c.id, { kind: 'srv', channel: c.id })}>
+            <span className="chash">{c.read_only ? '📢' : '#'}</span>
+            <span className="grow t">{c.name}</span>
+            <span className="muted">{busy === 'c' + c.id ? '…' : '↪'}</span>
+          </button>
+        ))}
+      </div>
+      <div className="ccat-h">Direct message</div>
+      <div className="list">
+        {peers.map((p) => (
+          <button key={p.id} className="li" disabled={!!busy} onClick={() => send('p' + p.id, { kind: 'dm', peer: p.id })}>
+            <UserAvatar id={p.id} />
+            <span className="grow t">{p.full_name}</span>
+            <span className="muted">{busy === 'p' + p.id ? '…' : '↪'}</span>
+          </button>
+        ))}
+        {!peers.length && <p className="muted small">DM ke liye pehle friends banayein.</p>}
+      </div>
+    </Sheet>
+  );
+}
+
+/* ================= v9: Pin kiye hue messages ================= */
+function PinnedSheet({ items, onClose }: { items: FeedItem[]; onClose: () => void }) {
+  const d = useData();
+  const go = (id: string) => {
+    onClose();
+    window.setTimeout(() => {
+      const el = document.getElementById('m-' + id);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el?.classList.add('flash');
+      window.setTimeout(() => el?.classList.remove('flash'), 1600);
+    }, 120);
+  };
+  const list = [...items].sort((a, b) => (b.pinned_at || '').localeCompare(a.pinned_at || ''));
+  return (
+    <Sheet title={'📌 Pin kiye hue (' + items.length + ')'} onClose={onClose}>
+      <div className="list">
+        {list.map((m) => (
+          <button key={m.id} className="li top" onClick={() => go(m.id)}>
+            <UserAvatar id={m.user_id} />
+            <span className="grow" data-notr>
+              <span className="t block">{d.nameOf(m.user_id)} <span className="muted tiny">{fmtDate(m.created_at.slice(0, 10))} {fmtClock(m.created_at)}</span></span>
+              <span className="d block">{(m.body || '📷 Image').slice(0, 200)}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </Sheet>
   );
 }

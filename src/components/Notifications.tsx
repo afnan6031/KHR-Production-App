@@ -139,7 +139,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const newSrv = ids('srv', d.server_messages);
     const newDm = ids('dm', d.direct_messages);
     const newMsg = ids('msg', d.messages);
-    const newAtt = ids('att', d.attachments);
+    const newVid = ids('vid', d.videos);
+    const newThumb = ids('thumb', d.videos.filter((v) => v.thumbnail_url).map((v) => ({ id: v.id + '|' + v.thumbnail_url })));
+    const newTask = ids('task', d.tasks.filter((t) => t.kind === 'custom'));
+    const newReq = ids('req', d.deadline_requests.map((r) => ({ id: r.id + ':' + r.status })));
     const newFr = ids('fr', d.friend_requests.map((f) => ({ id: f.id + ':' + f.status })));
 
     // tasks: kisi ka status badla?
@@ -175,9 +178,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       const m = d.messages.find((x) => x.id === id);
       if (m && m.user_id !== d.uid) push({ id: 'msg-' + id, kind: 'message', title: `${chName(m.channel_id)} chat · ${d.nameOf(m.user_id)}`, body: m.body });
     });
-    newAtt.forEach((id) => {
-      const a = d.attachments.find((x) => x.id === id);
-      if (a && a.created_by !== d.uid) push({ id: 'att-' + id, kind: 'file', title: `${chName(a.channel_id)}: nayi ${a.kind === 'script' ? 'script' : 'thumbnail'}`, body: `${a.title} · ${d.nameOf(a.created_by)}` });
+    newVid.forEach((id) => {
+      const v = d.videos.find((x) => x.id === id);
+      if (v && v.created_by !== d.uid) push({ id: 'vid-' + id, kind: 'file', title: `${chName(v.channel_id)}: nayi video 🎬`, body: `${v.title} · ${d.nameOf(v.created_by)}` });
+    });
+    newThumb.forEach((key) => {
+      const v = d.videos.find((x) => x.id === key.split('|')[0]);
+      if (v && v.updated_by !== d.uid && !newVid.includes(v.id)) push({ id: 'th-' + key, kind: 'file', title: `${chName(v.channel_id)}: thumbnail lag gaya 🖼`, body: `${v.title} · ${d.nameOf(v.updated_by)}` });
+    });
+    newTask.forEach((id) => {
+      const t = d.tasks.find((x) => x.id === id);
+      if (t && t.user_id === d.uid && t.assigned_by !== d.uid) push({ id: 'ctask-' + id, kind: 'assign', title: '📌 Naya kaam assign hua', body: `${t.title} · ${chName(t.channel_id)} · deadline ${fmtDate(t.due_at.slice(0, 10))} ${fmtClock(t.due_at)}` });
+    });
+    newReq.forEach((key) => {
+      const [rid, status] = key.split(':');
+      const r = d.deadline_requests.find((x) => x.id === rid);
+      if (!r) return;
+      if (status === 'pending' && d.realOwner && r.user_id !== d.uid) push({ id: 'req-' + key, kind: 'task', title: '⏳ Deadline extension request', body: `${d.nameOf(r.user_id)} · +${r.minutes} min: ${r.reason}` });
+      if (status !== 'pending' && r.user_id === d.uid) push({ id: 'req-' + key, kind: 'task', title: status === 'approved' ? '✅ Deadline barh gayi' : '✕ Extension reject', body: `+${r.minutes} min · ${r.reason}` });
     });
     newFr.forEach((key) => {
       const [fid, status] = key.split(':');
@@ -187,24 +205,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       if (status === 'accepted' && f.from_user === d.uid) push({ id: 'fr-' + key, kind: 'friend', title: 'Request accept', body: `${d.nameOf(f.to_user)} ne aap ki friend request accept kar li` });
     });
     statusChanges.forEach((t) => {
-      if (t.status === 'done' && t.user_id !== d.uid && d.isOwner)
+      if (t.status === 'done' && t.user_id !== d.uid && d.realOwner)
         push({ id: 'tdone-' + t.id + t.completed_at, kind: 'task', title: '✓ Task complete', body: `${d.nameOf(t.user_id)} ne ${chName(t.channel_id)} (${t.role}) complete kiya` });
       if (t.status === 'rejected' && t.user_id === d.uid)
         push({ id: 'trej-' + t.id + t.rejected_at, kind: 'task', title: '✕ Task reject hua', body: `${chName(t.channel_id)} (${t.role})${t.rejected_reason ? ': ' + t.rejected_reason : ''}` });
     });
     roleChanges.forEach((r) => push({ id: 'role-' + r.ch + r.roles, kind: 'assign', title: 'Naya kaam assign hua', body: `${chName(r.ch)} mein aap ka role: ${r.roles}` }));
-  }, [d.loading, d.server_messages, d.direct_messages, d.messages, d.attachments, d.friend_requests, d.tasks, d.channel_members]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d.loading, d.server_messages, d.direct_messages, d.messages, d.videos, d.deadline_requests, d.friend_requests, d.tasks, d.channel_members]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- deadline alerts: shuru, 10 minute pehle, khatam ---------- */
   useEffect(() => {
     if (d.loading) return;
     const today = todayKey();
-    const mine = d.tasks.filter((t) => t.user_id === d.uid && t.status === 'pending' && t.day >= today);
+    const mine = d.tasks.filter((t) => t.user_id === d.uid && t.status === 'pending' && (t.day >= today || new Date(t.due_at).getTime() > Date.now()));
     const now = Date.now();
     type Plan = { key: string; at: number; title: string; body: string };
     const plans: Plan[] = [];
     mine.forEach((t) => {
-      const ch = d.channels.find((c) => c.id === t.channel_id)?.name || 'Channel';
+      const ch = (t.title ? t.title + ' · ' : '') + (d.channels.find((c) => c.id === t.channel_id)?.name || 'Channel');
       const due = new Date(t.due_at).getTime();
       const start = t.start_at ? new Date(t.start_at).getTime() : null;
       if (start && start > now) plans.push({ key: t.id + '-start', at: start, title: '▶ Kaam ka waqt shuru', body: `${ch} · ${t.role} · deadline ${fmtClock(t.due_at)}` });

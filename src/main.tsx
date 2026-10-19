@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { applyTheme, desktop, onThemeChange } from './lib/theme';
 import { initKeyboard } from './lib/keyboard';
+import { applySavedPrefs } from './lib/appearance';
 import './styles.css';
 
 // Web / PC par offline-ready + "Install app" support. Android app ke andar service worker ki zaroorat nahi.
@@ -17,6 +18,7 @@ if (isDesktop) document.documentElement.classList.add('desktop');
 applyTheme();
 onThemeChange(() => applyTheme());
 initKeyboard();
+applySavedPrefs();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

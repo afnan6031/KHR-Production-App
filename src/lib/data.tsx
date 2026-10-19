@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
-import type { Attachment, Channel, DirectMessage, FriendRequest, Member, Message, Perf, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video, ViewRow } from './types';
+import type { Channel, DeadlineRequest, DirectMessage, FriendRequest, Member, Message, MusicTrack, Perf, Prefs, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video } from './types';
 import { addDays, perfIndex, todayKey, type PerfIndex } from './utils';
 
 type Tables = {
@@ -8,11 +8,11 @@ type Tables = {
   channels: Channel[];
   channel_members: Member[];
   performance: Perf[];
-  channel_views: ViewRow[];
   videos: Video[];
   tasks: Task[];
-  attachments: Attachment[];
   messages: Message[];
+  deadline_requests: DeadlineRequest[];
+  music_tracks: MusicTrack[];
   server_channels: ServerChannel[];
   server_channel_members: ServerChannelMember[];
   server_messages: ServerMessage[];
@@ -20,11 +20,11 @@ type Tables = {
   direct_messages: DirectMessage[];
 };
 type TableName = keyof Tables;
-const TABLES: TableName[] = ['profiles', 'channels', 'channel_members', 'performance', 'channel_views', 'videos', 'tasks', 'attachments', 'messages',
+const TABLES: TableName[] = ['profiles', 'channels', 'channel_members', 'performance', 'videos', 'tasks', 'messages', 'deadline_requests', 'music_tracks',
   'server_channels', 'server_channel_members', 'server_messages', 'friend_requests', 'direct_messages'];
 /** Chat wale tables: naya message aaye to poora table dobara load karne ke bajaye bas wahi row jod do */
 const INCREMENTAL: TableName[] = ['messages', 'server_messages', 'direct_messages'];
-const EMPTY: Tables = { profiles: [], channels: [], channel_members: [], performance: [], channel_views: [], videos: [], tasks: [], attachments: [], messages: [],
+const EMPTY: Tables = { profiles: [], channels: [], channel_members: [], performance: [], videos: [], tasks: [], messages: [], deadline_requests: [], music_tracks: [],
   server_channels: [], server_channel_members: [], server_messages: [], friend_requests: [], direct_messages: [] };
 
 export interface ServerChannelInput {
@@ -47,7 +47,7 @@ export interface ChannelInput {
   time_from: string | null;
   time_to: string | null;
   deadline: string | null;
-  role_times: Record<string, { start: string; end: string }>;
+  role_times: Record<string, { start: string; end: string; days?: number }>;
   members: Record<string, string[]>;
 }
 
@@ -59,6 +59,21 @@ export interface VideoInput {
   due: string | null;
   script: string;
   notes: string;
+  script_url: string;
+  thumbnail_url: string;
+  thumbnail_delete_url: string;
+  video_url: string;
+  task_id?: string | null;
+}
+
+export type ChatTarget = { kind: 'srv'; channel: string } | { kind: 'dm'; peer: string };
+export interface ProfilePatch {
+  full_name?: string;
+  contact?: string;
+  note?: string;
+  about?: string;
+  banner_url?: string;
+  prefs?: Prefs;
 }
 
 interface DataCtx extends Tables {
@@ -66,6 +81,8 @@ interface DataCtx extends Tables {
   me: Profile | null;
   uid: string;
   isOwner: boolean;
+  /** asal owner (personal mode mein bhi true) */
+  realOwner: boolean;
   perf: PerfIndex;
   nameOf: (id: string | null | undefined) => string;
   rolesOf: (channelId: string, userId?: string) => string[];
@@ -73,18 +90,24 @@ interface DataCtx extends Tables {
   saveChannel: (c: ChannelInput) => Promise<string>;
   deleteChannel: (id: string) => Promise<void>;
   savePerf: (channelId: string, entries: { user_id: string; role: string; pct: number }[]) => Promise<void>;
-  saveViews: (channelId: string, day: string, views: number) => Promise<void>;
-  deleteViews: (channelId: string, day: string) => Promise<void>;
-  saveVideo: (v: VideoInput) => Promise<void>;
+  saveVideo: (v: VideoInput) => Promise<string>;
   deleteVideo: (id: string) => Promise<void>;
   setStatus: (userId: string, status: Status) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
-  updateMyProfile: (p: { full_name: string; contact: string; note: string }) => Promise<void>;
+  updateMyProfile: (p: ProfilePatch) => Promise<void>;
+  setTitle: (userId: string, title: string) => Promise<void>;
+  assignTask: (a: { channel_id: string; user_id: string; role: string; title: string; start: string; due: string }) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  requestExtension: (taskId: string, minutes: number, reason: string) => Promise<void>;
+  reviewExtension: (id: string, approve: boolean) => Promise<void>;
+  editChat: (kind: 'srv' | 'dm', id: string, body: string) => Promise<void>;
+  pinChat: (kind: 'srv' | 'dm', id: string, pin: boolean) => Promise<void>;
+  forwardChat: (to: ChatTarget, m: { body: string; image_url?: string; user_id: string | null }) => Promise<void>;
+  addTrack: (title: string, url: string) => Promise<void>;
+  updateTrack: (id: string, patch: { title?: string; position?: number }) => Promise<void>;
+  deleteTrack: (id: string) => Promise<void>;
   setTaskDone: (taskId: string, done: boolean) => Promise<void>;
   reviewTask: (taskId: string, reject: boolean, reason?: string) => Promise<void>;
-  setTaskAttachments: (taskId: string, a: { script_url: string; thumbnail_url: string; thumbnail_delete_url: string }) => Promise<void>;
-  addAttachment: (a: { channel_id: string; task_id: string | null; kind: Attachment['kind']; title: string; url: string; body?: string; delete_url?: string }) => Promise<void>;
-  deleteAttachment: (id: string) => Promise<void>;
   sendMessage: (channelId: string, body: string, replyTo: string | null) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
   // v5: KHR Server
@@ -128,11 +151,12 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   const fetchTable = useCallback(async (name: TableName) => {
     let q = supabase.from(name).select('*');
     if (name === 'performance') q = q.order('rated_on', { ascending: true }).limit(5000);
-    if (name === 'channel_views') q = q.order('day', { ascending: true }).limit(5000);
     // pichle ~4 mahine ke tasks: is mahine + pichle mahine ki progress aur leaderboard ke liye kaafi
     if (name === 'tasks') q = q.gte('day', addDays(todayKey(), -125)).order('day', { ascending: true }).limit(20000);
-    // poori history (sab se nayi 10,000)
-    if (name === 'attachments') q = q.order('created_at', { ascending: false }).limit(10000);
+    // videos ki poori history (sab se nayi 10,000)
+    if (name === 'videos') q = q.order('created_at', { ascending: false }).limit(10000);
+    if (name === 'deadline_requests') q = q.order('created_at', { ascending: false }).limit(2000);
+    if (name === 'music_tracks') q = q.order('position', { ascending: true }).order('created_at', { ascending: true });
     // pichle 90 din ke messages
     if (name === 'messages') q = q.gte('created_at', new Date(Date.now() - 90 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(5000);
     if (name === 'server_messages' || name === 'direct_messages') q = q.gte('created_at', new Date(Date.now() - 90 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(8000);
@@ -294,6 +318,7 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     me,
     uid,
     isOwner,
+    realOwner: isOwner,
     perf,
     nameOf,
     rolesOf,
@@ -308,19 +333,16 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       must(await supabase.from('performance').upsert(entries.map((e) => ({ ...e, channel_id: channelId, rated_on: day }))));
       await fetchTable('performance');
     },
-    async saveViews(channelId, day, views) {
-      must(await supabase.from('channel_views').upsert({ channel_id: channelId, day, views }));
-      await fetchTable('channel_views');
-    },
-    async deleteViews(channelId, day) {
-      must(await supabase.from('channel_views').delete().eq('channel_id', channelId).eq('day', day));
-      await fetchTable('channel_views');
-    },
     async saveVideo(v) {
-      const row = { channel_id: v.channel_id, title: v.title, stage: v.stage, due: v.due || null, script: v.script, notes: v.notes };
-      if (v.id) must(await supabase.from('videos').update(row).eq('id', v.id));
-      else must(await supabase.from('videos').insert(row));
+      const row = {
+        channel_id: v.channel_id, title: v.title, stage: v.stage, due: v.due || null, script: v.script, notes: v.notes,
+        script_url: v.script_url, thumbnail_url: v.thumbnail_url, thumbnail_delete_url: v.thumbnail_delete_url, video_url: v.video_url
+      };
+      let id = v.id;
+      if (id) must(await supabase.from('videos').update(row).eq('id', id));
+      else id = (must(await supabase.from('videos').insert({ ...row, task_id: v.task_id || null }).select('id').single()) as { id: string }).id;
       await fetchTable('videos');
+      return id!;
     },
     async deleteVideo(id) {
       must(await supabase.from('videos').delete().eq('id', id));
@@ -340,28 +362,6 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     async setTaskDone(taskId, done) {
       const row = must(await supabase.rpc('set_task_done', { p_task: taskId, p_done: done })) as Task;
       setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));
-    },
-    async setTaskAttachments(taskId, a) {
-      const row = must(
-        await supabase.rpc('set_task_attachments', {
-          p_task: taskId,
-          p_script_url: a.script_url,
-          p_thumbnail_url: a.thumbnail_url,
-          p_thumbnail_delete_url: a.thumbnail_delete_url
-        })
-      ) as Task;
-      setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));
-    },
-    async addAttachment(a) {
-      // din server khud lagata hai (Pakistan ka aaj); banane wala bhi server likhta hai
-      const row = must(
-        await supabase.from('attachments').insert({ channel_id: a.channel_id, task_id: a.task_id, kind: a.kind, title: a.title, url: a.url, body: a.body || '', delete_url: a.delete_url || '' }).select('*').single()
-      ) as Attachment;
-      setT((prev) => (prev.attachments.some((x) => x.id === row.id) ? prev : { ...prev, attachments: [row, ...prev.attachments] }));
-    },
-    async deleteAttachment(id) {
-      must(await supabase.from('attachments').delete().eq('id', id));
-      setT((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.id !== id) }));
     },
     async sendMessage(channelId, body, replyTo) {
       const row = must(await supabase.from('messages').insert({ channel_id: channelId, body, reply_to: replyTo }).select('*').single()) as Message;
@@ -440,10 +440,85 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));
     },
     async updateMyProfile(p) {
+      // foran screen par (theme / language turant badle), phir server
+      setT((prev) => ({ ...prev, profiles: prev.profiles.map((x) => (x.id === uid ? { ...x, ...p } as Profile : x)) }));
       must(await supabase.from('profiles').update(p).eq('id', uid));
       await fetchTable('profiles');
+    },
+    async setTitle(userId, title) {
+      must(await supabase.from('profiles').update({ title }).eq('id', userId));
+      await fetchTable('profiles');
+    },
+    async assignTask(a) {
+      must(await supabase.rpc('assign_task', { p_channel: a.channel_id, p_user: a.user_id, p_role: a.role, p_title: a.title, p_start: a.start, p_due: a.due }));
+      await fetchTable('tasks');
+    },
+    async deleteTask(id) {
+      must(await supabase.from('tasks').delete().eq('id', id));
+      setT((prev) => ({ ...prev, tasks: prev.tasks.filter((x) => x.id !== id) }));
+    },
+    async requestExtension(taskId, minutes, reason) {
+      must(await supabase.rpc('request_extension', { p_task: taskId, p_minutes: minutes, p_reason: reason }));
+      await fetchTable('deadline_requests');
+    },
+    async reviewExtension(id, approve) {
+      must(await supabase.rpc('review_extension', { p_id: id, p_approve: approve }));
+      await Promise.all([fetchTable('deadline_requests'), fetchTable('tasks')]);
+    },
+    async editChat(kind, id, body) {
+      must(await supabase.rpc('edit_chat_message', { p_kind: kind, p_id: id, p_body: body }));
+      const name = kind === 'srv' ? 'server_messages' : 'direct_messages';
+      const now = new Date().toISOString();
+      setT((prev) => ({ ...prev, [name]: (prev[name] as { id: string }[]).map((m) => (m.id === id ? { ...m, body: body.trim(), edited_at: now } : m)) }));
+    },
+    async pinChat(kind, id, pin) {
+      must(await supabase.rpc('pin_chat_message', { p_kind: kind, p_id: id, p_pin: pin }));
+      const name = kind === 'srv' ? 'server_messages' : 'direct_messages';
+      const now = new Date().toISOString();
+      setT((prev) => ({ ...prev, [name]: (prev[name] as { id: string }[]).map((m) => (m.id === id ? { ...m, pinned_at: pin ? now : null, pinned_by: pin ? uid : null } : m)) }));
+    },
+    async forwardChat(to, m) {
+      const fwd = m.user_id || null;
+      if (to.kind === 'srv') {
+        const row = must(await supabase.from('server_messages').insert({ channel_id: to.channel, body: m.body, image_url: m.image_url || '', fwd_from: fwd }).select('*').single()) as ServerMessage;
+        setT((prev) => (prev.server_messages.some((x) => x.id === row.id) ? prev : { ...prev, server_messages: [row, ...prev.server_messages] }));
+      } else {
+        const row = must(await supabase.from('direct_messages').insert({ to_user: to.peer, body: m.body, image_url: m.image_url || '', fwd_from: fwd }).select('*').single()) as DirectMessage;
+        setT((prev) => (prev.direct_messages.some((x) => x.id === row.id) ? prev : { ...prev, direct_messages: [row, ...prev.direct_messages] }));
+      }
+    },
+    async addTrack(title, url) {
+      const pos = t.music_tracks.reduce((a, x) => Math.max(a, x.position), 0) + 1;
+      must(await supabase.from('music_tracks').insert({ title, url, position: pos }));
+      await fetchTable('music_tracks');
+    },
+    async updateTrack(id, patch) {
+      must(await supabase.from('music_tracks').update(patch).eq('id', id));
+      await fetchTable('music_tracks');
+    },
+    async deleteTrack(id) {
+      must(await supabase.from('music_tracks').delete().eq('id', id));
+      setT((prev) => ({ ...prev, music_tracks: prev.music_tracks.filter((x) => x.id !== id) }));
     }
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Owner ka "Personal mode": andar sab kuch member ki tarah (sirf apna kaam), notifications waise hi aate rahein */
+const RealCtx = createContext<DataCtx | null>(null);
+export function PersonalScope({ on, children }: { on: boolean; children: ReactNode }) {
+  const d = useData();
+  const v = useMemo(() => (on ? { ...d, isOwner: false } : d), [d, on]);
+  return (
+    <RealCtx.Provider value={d}>
+      <Ctx.Provider value={v}>{children}</Ctx.Provider>
+    </RealCtx.Provider>
+  );
+}
+/** Personal mode ke andar bhi asal owner wali taaqat (Server, company records) */
+export function RealScope({ children }: { children: ReactNode }) {
+  const real = useContext(RealCtx);
+  if (!real) return <>{children}</>;
+  return <Ctx.Provider value={real}>{children}</Ctx.Provider>;
 }

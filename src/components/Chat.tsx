@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { VideoCard, videoLinksIn } from './VideoUpload';
 import { UserAvatar } from './Messaging';
 import { useData } from '../lib/data';
 import type { Message } from '../lib/types';
-import { errorText, fmtClock } from '../lib/utils';
-import { dayLabel } from './Attachments';
+import { dayLabel, errorText, fmtClock } from '../lib/utils';
+
 import { ConfirmButton, Sheet, useToast } from './ui';
 
 /* ---------- "kitne naye message" (har device par alag yaad rehta hai) ---------- */
@@ -131,6 +132,7 @@ export function ChatSheet({ channelId, onClose }: { channelId: string; onClose: 
             </div>
           )}
           <div className="msg-body"><Linkify text={m.body} /></div>
+          {videoLinksIn(m.body).map((u) => <VideoCard key={u} url={u} compact />)}
           <div className="msg-meta">
             <span>{fmtClock(m.created_at)}</span>
             {canWrite && (

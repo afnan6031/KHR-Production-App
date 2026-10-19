@@ -1071,3 +1071,377 @@ end $$;
 -- insert into khr_private.push_config (id, function_url, secret)
 -- values (1, 'https://APNA-PROJECT.supabase.co/functions/v1/khr-push', 'APNA-LAMBA-SECRET')
 -- on conflict (id) do update set function_url = excluded.function_url, secret = excluded.secret;
+
+-- ============================================================
+-- v9: PROFILE (about, title, banner, theme/language), MUSIC, VIDEOS (script + thumbnail),
+--     KAI DIN KI DEADLINE, CUSTOM KAAM, DEADLINE EXTENSION, CHAT EDIT / PIN / FORWARD
+--     Saari tasveerein ImgBB par; yahan sirf link.
+-- ============================================================
+
+-- ---------- Profile ----------
+alter table public.profiles add column if not exists about text not null default '';
+alter table public.profiles add column if not exists title text not null default '';        -- owner deta hai: "Best Editor (Sep)"
+alter table public.profiles add column if not exists banner_url text not null default '';
+alter table public.profiles add column if not exists prefs jsonb not null default '{}'::jsonb;  -- theme / background / language
+alter table public.profiles drop constraint if exists profiles_v9_check;
+alter table public.profiles add constraint profiles_v9_check check (
+  char_length(about) <= 500 and char_length(title) <= 80
+  and (banner_url = '' or banner_url ~* '^https://') and pg_column_size(prefs) <= 8000
+);
+
+create or replace function public.protect_profile() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then
+    new.status := old.status;
+    new.is_owner := old.is_owner;
+    new.decided_at := old.decided_at;
+    new.server_role := old.server_role;
+    new.title := old.title;            -- title sirf owner de sakta hai
+  elsif new.id = auth.uid() then
+    new.is_owner := true;
+    new.status := 'approved';
+  end if;
+  if new.status is distinct from old.status then new.decided_at := now(); end if;
+  return new;
+end $$;
+
+-- ---------- Music playlist (har user ki apni) ----------
+create table if not exists public.music_tracks (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  title       text not null default '' check (char_length(title) <= 200),
+  url         text not null check (url ~* '^https?://' and char_length(url) <= 2000),
+  position    int not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists music_user_idx on public.music_tracks(user_id, position);
+alter table public.music_tracks enable row level security;
+drop policy if exists music_own on public.music_tracks;
+create policy music_own on public.music_tracks for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ---------- Videos: ab script ka link + thumbnail bhi video ke andar ----------
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'videos' and column_name = 'day') then
+    alter table public.videos add column day date;
+    update public.videos set day = (created_at at time zone public.app_tz())::date;
+    alter table public.videos alter column day set default public.app_today();
+    alter table public.videos alter column day set not null;
+  end if;
+end $$;
+alter table public.videos add column if not exists script_url text not null default '';
+alter table public.videos add column if not exists thumbnail_url text not null default '';
+alter table public.videos add column if not exists thumbnail_delete_url text not null default '';
+alter table public.videos add column if not exists task_id uuid references public.tasks(id) on delete set null;
+alter table public.videos add column if not exists from_attachment uuid unique;
+alter table public.videos drop constraint if exists videos_links_check;
+alter table public.videos add constraint videos_links_check check (
+  (script_url = '' or script_url ~* '^https?://') and (thumbnail_url = '' or thumbnail_url ~* '^https://')
+  and char_length(script_url) <= 2000 and char_length(thumbnail_url) <= 2000 and char_length(script) <= 100000
+);
+create index if not exists videos_day_idx on public.videos(channel_id, day);
+
+create or replace function public.stamp_video() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.title := btrim(new.title);
+  -- database ke andar ka kaam (migration) jaisa hai waisa
+  if auth.uid() is null or current_setting('khr.migrating', true) = '1' then return new; end if;
+  new.updated_by := auth.uid();
+  new.updated_at := now();
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    new.created_at := now();
+    new.day := public.app_today();
+  else
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+    new.channel_id := old.channel_id;
+    new.day := old.day;
+    new.from_attachment := old.from_attachment;
+  end if;
+  if new.task_id is not null and not exists (select 1 from public.tasks t where t.id = new.task_id and t.channel_id = new.channel_id) then
+    new.task_id := null;
+  end if;
+  return new;
+end $$;
+
+-- purani scripts / thumbnails (attachments) videos mein (sirf ek dafa, kuch delete nahi hota)
+do $$
+begin
+  perform set_config('khr.migrating', '1', true);
+  insert into public.videos (channel_id, title, stage, script, script_url, thumbnail_url, thumbnail_delete_url, day, task_id, from_attachment, created_by, updated_by, created_at, updated_at)
+  select a.channel_id, a.title,
+         case when a.kind = 'script' then 'script' else 'design' end,
+         case when a.kind = 'script' then a.body else '' end,
+         case when a.kind = 'script' then a.url else '' end,
+         case when a.kind = 'thumbnail' then a.url else '' end,
+         case when a.kind = 'thumbnail' then a.delete_url else '' end,
+         a.day, a.task_id, a.id, a.created_by, a.created_by, a.created_at, a.created_at
+  from public.attachments a
+  where not exists (select 1 from public.videos v where v.from_attachment = a.id)
+    and (a.kind <> 'thumbnail' or a.url ~* '^https://');
+  perform set_config('khr.migrating', '', true);
+end $$;
+
+-- nayi video / thumbnail lagne par push notification (purane attachments wala band)
+drop trigger if exists push_attachment on public.attachments;
+create or replace function public.khr_ev_video() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  if auth.uid() is null or current_setting('khr.migrating', true) = '1' then return null; end if;
+  select name into v_name from public.channels where id = new.channel_id;
+  if tg_op = 'INSERT' then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), new.created_by,
+      coalesce(v_name, 'Channel') || ': nayi video 🎬', new.title || ' · ' || public.khr_name(new.created_by),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  elsif new.thumbnail_url <> '' and new.thumbnail_url is distinct from old.thumbnail_url then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), auth.uid(),
+      coalesce(v_name, 'Channel') || ': thumbnail lag gaya 🖼', new.title || ' · ' || public.khr_name(auth.uid()),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  elsif (new.script_url <> '' and new.script_url is distinct from old.script_url) then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), auth.uid(),
+      coalesce(v_name, 'Channel') || ': script lag gayi 📄', new.title || ' · ' || public.khr_name(auth.uid()),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  end if;
+  return null;
+end $$;
+drop trigger if exists push_video on public.videos;
+create trigger push_video after insert or update of thumbnail_url, script_url on public.videos for each row execute function public.khr_ev_video();
+
+-- ---------- Tasks: custom kaam, kai din ki deadline, extension ----------
+alter table public.tasks add column if not exists kind text not null default 'daily';
+alter table public.tasks add column if not exists title text not null default '';
+alter table public.tasks add column if not exists extended_minutes int not null default 0;
+alter table public.tasks add column if not exists assigned_by uuid references public.profiles(id) on delete set null;
+alter table public.tasks drop constraint if exists tasks_kind_check;
+alter table public.tasks add constraint tasks_kind_check check (kind in ('daily', 'custom') and char_length(title) <= 200);
+-- roz wale tasks har din ek; custom kaam jitne chahein
+alter table public.tasks drop constraint if exists tasks_channel_id_user_id_role_day_key;
+create unique index if not exists tasks_daily_uniq on public.tasks(channel_id, user_id, role, day) where kind = 'daily';
+
+-- role ka waqt: "days" = deadline kitne din baad (0 = usi din). Misal {"Editor": {"start":"10:00","end":"18:00","days":3}}
+create or replace function public.role_window(p_role_times jsonb, p_from time, p_to time, p_role text, d date,
+  out start_at timestamptz, out due_at timestamptz)
+language plpgsql stable as $$
+declare
+  tz text := public.app_tz();
+  st time := coalesce(nullif(p_role_times -> p_role ->> 'start', '')::time, p_from, time '00:00');
+  en time := coalesce(nullif(p_role_times -> p_role ->> 'end', '')::time, p_to, time '23:59:59');
+  extra int := greatest(0, least(30, coalesce(nullif(p_role_times -> p_role ->> 'days', '')::int, 0)));
+begin
+  start_at := ((d + st)::timestamp at time zone tz);
+  due_at := (((d + (case when en <= st and extra = 0 then 1 else 0 end) + extra) + en)::timestamp at time zone tz);
+end $$;
+
+create or replace function public.ensure_tasks_for(d date) returns void
+language plpgsql security definer set search_path = public as $$
+declare tz text := public.app_tz();
+begin
+  insert into public.tasks (channel_id, user_id, role, day, start_at, due_at)
+  select c.id, m.user_id, r.role, d, w.start_at, w.due_at
+  from public.channels c
+  join public.channel_members m on m.channel_id = c.id
+  join public.profiles p on p.id = m.user_id and (p.status = 'approved' or p.is_owner)
+  cross join lateral unnest(m.roles) as r(role)
+  cross join lateral public.role_window(c.role_times, c.time_from, c.time_to, r.role, d) w
+  where (c.schedule_type = 'daily' or extract(dow from d)::smallint = any(c.work_days))
+    and d >= (c.created_at at time zone tz)::date
+    and d >= (m.added_at at time zone tz)::date
+  on conflict (channel_id, user_id, role, day) where kind = 'daily' do nothing;
+
+  if d = public.app_today() then
+    delete from public.tasks t
+    where t.day = d and t.kind = 'daily' and t.status = 'pending' and not exists (
+      select 1 from public.channels c
+      join public.channel_members m on m.channel_id = c.id and m.user_id = t.user_id
+      join public.profiles p on p.id = m.user_id and (p.status = 'approved' or p.is_owner)
+      where c.id = t.channel_id and t.role = any(m.roles)
+        and (c.schedule_type = 'daily' or extract(dow from d)::smallint = any(c.work_days))
+    );
+    -- aaj role ka waqt badla ho to pending tasks ka start/deadline update (manzoor shuda extension saath)
+    update public.tasks t
+       set start_at = (public.role_window(c.role_times, c.time_from, c.time_to, t.role, d)).start_at,
+           due_at   = (public.role_window(c.role_times, c.time_from, c.time_to, t.role, d)).due_at + make_interval(mins => t.extended_minutes)
+      from public.channels c
+     where c.id = t.channel_id and t.day = d and t.kind = 'daily' and t.status = 'pending';
+  end if;
+end $$;
+
+-- Owner kisi ko khaas kaam de: kis date/waqt se kis date/waqt tak (misal 3 din)
+create or replace function public.assign_task(p_channel uuid, p_user uuid, p_role text, p_title text, p_start timestamptz, p_due timestamptz)
+returns public.tasks language plpgsql security definer set search_path = public as $$
+declare t public.tasks;
+begin
+  if not public.is_owner() then raise exception 'Sirf owner kaam assign kar sakta hai.'; end if;
+  if p_due <= p_start then raise exception 'Deadline start ke baad honi chahiye.'; end if;
+  if p_due - p_start > interval '60 days' then raise exception 'Deadline 60 din se zyada nahi ho sakti.'; end if;
+  if char_length(btrim(coalesce(p_title, ''))) < 2 then raise exception 'Kaam ka title likhein.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user and (status = 'approved' or is_owner)) then raise exception 'Ye member approved nahi.'; end if;
+  if not exists (select 1 from public.channels where id = p_channel) then raise exception 'Channel nahi mila.'; end if;
+  insert into public.tasks (channel_id, user_id, role, day, start_at, due_at, kind, title, assigned_by)
+  values (p_channel, p_user, left(btrim(p_role), 60), (p_start at time zone public.app_tz())::date, p_start, p_due, 'custom', left(btrim(p_title), 200), auth.uid())
+  returning * into t;
+  perform public.khr_notify(array[p_user], auth.uid(), '📌 Naya kaam assign hua',
+    t.title || ' · ' || coalesce((select name from public.channels where id = p_channel), '') || ' · deadline ' || to_char(p_due at time zone public.app_tz(), 'DD Mon HH12:MI AM'),
+    jsonb_build_object('type', 'assign', 'channel', p_channel));
+  return t;
+end $$;
+grant execute on function public.assign_task(uuid, uuid, text, text, timestamptz, timestamptz) to authenticated;
+
+-- ---------- Deadline extension ----------
+create table if not exists public.deadline_requests (
+  id          uuid primary key default gen_random_uuid(),
+  task_id     uuid not null references public.tasks(id) on delete cascade,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  minutes     int not null check (minutes between 5 and 10080),
+  reason      text not null check (char_length(btrim(reason)) between 2 and 300),
+  status      text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at  timestamptz not null default now(),
+  decided_at  timestamptz,
+  decided_by  uuid references public.profiles(id) on delete set null
+);
+create unique index if not exists deadline_req_one_pending on public.deadline_requests(task_id) where status = 'pending';
+alter table public.deadline_requests enable row level security;
+drop policy if exists dreq_select on public.deadline_requests;
+create policy dreq_select on public.deadline_requests for select to authenticated using (user_id = auth.uid() or public.is_owner());
+
+create or replace function public.request_extension(p_task uuid, p_minutes int, p_reason text)
+returns public.deadline_requests language plpgsql security definer set search_path = public as $$
+declare t public.tasks; r public.deadline_requests;
+begin
+  select * into t from public.tasks where id = p_task;
+  if t.id is null or t.user_id <> auth.uid() then raise exception 'Sirf apne task ke liye extension maang sakte hain.'; end if;
+  if t.status <> 'pending' then raise exception 'Ye task pending nahi.'; end if;
+  if t.due_at - now() > interval '30 minutes' then raise exception 'Extension deadline se 30 minute pehle ya deadline guzarne ke baad maang sakte hain.'; end if;
+  if t.due_at < now() - interval '7 days' then raise exception 'Ye task bahut purana hai.'; end if;
+  if exists (select 1 from public.deadline_requests where task_id = p_task and status = 'pending') then raise exception 'Is task ki request pehle se owner ke paas hai.'; end if;
+  insert into public.deadline_requests (task_id, user_id, minutes, reason) values (p_task, auth.uid(), p_minutes, btrim(p_reason)) returning * into r;
+  perform public.khr_notify((select coalesce(array_agg(id), '{}') from public.profiles where is_owner), auth.uid(), '⏳ Deadline extension request',
+    public.khr_name(auth.uid()) || ' · ' || coalesce((select name from public.channels where id = t.channel_id), '') || ' · +' || p_minutes || ' min: ' || btrim(p_reason),
+    jsonb_build_object('type', 'task', 'channel', t.channel_id));
+  return r;
+end $$;
+
+create or replace function public.review_extension(p_id uuid, p_approve boolean)
+returns public.deadline_requests language plpgsql security definer set search_path = public as $$
+declare r public.deadline_requests; t public.tasks; base timestamptz; add_min int;
+begin
+  if not public.is_owner() then raise exception 'Sirf owner extension approve kar sakta hai.'; end if;
+  select * into r from public.deadline_requests where id = p_id for update;
+  if r.id is null or r.status <> 'pending' then raise exception 'Ye request ab pending nahi.'; end if;
+  select * into t from public.tasks where id = r.task_id for update;
+  if p_approve and t.status <> 'rejected' then
+    -- deadline guzar chuki ho to waqt request ke waqt se gina jata hai
+    base := greatest(t.due_at, r.created_at);
+    add_min := r.minutes + greatest(0, ceil(extract(epoch from (base - t.due_at)) / 60.0))::int;
+    update public.tasks
+       set due_at = due_at + make_interval(mins => add_min),
+           extended_minutes = extended_minutes + add_min,
+           push_sent = push_sent & 1
+     where id = t.id;
+  end if;
+  update public.deadline_requests set status = case when p_approve then 'approved' else 'rejected' end, decided_at = now(), decided_by = auth.uid()
+   where id = p_id returning * into r;
+  perform public.khr_notify(array[r.user_id], auth.uid(),
+    case when p_approve then '✅ Deadline barh gayi' else '✕ Extension reject' end,
+    coalesce((select name from public.channels where id = t.channel_id), '') || ' · ' || t.role || case when p_approve then ' · +' || r.minutes || ' min' else '' end,
+    jsonb_build_object('type', 'task', 'channel', t.channel_id));
+  return r;
+end $$;
+grant execute on function public.request_extension(uuid, int, text) to authenticated;
+grant execute on function public.review_extension(uuid, boolean) to authenticated;
+
+-- ---------- Chat: edit, pin, forward ----------
+alter table public.server_messages add column if not exists edited_at timestamptz;
+alter table public.server_messages add column if not exists pinned_at timestamptz;
+alter table public.server_messages add column if not exists pinned_by uuid references public.profiles(id) on delete set null;
+alter table public.server_messages add column if not exists fwd_from uuid references public.profiles(id) on delete set null;
+alter table public.direct_messages add column if not exists edited_at timestamptz;
+alter table public.direct_messages add column if not exists pinned_at timestamptz;
+alter table public.direct_messages add column if not exists pinned_by uuid references public.profiles(id) on delete set null;
+alter table public.direct_messages add column if not exists fwd_from uuid references public.profiles(id) on delete set null;
+
+create or replace function public.edit_chat_message(p_kind text, p_id uuid, p_body text) returns void
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if char_length(coalesce(p_body, '')) > 4000 then raise exception 'Message bahut lamba hai.'; end if;
+  if p_kind = 'srv' then
+    update public.server_messages set body = btrim(p_body), edited_at = now()
+     where id = p_id and user_id = auth.uid() and (btrim(p_body) <> '' or image_url <> '');
+  else
+    update public.direct_messages set body = btrim(p_body), edited_at = now()
+     where id = p_id and from_user = auth.uid() and (btrim(p_body) <> '' or image_url <> '');
+  end if;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'Sirf apna message edit kar sakte hain.'; end if;
+end $$;
+
+create or replace function public.pin_chat_message(p_kind text, p_id uuid, p_pin boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if p_kind = 'srv' then
+    update public.server_messages m set pinned_at = case when p_pin then now() end, pinned_by = case when p_pin then auth.uid() end
+     where m.id = p_id and public.can_see_server_channel(m.channel_id)
+       and (public.is_owner() or not exists (select 1 from public.server_channels c where c.id = m.channel_id and c.read_only));
+  else
+    update public.direct_messages set pinned_at = case when p_pin then now() end, pinned_by = case when p_pin then auth.uid() end
+     where id = p_id and (from_user = auth.uid() or to_user = auth.uid());
+  end if;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'Ye message pin nahi ho sakta.'; end if;
+end $$;
+grant execute on function public.edit_chat_message(text, uuid, text) to authenticated;
+grant execute on function public.pin_chat_message(text, uuid, boolean) to authenticated;
+
+-- ---------- Video file (Gofile.io / Drive / YouTube link) ----------
+alter table public.videos add column if not exists video_url text not null default '';
+alter table public.videos drop constraint if exists videos_video_url_check;
+alter table public.videos add constraint videos_video_url_check check (video_url = '' or (video_url ~* '^https://' and char_length(video_url) <= 2000));
+-- banane wala apni video khud delete kar sake (owner sab)
+drop policy if exists videos_delete on public.videos;
+create policy videos_delete on public.videos for delete to authenticated
+  using (public.is_owner() or (created_by = auth.uid() and public.is_member(channel_id)));
+
+create or replace function public.khr_ev_video() returns trigger language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  if auth.uid() is null or current_setting('khr.migrating', true) = '1' then return null; end if;
+  select name into v_name from public.channels where id = new.channel_id;
+  if tg_op = 'INSERT' then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), new.created_by,
+      coalesce(v_name, 'Channel') || ': nayi video 🎬', new.title || ' · ' || public.khr_name(new.created_by),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  elsif new.video_url <> '' and new.video_url is distinct from old.video_url then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), auth.uid(),
+      coalesce(v_name, 'Channel') || ': video upload ho gayi 🎬', new.title || ' · ' || public.khr_name(auth.uid()),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  elsif new.thumbnail_url <> '' and new.thumbnail_url is distinct from old.thumbnail_url then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), auth.uid(),
+      coalesce(v_name, 'Channel') || ': thumbnail lag gaya 🖼', new.title || ' · ' || public.khr_name(auth.uid()),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  elsif (new.script_url <> '' and new.script_url is distinct from old.script_url) then
+    perform public.khr_notify(public.khr_channel_people(new.channel_id), auth.uid(),
+      coalesce(v_name, 'Channel') || ': script lag gayi 📄', new.title || ' · ' || public.khr_name(auth.uid()),
+      jsonb_build_object('type', 'file', 'channel', new.channel_id));
+  end if;
+  return null;
+end $$;
+drop trigger if exists push_video on public.videos;
+create trigger push_video after insert or update of thumbnail_url, script_url, video_url on public.videos for each row execute function public.khr_ev_video();
+
+-- realtime: naye tables
+do $$
+declare t text;
+begin
+  foreach t in array array['deadline_requests', 'music_tracks'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null; when others then null;
+    end;
+  end loop;
+end $$;

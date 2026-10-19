@@ -426,6 +426,28 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v9: Personal mode, videos (Gofile), profile, music, English, deadline extension, chat tools
+
+**Update:** Supabase **SQL Editor** mein nayi `supabase/schema.sql` poori **Run** karein (purana data safe rehta hai; purani scripts / thumbnails khud videos mein aa jati hain). Phir files GitHub par upload karein.
+
+- **Owner / Personal mode:** header mein 👑 Owner / 👤 Personal. Personal mein sirf aap ka apna kaam (jaise ek member), lekin team ke saare notifications aate rehte hain. Owner mein poori team ki management.
+- **Ek channel = ek card:** member ke "Mere cards" mein har channel ka ek hi card, us mein us ke saare roles likhe hote hain. "Aaj" mein sirf un channels ke cards jin ki aaj baari hai.
+- **Dropdowns:** Pending (har channel alag), Deadline expired, Completed (band, tap kar ke kholein), videos ki history (har din ek dropdown). History mein **date chunein** aur title se dhoondein.
+- **Videos (scripts + thumbnails ki jagah):** card ke andar **Videos** button. "+ Nai video" mein title, script ka link (ya app mein likhi script), thumbnail (ImgBB), aur **video file**. Koi bhi baad mein **Edit** kar ke cheez jor sakta hai (misal: Script Writer script lagaye, Graphic Designer baad mein thumbnail). History mein video par tap karein to us ki script, thumbnail aur video khulti hai.
+- **Video upload (Gofile.io):** phone / PC se MP4, MOV, MKV, WEBM (2 GB tak). App mein live progress bar: %, MB / MB aur **Cancel**. Ya Google Drive / Gofile / YouTube ka link paste karein. Server chat aur DM mein bhi 🎬 button se video bhej sakte hain. Video Supabase par nahi jati, sirf link save hota hai.
+  - Owner ka Gofile token app mein laga hai, is liye saari videos owner ke Gofile account mein jati hain. Badalna ho to GitHub secret `VITE_GOFILE_TOKEN` add karein.
+- **Views hata diye:** channels se daily views ka hissa nikal diya.
+- **Deadline kai din ki:** channel ke role timeline mein "Deadline kis din" (usi din / +1 / +2 / +3 … din). Owner **"+ Kaam assign karein"** se kisi ko khaas kaam bhi de sakta hai: start date + waqt se deadline date + waqt tak.
+- **Deadline extension:** deadline mein 30 minute ya kam rehne par (ya guzar jane ke baad) member **"⏳ Waqt barhayein"** dabaye, minutes aur wajah likhe. Owner ke "Aaj" par request aati hai: Approve = deadline barh jati hai, Reject = wahi rehti hai.
+- **Server chat:** har message par Reply, Copy, Edit (apna), Forward (kisi channel ya DM mein), Pin 📌, Delete. Emoji button. Discord jaisa likhna: `# ` bara heading, `## ` / `### ` chhota heading, `**bold**`, `*italic*`, `~~kata~~`, `> quote`.
+- **Profile:** DP lagate waqt **square crop** (zoom + khiskayein). Profile ke peeche **banner** (ImgBB). **About** khud likhein. Owner kisi ko **title** de sakta hai ("Best Editor (September)") — naam ke neeche 🏆 ke saath nazar aata hai. Profile card mein roles ki lambi list ki jagah sirf channels ke naam.
+- **Apna theme:** Profile → 🎨 Theme aur background: ek rang, gradient (do rang + angle), ya apni tasveer (ImgBB) background mein; buttons ka khaas rang bhi.
+- **Zabaan:** Profile → Zabaan / Language: Roman Urdu ya Full English. (Team ke likhe messages waise hi rehte hain. Phone par aane wale push notifications abhi Roman Urdu mein hain.)
+- **Music:** header ka 🎵 button ya Profile → Music playlist. YouTube, YouTube Music, SoundCloud, Spotify, Vimeo ya mp3 ka link paste karein, playlist banayein, aur app ke andar hi chalayein (agla / pichla). Playlist sirf aap ko nazar aati hai.
+- **Scrollbar** nazar nahi aata (scroll phir bhi chalta hai). Company chat wala notice DM se hata diya.
+
+---
+
 ## Pehle se setup kiya hua hai? Update kaise karein
 
 1. **Supabase → SQL Editor → New query** kholein. Nayi `supabase/schema.sql` poori paste kar ke **Run** karein.

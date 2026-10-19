@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
-import { STAGES, type Channel, type Stage, type Video } from '../lib/types';
-import { addDays, channelTimeline, errorText, fmtDate, fmtTime, toMin, fmtFull, inPeriod, periodOf, perfClass, roleClass, scheduleText, scoreOf, stageLabel, timeLine, todayKey, viewsFor, type PeriodKind } from '../lib/utils';
+import { STAGES, type Channel, type Stage } from '../lib/types';
+import { channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
 import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
-import { Bar, Delta, Logo, Seg, Week, useNow, useToast } from '../components/ui';
+import { Bar, DateFilter, Fold, Logo, Seg, Week, useNow } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
-import { ChannelTools } from '../components/Attachments';
+import { ChannelTools, VideoList, VideosSheet } from '../components/Videos';
+import { AssignTaskSheet } from '../components/Assign';
+import { boardTasks } from './Home';
 
 /* ================= Pending / Rejected ================= */
 export function GateScreen({ onSignOut }: { onSignOut: () => void }) {
@@ -52,12 +54,12 @@ export function MyCardsScreen({ openChannel }: { openChannel: (id: string) => vo
     <>
       <div className="hello">
         <h1>Mere cards</h1>
-        <p>Har channel aur har role ka alag card.</p>
+        <p>Har channel ka ek card — us mein aap ke saare roles.</p>
       </div>
       {cards.length ? (
         <div className="cards">
-          {cards.map(({ ch, role }) => (
-            <MemberCard key={ch.id + role} ch={ch} role={role} onOpen={() => openChannel(ch.id)} />
+          {cards.map(({ ch, roles }) => (
+            <MemberCard key={ch.id} ch={ch} roles={roles} onOpen={() => openChannel(ch.id)} />
           ))}
         </div>
       ) : (
@@ -103,57 +105,26 @@ export function ChannelsScreen({ openChannel, newChannel }: { openChannel: (id: 
 }
 
 /* ================= Channel detail ================= */
-function Spark({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
-  const W = 300, H = 70, pad = 6;
-  const mx = Math.max(...values), mn = Math.min(...values), rg = mx - mn || 1;
-  const pts = values.map((v, i) => [pad + (i * (W - 2 * pad)) / (values.length - 1), H - pad - ((v - mn) / rg) * (H - 2 * pad)]);
-  const line = pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-  const last = pts[pts.length - 1];
-  return (
-    <svg className="spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Views trend">
-      <polygon points={`${pad},${H - pad} ${line} ${last[0].toFixed(1)},${H - pad}`} fill="var(--accent-soft)" />
-      <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-      <circle cx={last[0]} cy={last[1]} r="3.5" fill="var(--accent)" />
-    </svg>
-  );
-}
-
-export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openProgress }: { channel: Channel; onBack: () => void; onEdit: () => void; onPerf: () => void; onVideo: (v: Video | null) => void; openProgress: (uid: string) => void }) {
+export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }: { channel: Channel; onBack: () => void; onEdit: () => void; onPerf: () => void; openProgress: (uid: string) => void }) {
   const d = useData();
-  const toast = useToast();
   const now = useNow();
   const [pk, setPk] = useState<PeriodKind>('week');
   const period = periodOf(pk);
   const chTasks = d.tasks.filter((t) => t.channel_id === channel.id);
-  const todayTasks = chTasks.filter((t) => t.day === todayKey() || (t.status === 'pending' && t.day < todayKey() && t.day >= addDays(todayKey(), -7)));
+  const todayTasks = boardTasks(chTasks, todayKey());
   const [stage, setStage] = useState<Stage | 'all'>('all');
-  const [vDate, setVDate] = useState(todayKey());
-  const [vNum, setVNum] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [vday, setVday] = useState('');
+  const [vq, setVq] = useState('');
+  const [vOpen, setVOpen] = useState<{ focus?: string; create?: boolean } | null>(null);
+  const [assign, setAssign] = useState(false);
   const mine = d.rolesOf(channel.id);
-  const vi = viewsFor(d.channel_views, channel.id);
   const members = d.channel_members.filter((m) => m.channel_id === channel.id && m.roles.length);
-  const vids = d.videos.filter((v) => v.channel_id === channel.id).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const vids = d.videos.filter((v) => v.channel_id === channel.id);
   const counts: Record<string, number> = {};
   vids.forEach((v) => (counts[v.stage] = (counts[v.stage] || 0) + 1));
-  const shown = stage === 'all' ? vids : vids.filter((v) => v.stage === stage);
-  const canWork = d.isOwner || mine.length > 0;
-
-  async function saveViews() {
-    const n = Number(vNum);
-    if (!vDate || vNum === '' || isNaN(n) || n < 0) return toast('Date aur views dono likhein');
-    setBusy(true);
-    try {
-      await d.saveViews(channel.id, vDate, Math.round(n));
-      setVNum('');
-      toast(fmtDate(vDate) + ' ke views save ho gaye');
-    } catch (e) {
-      toast(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const ql = vq.trim().toLowerCase();
+  const shown = vids.filter((v) => (stage === 'all' || v.stage === stage) && (!vday || v.day === vday) && (!ql || v.title.toLowerCase().includes(ql)));
+  const canWork = d.isOwner || d.realOwner || mine.length > 0;
 
   return (
     <>
@@ -178,31 +149,61 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
             {scheduleText(channel)} · {timeLine(channel)}
           </span>
         </div>
-        <div className="panel tools-panel">
-          <ChannelTools channelId={channel.id} />
-        </div>
         {d.isOwner && (
           <div className="row">
-            <button className="btn sm" onClick={onEdit}>
-              Channel edit karein
-            </button>
-            <button className="btn sm" onClick={onPerf}>
-              Performance dein
-            </button>
+            <button className="btn sm" onClick={onEdit}>Channel edit karein</button>
+            <button className="btn sm" onClick={onPerf}>Performance dein</button>
+            <button className="btn sm primary" onClick={() => setAssign(true)}>+ Kaam assign karein</button>
           </div>
         )}
       </div>
 
-      {members.length > 0 && (
-        <section className="panel">
-          <div className="sec-head wrap">
-            <h2>Roz ki timeline</h2>
-            {d.isOwner && (
-              <button className="btn sm" onClick={onEdit}>
-                Waqt badlein
-              </button>
-            )}
+      {/* v9: Videos sab se upar — script link + thumbnail ek hi jagah */}
+      <section className="panel vids-panel">
+        <div className="sec-head wrap">
+          <h2>🎬 Videos</h2>
+          {canWork && (
+            <button className="btn primary sm" onClick={() => setVOpen({ create: true })}>
+              + Nai video
+            </button>
+          )}
+        </div>
+        <div className="chips scroll">
+          <button className={'chip ' + (stage === 'all' ? 'on' : '')} onClick={() => setStage('all')}>
+            Sab<span className="c">{vids.length}</span>
+          </button>
+          {STAGES.map((s) => (
+            <button key={s.key} className={'chip ' + (stage === s.key ? 'on' : '')} onClick={() => setStage(s.key)}>
+              {s.label}
+              <span className="c">{counts[s.key] || 0}</span>
+            </button>
+          ))}
+        </div>
+        <div className="hist-filters">
+          <DateFilter value={vday} onChange={setVday} label="Kis din ki" />
+          <input type="search" value={vq} onChange={(e) => setVq(e.target.value)} placeholder="Title dhoondein…" aria-label="Video dhoondein" />
+        </div>
+        {shown.length ? (
+          <VideoList videos={shown} onOpen={(v) => setVOpen({ focus: v.id })} foldPrefix={'cv-' + channel.id} openDays={vday ? 1 : 2} />
+        ) : (
+          <div className="empty">
+            <b>{vids.length ? 'Is filter mein koi video nahi' : 'Abhi koi video nahi'}</b>
+            {canWork && !vids.length && 'Script Writer "+ Nai video" se title aur script ka link lagaye; baad mein Graphic Designer usi video mein thumbnail laga de.'}
           </div>
+        )}
+        <ChannelTools channelId={channel.id} showToday={false} />
+      </section>
+
+      <section className="sec">
+        <div className="sec-head">
+          <h2>Aaj ke tasks</h2>
+          <span className="eyebrow">{scheduleText(channel)}</span>
+        </div>
+        <TaskBoard tasks={todayTasks} now={now} showName groupByChannel={false} foldId={'ch-' + channel.id} emptyAll={members.length ? 'Aaj is channel ka kaam ka din nahi.' : 'Is channel mein abhi team add nahi.'} />
+      </section>
+
+      {members.length > 0 && (
+        <Fold id={'tl-' + channel.id} className="panel" title={<h2>Roz ki timeline</h2>} defaultOpen extra={d.isOwner ? <button className="btn sm" onClick={onEdit}>Waqt badlein</button> : undefined}>
           <div className="tl">
             <div className="tl-scale" aria-hidden="true">
               {[0, 6, 12, 18, 24].map((h) => (
@@ -212,6 +213,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
             {channelTimeline(channel, [...new Set(members.flatMap((m) => m.roles))]).map((r) => {
               const a = toMin(r.start), b0 = toMin(r.end), b = b0 <= a ? b0 + 1440 : b0;
               const who = members.filter((m) => m.roles.includes(r.role)).map((m) => d.nameOf(m.user_id)).join(', ');
+              const extra = roleTime(channel, r.role).days || 0;
               return (
                 <div className="tl-row" key={r.role}>
                   <div className="tl-label">
@@ -223,91 +225,16 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
                     {b > 1440 && <i className={roleClass(r.role)} style={{ left: 0, width: (b - 1440) / 14.4 + '%' }} />}
                   </div>
                   <span className="tl-time num">
-                    {fmtTime(r.start)} – {fmtTime(r.end)}{b0 <= a ? ' +1' : ''}
+                    {fmtTime(r.start)} – {fmtTime(r.end)}{extra ? ` +${extra} din` : b0 <= a ? ' +1' : ''}
                   </span>
                 </div>
               );
             })}
           </div>
-        </section>
+        </Fold>
       )}
 
-      <section className="sec">
-        <div className="sec-head">
-          <h2>Aaj ke tasks</h2>
-          <span className="eyebrow">{scheduleText(channel)}</span>
-        </div>
-        <TaskBoard tasks={todayTasks} now={now} showName groupByChannel={false} emptyAll={members.length ? 'Aaj is channel ka kaam ka din nahi.' : 'Is channel mein abhi team add nahi.'} />
-      </section>
-
-      <section className="panel">
-        <div className="sec-head">
-          <h2>Daily views</h2>
-          <span className="eyebrow">{vi ? 'Last: ' + fmtDate(vi.last.day) : ''}</span>
-        </div>
-        {vi ? (
-          <>
-            <div className="row baseline">
-              <span className="num big">{fmtFull(Number(vi.last.views))}</span>
-              {vi.delta != null && (
-                <span>
-                  <Delta d={vi.delta} /> pichli entry se
-                </span>
-              )}
-            </div>
-            <Spark values={vi.rows.slice(-14).map((r) => Number(r.views))} />
-            <table className="vtable">
-              <tbody>
-                {vi.rows
-                  .slice(-7)
-                  .reverse()
-                  .map((r) => (
-                    <tr key={r.day}>
-                      <td>{fmtDate(r.day)}</td>
-                      <td className="num">{fmtFull(Number(r.views))}</td>
-                      {d.isOwner && (
-                        <td className="w1">
-                          <button className="linkbtn" onClick={() => d.deleteViews(channel.id, r.day).catch((e) => toast(errorText(e)))} aria-label={'Delete ' + r.day}>
-                            ✕
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </>
-        ) : (
-          <div className="muted">Abhi views nahi likhe gaye.</div>
-        )}
-        {d.isOwner && (
-          <>
-            <div className="two">
-              <label className="f">
-                Date
-                <input id="vw-date" type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} />
-              </label>
-              <label className="f">
-                Views
-                <input id="vw-num" type="number" inputMode="numeric" min={0} value={vNum} onChange={(e) => setVNum(e.target.value)} placeholder="e.g. 12500" />
-              </label>
-            </div>
-            <button className="btn primary" disabled={busy} onClick={saveViews}>
-              Views save karein
-            </button>
-          </>
-        )}
-      </section>
-
-      <section className="panel">
-        <div className="sec-head wrap">
-          <h2>Team, roles aur progress</h2>
-          {d.isOwner && (
-            <button className="btn sm" onClick={onEdit}>
-              Team / roles badlein
-            </button>
-          )}
-        </div>
+      <Fold id={'team-' + channel.id} className="panel" title={<h2>Team, roles aur progress</h2>} defaultOpen extra={d.isOwner ? <button className="btn sm" onClick={onEdit}>Team / roles badlein</button> : undefined}>
         <Seg label="Progress muddat" value={pk} onChange={setPk} options={[{ v: 'day', label: 'Aaj' }, { v: 'week', label: 'Is hafte' }, { v: 'month', label: 'Is mahine' }]} />
         {members.length ? (
           <div className="list">
@@ -334,7 +261,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
                           <div className="tprog">
                             <span className="muted">Task progress</span>
                             <b className={'num ' + (ts.score == null ? 'muted' : perfClass(ts.score))}>{ts.score == null ? '—' : ts.score + '%'}</b>
-                            <span className="muted">{ts.done}/{ts.counted} complete{ts.rejected ? '' : ''}</span>
+                            <span className="muted">{ts.done}/{ts.counted} complete</span>
                             {ts.rejected > 0 && <span className="bad">{ts.rejected} rejected</span>}
                           </div>
                           {show && p && <Bar pct={p.pct} cls={perfClass(p.pct)} />}
@@ -352,56 +279,9 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, onVideo, openPr
         ) : (
           <div className="muted">Abhi koi member nahi. {d.isOwner && '"Channel edit karein" se add karein.'}</div>
         )}
-      </section>
-
-      <section className="sec">
-        <div className="sec-head">
-          <h2>Videos</h2>
-          {canWork && (
-            <button className="btn primary sm" onClick={() => onVideo(null)}>
-              + Nai video
-            </button>
-          )}
-        </div>
-        <div className="chips scroll">
-          <button className={'chip ' + (stage === 'all' ? 'on' : '')} onClick={() => setStage('all')}>
-            Sab<span className="c">{vids.length}</span>
-          </button>
-          {STAGES.map((s) => (
-            <button key={s.key} className={'chip ' + (stage === s.key ? 'on' : '')} onClick={() => setStage(s.key)}>
-              {s.label}
-              <span className="c">{counts[s.key] || 0}</span>
-            </button>
-          ))}
-        </div>
-        {shown.length ? (
-          <div className="panel">
-            <div className="list">
-              {shown.map((v) => {
-                const wc = v.script.trim() ? v.script.trim().split(/\s+/).length + ' words' : 'Script khaali';
-                return (
-                  <button className="li" key={v.id} onClick={() => onVideo(v)}>
-                    <div className="grow">
-                      <div className="t">{v.title}</div>
-                      <div className="d">
-                        {wc}
-                        {v.due ? ' · Due ' + fmtDate(v.due) : ''}
-                        {v.updated_by ? ' · ' + d.nameOf(v.updated_by) : ''}
-                      </div>
-                    </div>
-                    <span className={'stage ' + v.stage}>{stageLabel(v.stage)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="empty">
-            <b>{vids.length ? 'Is stage mein koi video nahi' : 'Abhi koi video nahi'}</b>
-            {canWork && 'Nai video add karein. Script Writer us mein script likhega, Editor aur Manager stage aage barhayenge.'}
-          </div>
-        )}
-      </section>
+      </Fold>
+      {vOpen && <VideosSheet channelId={channel.id} focus={vOpen.focus} create={vOpen.create} initialTab={vOpen.focus && vids.find((v) => v.id === vOpen.focus)?.day !== todayKey() ? 'history' : 'today'} onClose={() => setVOpen(null)} />}
+      {assign && <AssignTaskSheet channelId={channel.id} onClose={() => setAssign(false)} />}
     </>
   );
 }

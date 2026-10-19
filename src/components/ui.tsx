@@ -229,3 +229,79 @@ export function ThemeButton() {
     </button>
   );
 }
+
+/* ---------- v9: dropdown (khulne / band hone wala hissa), har device par yaad ---------- */
+export function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg className={'chev' + (open ? ' open' : '')} viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+export function useFold(id: string | undefined, defaultOpen: boolean): [boolean, () => void] {
+  const key = id ? 'khr-fold-' + id : '';
+  const [open, setOpen] = useState<boolean>(() => {
+    if (!key) return defaultOpen;
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? defaultOpen : v === '1';
+    } catch {
+      return defaultOpen;
+    }
+  });
+  const toggle = useCallback(() => {
+    setOpen((o) => {
+      try {
+        if (key) localStorage.setItem(key, o ? '0' : '1');
+      } catch {
+        /* storage band */
+      }
+      return !o;
+    });
+  }, [key]);
+  return [open, toggle];
+}
+
+/** Lambi list / history ke liye: header par tap karein to khule ya band ho */
+export function Fold({ id, title, count, defaultOpen = true, children, className = '', extra }: {
+  id?: string;
+  title: ReactNode;
+  count?: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+  className?: string;
+  extra?: ReactNode;
+}) {
+  const [open, toggle] = useFold(id, defaultOpen);
+  return (
+    <section className={'fold ' + (open ? 'open ' : '') + className}>
+      <div className="fold-h">
+        <button type="button" className="fold-btn" onClick={toggle} aria-expanded={open}>
+          <span className="fold-t">{title}</span>
+          {count != null && <span className="count num">{count}</span>}
+          <Chevron open={open} />
+        </button>
+        {extra}
+      </div>
+      {open && <div className="fold-b">{children}</div>}
+    </section>
+  );
+}
+
+/** History ke liye: kisi khaas din ki cheezein (khaali = sab) */
+export function DateFilter({ value, onChange, label = 'Date' }: { value: string; onChange: (v: string) => void; label?: string }) {
+  return (
+    <div className="date-filter">
+      <label>
+        <span className="muted tiny">{label}</span>
+        <input type="date" value={value} max={todayKey()} onChange={(e) => onChange(e.target.value)} />
+      </label>
+      {value && (
+        <button type="button" className="btn sm" onClick={() => onChange('')}>
+          Sab dikhayein
+        </button>
+      )}
+    </div>
+  );
+}

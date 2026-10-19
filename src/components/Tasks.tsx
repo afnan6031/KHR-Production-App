@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import type React from 'react';
 import { useData } from '../lib/data';
 import type { Task, TaskState } from '../lib/types';
-import { REJECT_PENALTY, errorText, fmtClock, fmtDate, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score } from '../lib/utils';
-import { Seg, Sheet, useToast } from './ui';
+import { REJECT_PENALTY, errorText, fmtClock, fmtDate, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score, fmtWhen } from '../lib/utils';
+import { Chevron, Seg, Sheet, useFold, useToast } from './ui';
 import { TaskSheet } from './TaskSheet';
 import { TaskTimer } from './Timer';
-import { ChannelTools } from './Attachments';
+import { ChannelTools } from './Videos';
 
 /* ================= One task row ================= */
 export function TaskItem({ task, now, showName, showChannel = true, onOpenChannel, onReject }: {
@@ -28,9 +29,13 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   const canToggle = mine && st !== 'rejected' && !(early && st !== 'done');
   const canReview = d.isOwner;
   const today = todayKey();
-  const atts = d.attachments.filter((a) => a.task_id === task.id);
-  const nScripts = atts.filter((a) => a.kind === 'script').length;
-  const thumbs = atts.filter((a) => a.kind === 'thumbnail');
+  const vids = d.videos.filter((v) => v.task_id === task.id);
+  const nScripts = vids.filter((v) => v.script_url || v.script).length;
+  const thumbs = vids.filter((v) => v.thumbnail_url);
+  const [extOpen, setExtOpen] = useState(false);
+  const req = d.deadline_requests.find((r) => r.task_id === task.id && r.status === 'pending');
+  // deadline mein 30 minute ya kam baqi, ya guzar chuki: extension maang sakte hain
+  const canExtend = mine && task.status === 'pending' && new Date(task.due_at).getTime() - now <= 30 * 60000 && new Date(task.due_at).getTime() > now - 7 * 864e5 && !req;
 
   async function toggle() {
     setBusy(true);
@@ -65,6 +70,7 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
         )}
       </button>
       <button className="task-body" onClick={() => setOpen(true)} aria-label={'Task kholein: ' + (ch?.name || '') + ' ' + task.role}>
+        {task.kind === 'custom' && task.title && <span className="task-custom">📌 {task.title}</span>}
         <span className="task-title">
           {showName && <b>{d.nameOf(task.user_id)}</b>}
           {showName && showChannel && <span className="muted"> · </span>}
@@ -79,11 +85,19 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
         {(nScripts > 0 || thumbs.length > 0) && (
           <span className="att-ind">
             {nScripts > 0 && <span className="att-chip">{nScripts} script{nScripts > 1 ? 's' : ''}</span>}
-            {thumbs.slice(0, 3).map((a) => <img key={a.id} src={a.url} alt={a.title} loading="lazy" />)}
+            {thumbs.slice(0, 3).map((v) => <img key={v.id} src={v.thumbnail_url} alt={v.title} loading="lazy" />)}
           </span>
         )}
       </button>
       {open && <TaskSheet taskId={task.id} onClose={() => setOpen(false)} onOpenChannel={onOpenChannel} onReject={onReject} />}
+      {canExtend && (
+        <button className="btn sm ext-btn" onClick={() => setExtOpen(true)} title="Deadline barhane ki request">
+          ⏳ Waqt barhayein
+        </button>
+      )}
+      {req && mine && <span className="ext-wait" title={req.reason}>⏳ +{req.minutes} min · owner ke paas</span>}
+      {req && d.isOwner && <ExtensionReview reqId={req.id} />}
+      {extOpen && <ExtensionSheet task={task} onClose={() => setExtOpen(false)} />}
       {canReview && (st === 'done' || st === 'expired') && onReject && (
         <button className="btn sm danger" onClick={() => onReject(task)}>
           Reject
@@ -120,7 +134,40 @@ const SECTIONS: { key: 'pending' | 'expired' | 'completed'; title: string; empty
 ];
 
 /** Har section ke andar pehle channel ka card, phir us channel ke tasks (tick ke saath) */
-export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, groupByChannel = true }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; groupByChannel?: boolean }) {
+/** Board mein ek channel ka group: naam (channel kholta hai) + dropdown */
+function ChannelGroup({ foldKey, name, count, onOpen, children }: { foldKey: string; name: string; count: number; onOpen?: () => void; children: React.ReactNode }) {
+  const [open, toggle] = useFold(foldKey, true);
+  return (
+    <div className={'cgroup' + (open ? '' : ' closed')}>
+      <div className="cgroup-h">
+        <button className="cgroup-name" onClick={onOpen} disabled={!onOpen}>{name}</button>
+        <button type="button" className="cgroup-fold" onClick={toggle} aria-expanded={open} aria-label={open ? 'Band karein' : 'Kholein'}>
+          <span className="muted tiny">{count} task{count > 1 ? 's' : ''}</span>
+          <Chevron open={open} />
+        </button>
+      </div>
+      {open && children}
+    </div>
+  );
+}
+
+/** Board ka ek hissa: header par tap = dropdown khule / band (Completed shuru mein band) */
+function BoardSection({ k, title, count, foldId, children }: { k: string; title: string; count: number; foldId: string; children: React.ReactNode }) {
+  const [open, toggle] = useFold(foldId + '-' + k, k !== 'completed');
+  return (
+    <section className={'bsec ' + k + (open ? ' open' : ' closed')}>
+      <button type="button" className="bsec-h" onClick={toggle} aria-expanded={open}>
+        <span className="dot" aria-hidden="true" />
+        <h3>{title}</h3>
+        <span className="count num">{count}</span>
+        <Chevron open={open} />
+      </button>
+      {open ? children : count > 0 ? <p className="muted tiny m0 bsec-empty">{count} task — dekhne ke liye upar tap karein</p> : null}
+    </section>
+  );
+}
+
+export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, groupByChannel = true, foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; groupByChannel?: boolean; foldId?: string }) {
   const d = useData();
   const [rejecting, setRejecting] = useState<Task | null>(null);
   const groups: Record<string, Task[]> = { pending: [], expired: [], completed: [] };
@@ -145,12 +192,7 @@ export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, group
         const order: string[] = [];
         list.forEach((t) => !order.includes(t.channel_id) && order.push(t.channel_id));
         return (
-          <section key={s.key} className={'bsec ' + s.key}>
-            <div className="bsec-h">
-              <span className="dot" aria-hidden="true" />
-              <h3>{s.title}</h3>
-              <span className="count num">{list.length}</span>
-            </div>
+          <BoardSection key={s.key} k={s.key} title={s.title} count={list.length} foldId={foldId}>
             {!list.length && <p className="muted small m0 bsec-empty">{s.empty}</p>}
             {list.length > 0 && !groupByChannel && (
               <div className="tasks">
@@ -164,23 +206,17 @@ export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, group
               order.map((cid) => {
                 const ts = list.filter((t) => t.channel_id === cid);
                 return (
-                  <div className="cgroup" key={cid}>
-                    <div className="cgroup-h">
-                      <button className="cgroup-name" onClick={() => onOpenChannel?.(cid)} disabled={!onOpenChannel}>
-                        {chName(cid)}
-                      </button>
-                      <span className="muted tiny">{ts.length} task{ts.length > 1 ? 's' : ''}</span>
-                    </div>
+                  <ChannelGroup key={cid} foldKey={foldId + '-' + s.key + '-' + cid} name={chName(cid)} count={ts.length} onOpen={onOpenChannel ? () => onOpenChannel(cid) : undefined}>
                     <ChannelTools channelId={cid} showToday={false} compact />
                     <div className="tasks">
                       {ts.map((t) => (
                         <TaskItem key={t.id} task={t} now={now} showName={showName} showChannel={false} onOpenChannel={onOpenChannel} onReject={setRejecting} />
                       ))}
                     </div>
-                  </div>
+                  </ChannelGroup>
                 );
               })}
-          </section>
+          </BoardSection>
         );
       })}
       {rejecting && <RejectSheet task={rejecting} onClose={() => setRejecting(null)} />}
@@ -202,7 +238,7 @@ export function RejectSheet({ task, onClose }: { task: Task; onClose: () => void
       <div className="panel tight">
         <b>{d.nameOf(task.user_id)}</b>
         <span className="muted small">
-          {ch?.name} · {task.role} · {fmtDate(task.day)} · deadline {fmtClock(task.due_at)}
+          {ch?.name} · {task.role} · {fmtDate(task.day)} · deadline {fmtWhen(task.due_at)}
           {task.completed_at ? ' · complete ' + fmtClock(task.completed_at) : ''}
         </span>
       </div>
@@ -297,6 +333,95 @@ export function ScoreStats({ s }: { s: Score }) {
       <div><span className="num bad">{s.rejected}</span><small>Rejected</small></div>
       <div><span className="num bad">{s.missed}</span><small>Missed</small></div>
       <div><span className="num muted">{s.pending}</span><small>Pending</small></div>
+    </div>
+  );
+}
+
+/* ================= v9: Deadline extension ================= */
+const EXT_CHOICES = [15, 30, 60, 120, 240, 1440];
+const minLabel = (m: number) => (m >= 1440 ? m / 1440 + ' din' : m >= 60 ? m / 60 + ' ghanta' : m + ' min');
+
+export function ExtensionSheet({ task, onClose }: { task: Task; onClose: () => void }) {
+  const d = useData();
+  const toast = useToast();
+  const [mins, setMins] = useState(60);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ch = d.channels.find((c) => c.id === task.channel_id);
+  const expired = new Date(task.due_at).getTime() < Date.now();
+  return (
+    <Sheet title="Deadline barhane ki request" onClose={onClose}>
+      <div className="panel tight">
+        <b>{task.title || ch?.name}</b>
+        <span className="muted small">{ch?.name} · {task.role} · deadline {fmtWhen(task.due_at)}{expired ? ' (guzar chuki)' : ''}</span>
+      </div>
+      <div className="f">
+        Kitna waqt chahiye
+        <div className="chips">
+          {EXT_CHOICES.map((m) => (
+            <button type="button" key={m} className={'chip ' + (mins === m ? 'on' : '')} onClick={() => setMins(m)}>+{minLabel(m)}</button>
+          ))}
+        </div>
+        <div className="row">
+          <input type="number" min={5} max={10080} value={mins} onChange={(e) => setMins(Math.max(5, Math.min(10080, Number(e.target.value) || 5)))} aria-label="Minutes" style={{ maxWidth: 120 }} />
+          <span className="muted small">minute</span>
+        </div>
+      </div>
+      <label className="f">
+        Wajah <span className="h">Owner ko batayein kyun waqt chahiye</span>
+        <textarea rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Render slow hai, bijli chali gayi, script der se mili" />
+      </label>
+      <p className="muted tiny m0">{expired ? 'Deadline guzar chuki hai: owner approve kare to waqt aap ki request ke waqt se gina jayega.' : 'Owner approve kare to deadline itni barh jayegi. Reject kare to wahi rahegi.'}</p>
+      <button
+        className="btn primary block"
+        disabled={busy || reason.trim().length < 2}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await d.requestExtension(task.id, mins, reason.trim());
+            toast('Request owner ko bhej di');
+            onClose();
+          } catch (e) {
+            toast(errorText(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? 'Bhej rahe hain…' : `+${minLabel(mins)} ki request bhejein`}
+      </button>
+    </Sheet>
+  );
+}
+
+/** Owner: task ke saath hi Approve / Reject */
+export function ExtensionReview({ reqId, full }: { reqId: string; full?: boolean }) {
+  const d = useData();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const r = d.deadline_requests.find((x) => x.id === reqId);
+  if (!r || r.status !== 'pending') return null;
+  const t = d.tasks.find((x) => x.id === r.task_id);
+  const act = async (ok: boolean) => {
+    setBusy(true);
+    try {
+      await d.reviewExtension(r.id, ok);
+      toast(ok ? 'Deadline barha di' : 'Request reject kar di');
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ext-review">
+      <span className="grow">
+        ⏳ <b>{full ? d.nameOf(r.user_id) + ' · ' : ''}+{minLabel(r.minutes)}</b>
+        {full && t && <span className="muted"> · {d.channels.find((c) => c.id === t.channel_id)?.name} ({t.title || t.role}) · deadline {fmtWhen(t.due_at)}</span>}
+        <span className="block small">{r.reason}</span>
+      </span>
+      <button className="btn sm primary" disabled={busy} onClick={() => act(true)}>Approve</button>
+      <button className="btn sm danger" disabled={busy} onClick={() => act(false)}>Reject</button>
     </div>
   );
 }

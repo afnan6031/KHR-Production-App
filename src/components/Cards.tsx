@@ -1,18 +1,18 @@
 import { useData } from '../lib/data';
 import type { Channel } from '../lib/types';
-import { fmtDate, fmtN, inPeriod, isToday, periodOf, perfClass, roleClass, roleTimeText, scheduleText, scoreOf, timeLine, viewsFor } from '../lib/utils';
-import { Bar, Delta, Week } from './ui';
-import { ChannelTools } from './Attachments';
+import { fmtDate, inPeriod, isToday, periodOf, perfClass, roleClass, roleTimeText, scheduleText, scoreOf, taskState, timeLine, todayKey } from '../lib/utils';
+import { Bar, Week } from './ui';
+import { ChannelTools } from './Videos';
 import type { KeyboardEvent } from 'react';
 
-/** Card poora clickable hai (channel kholta hai), andar ke Scripts/Thumbnails/Messages buttons alag kaam karte hain */
-/** har channel ka apna halka rang (naam se) */
+/** har channel ka apna halka rang (id se) */
 export function channelHue(id: string): number {
   let h = 0;
   for (const c of id) h = (h * 33 + c.charCodeAt(0)) % 360;
   return h;
 }
 
+/** Card poora clickable hai (channel kholta hai), andar ke Videos/Messages buttons alag kaam karte hain */
 const cardProps = (onOpen: () => void, id = '') => ({
   className: 'card clickable tinted',
   style: { ['--ch-h' as string]: String(channelHue(id)) },
@@ -27,53 +27,63 @@ const cardProps = (onOpen: () => void, id = '') => ({
   }
 });
 
-export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; onOpen: () => void }) {
+/** Aaj is channel ke tasks: kitne complete / kitne total */
+function useTodayCount(channelId: string, userId?: string) {
   const d = useData();
-  const p = d.perf.latest(ch.id, d.uid, role);
-  const vi = viewsFor(d.channel_views, ch.id);
-  const pc = p ? perfClass(p.pct) : '';
+  const today = todayKey();
+  const ts = d.tasks.filter((t) => t.channel_id === channelId && t.day === today && (!userId || t.user_id === userId));
+  return { total: ts.length, done: ts.filter((t) => taskState(t) === 'done').length };
+}
+
+/** v9: member ka EK card har channel ka — us mein us ke saare roles likhe hote hain */
+export function MemberCard({ ch, roles, onOpen }: { ch: Channel; roles: string[]; onOpen: () => void }) {
+  const d = useData();
+  const perfs = roles.map((r) => d.perf.latest(ch.id, d.uid, r)).filter(Boolean) as { pct: number; rated_on: string }[];
+  const avg = perfs.length ? Math.round(perfs.reduce((a, p) => a + p.pct, 0) / perfs.length) : null;
+  const pc = avg != null ? perfClass(avg) : '';
   const week = periodOf('week');
-  const ws = scoreOf(d.tasks.filter((t) => t.channel_id === ch.id && t.user_id === d.uid && t.role === role && inPeriod(t, week)));
+  const ws = scoreOf(d.tasks.filter((t) => t.channel_id === ch.id && t.user_id === d.uid && inPeriod(t, week)));
+  const tc = useTodayCount(ch.id, d.uid);
   return (
     <div {...cardProps(onOpen, ch.id)}>
       <div className="card-top">
-        <span className={'role ' + roleClass(role)}>{role}</span>
+        <span className="eyebrow">{roles.length} role{roles.length > 1 ? 's' : ''}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}
       </div>
       <div>
         <h3>{ch.name}</h3>
         {ch.about && <p className="about">{ch.about}</p>}
       </div>
+      <div className="role-lines">
+        {roles.map((r) => (
+          <div className="role-line" key={r}>
+            <span className={'role sm ' + roleClass(r)}>{r}</span>
+            <span className="muted tiny">{roleTimeText(ch, r)}</span>
+          </div>
+        ))}
+      </div>
       <div className="metrics">
         <div className="metric">
           <div className="l">Meri performance</div>
-          <div className={'v ' + pc}>{p ? p.pct + '%' : '—'}</div>
-          <Bar pct={p?.pct || 0} cls={pc} />
-          <div className="s">{p ? 'Update ' + fmtDate(p.rated_on) : 'Abhi number nahi mila'}</div>
+          <div className={'v ' + pc}>{avg != null ? avg + '%' : '—'}</div>
+          <Bar pct={avg || 0} cls={pc} />
+          <div className="s">{perfs.length ? 'Update ' + fmtDate(perfs.map((p) => p.rated_on).sort().pop()) : 'Abhi number nahi mila'}</div>
         </div>
         <div className="metric">
-          <div className="l">Channel views</div>
-          <div className="v">{vi ? fmtN(Number(vi.last.views)) : '—'}</div>
-          <div className="s">
-            {vi ? (
-              <>
-                <Delta d={vi.delta} /> {fmtDate(vi.last.day)}
-              </>
-            ) : (
-              'Views abhi nahi likhe'
-            )}
-          </div>
+          <div className="l">Aaj ke tasks</div>
+          <div className="v">{tc.total ? `${tc.done}/${tc.total}` : '—'}</div>
+          <div className="s">{tc.total ? 'complete' : 'Aaj kaam nahi'}</div>
         </div>
       </div>
       <div className="tprog">
-        <span className="muted">Is hafte ke tasks</span>
+        <span className="muted">Is hafte</span>
         <b className={'num ' + (ws.score == null ? 'muted' : perfClass(ws.score))}>{ws.score == null ? '—' : ws.score + '%'}</b>
         <span className="muted">{ws.done}/{ws.counted} complete</span>
         {ws.rejected > 0 && <span className="bad">{ws.rejected} rejected</span>}
       </div>
       <div className="foot">
         <Week ch={ch} />
-        <span>{roleTimeText(ch, role)}{ch.deadline ? ' · Deadline ' + fmtDate(ch.deadline) : ''}</span>
+        {ch.deadline && <span>Deadline {fmtDate(ch.deadline)}</span>}
       </div>
       <ChannelTools channelId={ch.id} />
     </div>
@@ -82,7 +92,6 @@ export function MemberCard({ ch, role, onOpen }: { ch: Channel; role: string; on
 
 export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
   const d = useData();
-  const vi = viewsFor(d.channel_views, ch.id);
   const members = d.channel_members.filter((m) => m.channel_id === ch.id && m.roles.length);
   const pcts: number[] = [];
   members.forEach((m) => m.roles.forEach((r) => {
@@ -91,6 +100,7 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
   }));
   const avg = pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
   const ac = avg != null ? perfClass(avg) : '';
+  const tc = useTodayCount(ch.id);
   return (
     <div {...cardProps(onOpen, ch.id)}>
       <div className="card-top">
@@ -108,9 +118,9 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
           <Bar pct={avg || 0} cls={ac} />
         </div>
         <div className="metric">
-          <div className="l">Views {vi ? '(' + fmtDate(vi.last.day) + ')' : ''}</div>
-          <div className="v">{vi ? fmtN(Number(vi.last.views)) : '—'}</div>
-          <div className="s">{vi ? <Delta d={vi.delta} /> : 'Abhi nahi likhe'}</div>
+          <div className="l">Aaj ke tasks</div>
+          <div className="v">{tc.total ? `${tc.done}/${tc.total}` : '—'}</div>
+          <div className="s">{tc.total ? 'complete' : 'Aaj kaam nahi'}</div>
         </div>
       </div>
       {members.length ? (
@@ -133,15 +143,16 @@ export function OwnerCard({ ch, onOpen }: { ch: Channel; onOpen: () => void }) {
   );
 }
 
-/** Ek card har (channel, role) ke liye */
+/** v9: ek card har channel ka (us channel mein mere saare roles ke saath) */
 export function useMyCards(onlyToday: boolean) {
   const d = useData();
-  const out: { ch: Channel; role: string }[] = [];
+  const out: { ch: Channel; roles: string[] }[] = [];
   [...d.channels]
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((ch) => {
       if (onlyToday && !isToday(ch)) return;
-      d.rolesOf(ch.id).forEach((role) => out.push({ ch, role }));
+      const roles = d.rolesOf(ch.id);
+      if (roles.length) out.push({ ch, roles });
     });
   return out;
 }

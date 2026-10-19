@@ -29,6 +29,14 @@ export function fmtClock(iso: string | null | undefined): string {
   return new Date(iso).toLocaleTimeString('en-US', { timeZone: APP_TZ, hour: 'numeric', minute: '2-digit' });
 }
 
+/** waqt; agar aaj ka din nahi to date bhi ("22 Oct, 4:50 PM") — kai din ki deadline ke liye */
+export function fmtWhen(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TZ }).format(new Date(iso));
+  if (day === todayKey()) return fmtClock(iso);
+  return new Date(iso).toLocaleDateString('en-GB', { timeZone: APP_TZ, day: 'numeric', month: 'short' }) + ', ' + fmtClock(iso);
+}
+
 /** "2g 15m" style duration */
 export function fmtDur(ms: number): string {
   const m = Math.max(0, Math.round(Math.abs(ms) / 60000));
@@ -188,7 +196,8 @@ export function roleTime(ch: Channel, role: string): RoleTime {
   const r = ch.role_times?.[role];
   return {
     start: hhmm(r?.start) || hhmm(ch.time_from) || '10:00',
-    end: hhmm(r?.end) || hhmm(ch.time_to) || '18:00'
+    end: hhmm(r?.end) || hhmm(ch.time_to) || '18:00',
+    days: Math.max(0, Number(r?.days) || 0)
   };
 }
 
@@ -200,7 +209,7 @@ export function toMin(t: string): number {
 /** "9:00 AM – 12:00 PM" (+ "agle din" jab deadline raat 12 ke baad ho) */
 export function roleTimeText(ch: Channel, role: string): string {
   const t = roleTime(ch, role);
-  return `${fmtTime(t.start)} – ${fmtTime(t.end)}${toMin(t.end) <= toMin(t.start) ? ' (agle din)' : ''}`;
+  return `${fmtTime(t.start)} – ${fmtTime(t.end)}${t.days ? ` (${t.days} din baad)` : toMin(t.end) <= toMin(t.start) ? ' (agle din)' : ''}`;
 }
 
 /** Channel ke roles, start time ke hisaab se tarteeb mein */
@@ -254,4 +263,12 @@ export function errorText(e: unknown): string {
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Internet connection check karein aur dobara try karein.';
   if (/Could not find the function|schema cache/i.test(msg)) return 'Database purana hai. Supabase SQL Editor mein nayi schema.sql dobara Run karein.';
   return msg;
+}
+
+/** "Aaj · 19 Oct", "Kal · 18 Oct", ya poori date */
+export function dayLabel(day: string): string {
+  const t = todayKey();
+  if (day === t) return 'Aaj · ' + fmtDate(day);
+  if (day === addDays(t, -1)) return 'Kal · ' + fmtDate(day);
+  return new Date(day + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }

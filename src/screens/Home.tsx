@@ -2,16 +2,21 @@ import { useMemo, useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import type { Task } from '../lib/types';
-import { DAYS_LONG, DAYS_UR, addDays, errorText, fmtN, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
-import { OwnerCard } from '../components/Cards';
-import { TaskBoard } from '../components/Tasks';
-import { ConfirmButton, useNow, useToast } from '../components/ui';
+import { DAYS_LONG, DAYS_UR, addDays, errorText, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
+import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
+import { ExtensionReview, TaskBoard } from '../components/Tasks';
+import { AssignTaskSheet } from '../components/Assign';
+import { ConfirmButton, Fold, useNow, useToast } from '../components/ui';
 import { MiniScore } from './Progress';
 
-/** Aaj ke tasks + pichle 7 din ke jo abhi bhi pending/expired hain */
-function boardTasks(tasks: Task[], today: string, userId?: string) {
+/** Aaj ke tasks + pichle 7 din ke jo abhi bhi pending hain + aane wale khaas kaam (custom) */
+export function boardTasks(tasks: Task[], today: string, userId?: string) {
   const weekAgo = addDays(today, -7);
-  return tasks.filter((t) => (!userId || t.user_id === userId) && (t.day === today || (t.status === 'pending' && t.day >= weekAgo && t.day < today)));
+  return tasks.filter(
+    (t) =>
+      (!userId || t.user_id === userId) &&
+      (t.day === today || (t.status === 'pending' && t.day >= weekAgo && t.day < today) || (t.kind === 'custom' && t.status === 'pending' && t.day > today))
+  );
 }
 
 export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
@@ -19,6 +24,8 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   const now = useNow(5000);
   const today = todayKey();
   const [scope, setScope] = useState<'team' | 'mine'>('team');
+  const [assign, setAssign] = useState(false);
+  const todayCards = useMyCards(true);
   const greet = (
     <div className="hello">
       <span className="eyebrow">
@@ -48,9 +55,22 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
             <h2>Aaj ke kaam</h2>
             <span className="eyebrow">{DAYS_LONG[weekdayOf(today)]}</span>
           </div>
-          <TaskBoard tasks={myTasks} now={now} onOpenChannel={openChannel} emptyAll="Aaj aap ke kisi channel ka kaam ka din nahi, ya owner ne abhi aap ko kisi channel mein role nahi diya." />
-          <p className="muted tiny m0">Kaam khatam ho to gol nishan par tick karein. Ghalti se tick ho jaye to dobara tap kar ke hata dein.</p>
+          <TaskBoard tasks={myTasks} now={now} onOpenChannel={openChannel} foldId="board-me" emptyAll="Aaj aap ke kisi channel ka kaam ka din nahi, ya owner ne abhi aap ko kisi channel mein role nahi diya." />
+          <p className="muted tiny m0">Kaam khatam ho to gol nishan par tick karein. Deadline mein 30 minute reh jayein ya guzar jaye to "⏳ Waqt barhayein" se owner se waqt maang sakte hain.</p>
         </section>
+        {todayCards.length > 0 && (
+          <section className="sec">
+            <div className="sec-head">
+              <h2>Aaj ke channel</h2>
+              <span className="eyebrow">{todayCards.length} channels</span>
+            </div>
+            <div className="cards">
+              {todayCards.map(({ ch, roles }) => (
+                <MemberCard key={ch.id} ch={ch} roles={roles} onOpen={() => openChannel(ch.id)} />
+              ))}
+            </div>
+          </section>
+        )}
       </>
     );
   }
@@ -68,7 +88,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   });
   const pending = d.profiles.filter((p) => p.status === 'pending');
   const todayCh = [...d.channels].filter((c) => isToday(c, today)).sort((a, b) => a.name.localeCompare(b.name));
-  const tv = d.channel_views.filter((v) => v.day === today);
+  const extReqs = d.deadline_requests.filter((r) => r.status === 'pending');
 
   return (
     <>
@@ -77,8 +97,14 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
         <div className="stat"><div className="v">{cnt.pending}</div><div className="l">Aaj pending</div></div>
         <div className="stat"><div className={'v ' + (cnt.expired ? 'bad' : '')}>{cnt.expired}</div><div className="l">Aaj expired</div></div>
         <div className="stat"><div className="v good">{cnt.done}</div><div className="l">Aaj completed</div></div>
-        <div className="stat"><div className="v">{tv.length ? fmtN(tv.reduce((a, v) => a + Number(v.views), 0)) : '—'}</div><div className="l">Aaj ke views</div></div>
+        <div className="stat"><div className={'v ' + (extReqs.length ? 'warn' : '')}>{extReqs.length}</div><div className="l">Waqt ki requests</div></div>
       </div>
+      {extReqs.length > 0 && (
+        <div className="panel ext-panel">
+          <div className="sec-head"><h2>⏳ Deadline barhane ki requests</h2><span className="eyebrow">{extReqs.length}</span></div>
+          {extReqs.map((r) => <ExtensionReview key={r.id} reqId={r.id} full />)}
+        </div>
+      )}
       {pending.length > 0 && (
         <div className="panel row-panel">
           <div className="grow">
@@ -91,8 +117,9 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
         </div>
       )}
       <section className="sec">
-        <div className="sec-head">
+        <div className="sec-head wrap">
           <h2>Aaj ke tasks</h2>
+          <button className="btn sm primary" onClick={() => setAssign(true)}>+ Kaam assign karein</button>
           {myTasks.length > 0 && (
             <div className="seg sm">
               <button className={scope === 'team' ? 'on' : ''} onClick={() => setScope('team')}>Poori team</button>
@@ -105,6 +132,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
           now={now}
           showName={scope === 'team'}
           onOpenChannel={openChannel}
+          foldId={'board-' + scope}
           emptyAll={d.channels.length ? 'Aaj kisi channel ka kaam ka din nahi, ya channels mein abhi team add nahi.' : 'Pehle channel card banayein aur us mein team ko roles dein.'}
         />
       </section>
@@ -128,6 +156,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
           </div>
         )}
       </section>
+      {assign && <AssignTaskSheet onClose={() => setAssign(false)} />}
     </>
   );
 }
@@ -149,7 +178,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
       toast(errorText(e));
     }
   };
-  const rolesAcross = (uid: string) => d.channels.flatMap((c) => d.rolesOf(c.id, uid).map((r) => c.name + ': ' + r));
+  const rolesAcross = (uid: string) => d.channels.filter((c) => d.rolesOf(c.id, uid).length).map((c) => c.name);
 
   return (
     <>
@@ -201,6 +230,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
                       <UserAvatar id={p.id} />
                       <span className="grow">
                         <span className="t block">{p.full_name}</span>
+                        {p.title && <span className="ptitle sm block" data-notr>🏆 {p.title}</span>}
                         <span className="d block">{rs.length ? rs.join(' · ') : 'Kisi channel mein role nahi'}</span>
                       </span>
                       <span className="score-chip">
@@ -219,8 +249,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
         )}
       </section>
       {rejected.length > 0 && (
-        <section className="sec">
-          <h2>Reject / hataye gaye</h2>
+        <Fold id="team-rejected" title={<h2>Reject / hataye gaye</h2>} count={rejected.length} defaultOpen={false}>
           <div className="panel">
             <div className="list">
               {rejected.map((p) => (
@@ -235,7 +264,7 @@ export function TeamScreen({ openProgress }: { openProgress: (uid: string) => vo
               ))}
             </div>
           </div>
-        </section>
+        </Fold>
       )}
     </>
   );

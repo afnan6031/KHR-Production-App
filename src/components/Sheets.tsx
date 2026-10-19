@@ -1,9 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react';
+import type React from 'react';
+import { CropSheet } from './Cropper';
+import { applyPrefs } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
-import { ROLES, STAGES, type Channel, type RoleTime, type Video } from '../lib/types';
+import { ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
 import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
-import { Avatar, ConfirmButton, Seg, Sheet, useTheme, useToast } from './ui';
+import { Avatar, ConfirmButton, Fold, Seg, Sheet, useTheme, useToast } from './ui';
 
 /* ================= Channel create / edit ================= */
 export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel | null; onClose: () => void; onSaved: (id: string) => void }) {
@@ -48,6 +51,7 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
     return { start, end: String(h).padStart(2, '0') + ':' + start.slice(3, 5) };
   };
   const setTime = (role: string, key: 'start' | 'end', v: string) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), [key]: v } }));
+  const setRoleDays = (role: string, n: number) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), days: n } }));
 
   const toggleRole = (uid: string, role: string) =>
     setMembers((m) => {
@@ -173,7 +177,8 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
             <div className="rt-list">
               {usedRoles.map((r, i) => {
                 const t = timeOf(r);
-                const overnight = toMin(t.end) <= toMin(t.start);
+                const extra = t.days || 0;
+                const overnight = !extra && toMin(t.end) <= toMin(t.start);
                 const who = assigned.filter(([, rs]) => rs.includes(r)).map(([u]) => d.nameOf(u));
                 return (
                   <div className="rt-row" key={r}>
@@ -192,8 +197,15 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
                         <input id={'rt-e-' + i} type="time" value={t.end} onChange={(e) => setTime(r, 'end', e.target.value)} />
                       </label>
                     </div>
-                    <span className={'tiny ' + (overnight ? 'warn' : 'muted')}>
-                      {fmtTime(t.start)} se {fmtTime(t.end)}{overnight ? ' (agle din)' : ''}
+                    <label className="f">
+                      Deadline kis din
+                      <select value={extra} onChange={(e) => setRoleDays(r, Number(e.target.value))}>
+                        <option value={0}>Usi din (ya raat ki shift mein agle din)</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 10, 14].map((n) => <option key={n} value={n}>{n} din baad</option>)}
+                      </select>
+                    </label>
+                    <span className={'tiny ' + (overnight || extra ? 'warn' : 'muted')}>
+                      {fmtTime(t.start)} se {fmtTime(t.end)}{extra ? ` (${extra} din baad)` : overnight ? ' (agle din)' : ''}
                     </span>
                   </div>
                 );
@@ -296,149 +308,115 @@ export function PerfSheet({ channel, onClose }: { channel: Channel; onClose: () 
   );
 }
 
-/* ================= Video / Script ================= */
-export function VideoSheet({ channelId, video, onClose }: { channelId: string; video: Video | null; onClose: () => void }) {
+/* ================= My profile (v9) ================= */
+const BG_PRESETS: { c1: string; c2: string }[] = [
+  { c1: '#2B0B14', c2: '#10183A' },
+  { c1: '#0F2027', c2: '#2C5364' },
+  { c1: '#41295A', c2: '#2F0743' },
+  { c1: '#134E5E', c2: '#71B280' },
+  { c1: '#FF512F', c2: '#DD2476' },
+  { c1: '#1D2671', c2: '#C33764' }
+];
+const ACCENTS = ['#E5383B', '#C8102E', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899'];
+
+export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusic }: { onClose: () => void; onSignOut: () => void; onProgress: () => void; onRecords?: () => void; onMusic?: () => void }) {
   const d = useData();
   const toast = useToast();
-  const [title, setTitle] = useState(video?.title || '');
-  const [stage, setStage] = useState<Video['stage']>(video?.stage || 'idea');
-  const [due, setDue] = useState(video?.due || '');
-  const [script, setScript] = useState(video?.script || '');
-  const [notes, setNotes] = useState(video?.notes || '');
+  const me = d.me;
+  const [name, setName] = useState(me?.full_name || '');
+  const [contact, setContact] = useState(me?.contact || '');
+  const [about, setAbout] = useState(me?.about || '');
   const [busy, setBusy] = useState(false);
-  const words = script.trim() ? script.trim().split(/\s+/).length : 0;
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return toast('Title likhein');
-    setBusy(true);
-    try {
-      await d.saveVideo({ id: video?.id, channel_id: channelId, title: title.trim(), stage, due: due || null, script, notes });
-      toast('Video save ho gayi');
-      onClose();
-    } catch (err) {
-      toast(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet title={video ? 'Video' : 'Nai video'} onClose={onClose}>
-      <form className="form" onSubmit={submit}>
-        <label className="f">
-          Video ka title
-          <input id="v-title" type="text" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Best phones under 50k" />
-        </label>
-        <div className="two">
-          <label className="f">
-            Stage
-            <select id="v-stage" value={stage} onChange={(e) => setStage(e.target.value as Video['stage'])}>
-              {STAGES.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="f">
-            Due date
-            <input id="v-due" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-          </label>
-        </div>
-        <label className="f">
-          <span className="row between">
-            <span>Script</span>
-            <span className="h num">{words} words</span>
-          </span>
-          <span className="h">Script Writer yahan likhe. Editor aur Manager isi ko parh kar kaam karein.</span>
-          <textarea id="v-script" rows={14} value={script} onChange={(e) => setScript(e.target.value)} placeholder={'Hook…\n\nIntro…\n\nMain points…\n\nOutro / CTA…'} />
-        </label>
-        <label className="f">
-          Editing / manager notes
-          <textarea id="v-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. B-roll add karo, thumbnail mein face close-up" />
-        </label>
-        {video && (
-          <div className="muted tiny">
-            Aakhri update: {d.nameOf(video.updated_by)} · {new Date(video.updated_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
-          </div>
-        )}
-        <button className="btn primary block" type="submit" disabled={busy}>
-          {busy ? 'Save ho raha hai…' : video ? 'Save karein' : 'Video add karein'}
-        </button>
-        {video && d.isOwner && (
-          <ConfirmButton
-            label="Video delete karein"
-            confirmLabel="Pakka delete? Dobara tap karein"
-            onConfirm={async () => {
-              try {
-                await d.deleteVideo(video.id);
-                toast('Video delete ho gayi');
-                onClose();
-              } catch (err) {
-                toast(errorText(err));
-              }
-            }}
-          />
-        )}
-      </form>
-    </Sheet>
-  );
-}
-
-/* ================= My profile ================= */
-export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { onClose: () => void; onSignOut: () => void; onProgress: () => void; onRecords?: () => void }) {
-  const d = useData();
-  const toast = useToast();
-  const [name, setName] = useState(d.me?.full_name || '');
-  const [contact, setContact] = useState(d.me?.contact || '');
-  const [busy, setBusy] = useState(false);
-  const [up, setUp] = useState(false);
+  const [up, setUp] = useState<'' | 'avatar' | 'banner' | 'bg'>('');
+  const [crop, setCrop] = useState<{ file: File; kind: 'avatar' | 'banner' } | null>(null);
   const [theme, setThemeChoice] = useTheme();
-  const fileRef = useRef<HTMLInputElement>(null);
-  async function pickAvatar(f: File | undefined) {
-    if (!f) return;
-    setUp(true);
+  const [prefs, setPrefs] = useState<Prefs>(() => me?.prefs || {});
+  const avRef = useRef<HTMLInputElement>(null);
+  const bnRef = useRef<HTMLInputElement>(null);
+  const bgRef = useRef<HTMLInputElement>(null);
+  const bg = prefs.bg || { type: 'none' as const };
+
+  /** pasand foran screen par, aur profile mein save */
+  const savePrefs = async (p: Prefs) => {
+    setPrefs(p);
+    applyPrefs(p);
     try {
-      const r = await uploadToImgBB(f, 'avatar-' + d.uid.slice(0, 8));
-      await d.setMyAvatar(r.url);
-      toast('Profile photo lag gayi');
+      await d.updateMyProfile({ prefs: p });
+    } catch (e) {
+      toast(errorText(e));
+    }
+  };
+  const setBg = (patch: Partial<NonNullable<Prefs['bg']>>) => savePrefs({ ...prefs, bg: { ...bg, ...patch } as Prefs['bg'] });
+
+  async function uploadCropped(f: File, kind: 'avatar' | 'banner') {
+    setUp(kind);
+    try {
+      const r = await uploadToImgBB(f, kind + '-' + d.uid.slice(0, 8));
+      if (kind === 'avatar') await d.setMyAvatar(r.url);
+      else await d.updateMyProfile({ banner_url: r.url });
+      toast(kind === 'avatar' ? 'Profile photo lag gayi' : 'Banner lag gaya');
+      setCrop(null);
     } catch (e) {
       toast(errorText(e));
     } finally {
-      setUp(false);
-      if (fileRef.current) fileRef.current.value = '';
+      setUp('');
     }
   }
+  async function pickBg(f: File | undefined) {
+    if (!f) return;
+    setUp('bg');
+    try {
+      const r = await uploadToImgBB(f, 'bg-' + d.uid.slice(0, 8));
+      await savePrefs({ ...prefs, bg: { type: 'image', image: r.url, dim: bg.dim ?? 0.35 } });
+      toast('Background lag gaya');
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setUp('');
+      if (bgRef.current) bgRef.current.value = '';
+    }
+  }
+  const pick = (kind: 'avatar' | 'banner') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) setCrop({ file: f, kind });
+  };
+
   return (
     <Sheet title="Mera profile" onClose={onClose}>
-      <div className="avatar-edit">
-        <span className="avatar-big"><Avatar name={d.me?.full_name || 'Owner'} url={d.me?.avatar_url || undefined} /></span>
-        <div className="grow">
-          <b>{d.me?.full_name}</b>
-          <small className="muted block">{d.me?.server_role || (d.isOwner ? 'Owner' : 'Server role abhi nahi')}</small>
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickAvatar(e.target.files?.[0])} />
-          <div className="row">
-            <button type="button" className="btn sm primary" disabled={up || !imgbbReady} onClick={() => fileRef.current?.click()}>
-              {up ? 'Upload ho rahi hai…' : d.me?.avatar_url ? 'Photo badlein' : 'Profile photo lagayein'}
-            </button>
-            {d.me?.avatar_url && <button type="button" className="btn sm" disabled={up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
+      <div className="pcard mine">
+        <div className="pcard-banner" style={me?.banner_url ? { backgroundImage: `url("${me.banner_url}")` } : undefined}>
+          <div className="pcard-banner-btns">
+            <button type="button" className="btn sm" disabled={!!up || !imgbbReady} onClick={() => bnRef.current?.click()}>{up === 'banner' ? 'Upload…' : me?.banner_url ? 'Banner badlein' : '+ Banner'}</button>
+            {me?.banner_url && <button type="button" className="btn sm" onClick={() => d.updateMyProfile({ banner_url: '' }).catch((e) => toast(errorText(e)))}>✕</button>}
           </div>
         </div>
+        <div className="pcard-av big">
+          <Avatar name={me?.full_name || 'Owner'} url={me?.avatar_url || undefined} />
+        </div>
+        <div className="pcard-body">
+          <h2 data-notr>{me?.full_name}</h2>
+          {me?.title && <div className="ptitle" data-notr>🏆 {me.title}</div>}
+          <small className="muted block" data-notr>{me?.server_role || (d.realOwner ? 'Owner' : '')}</small>
+          <div className="row">
+            <button type="button" className="btn sm primary" disabled={!!up || !imgbbReady} onClick={() => avRef.current?.click()}>
+              {up === 'avatar' ? 'Upload ho rahi hai…' : me?.avatar_url ? 'Photo badlein' : 'Profile photo lagayein'}
+            </button>
+            {me?.avatar_url && <button type="button" className="btn sm" disabled={!!up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
+          </div>
+        </div>
+        <input ref={avRef} type="file" accept="image/*" hidden onChange={pick('avatar')} />
+        <input ref={bnRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
       </div>
-      <div className="f">
-        App ka rang
-        <Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} />
-      </div>
+
       <form
         className="form"
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
           try {
-            await d.updateMyProfile({ full_name: name.trim(), contact: contact.trim(), note: d.me?.note || '' });
+            await d.updateMyProfile({ full_name: name.trim(), contact: contact.trim(), about: about.trim() });
             toast('Profile save ho gaya');
-            onClose();
           } catch (err) {
             toast(errorText(err));
           } finally {
@@ -451,24 +429,102 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
           <input id="p-name" type="text" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="f">
+          About <span className="h">Apne baare mein kuch likhein — sab ko profile par nazar aayega</span>
+          <textarea id="p-about" rows={3} maxLength={500} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="e.g. Script writer · history aur disaster channels" />
+        </label>
+        <label className="f">
           ID / WhatsApp
           <input id="p-contact" type="text" maxLength={80} value={contact} onChange={(e) => setContact(e.target.value)} />
         </label>
-        <button className="btn primary block" type="submit" disabled={busy}>
-          Save karein
-        </button>
-        <button className="btn block" type="button" onClick={onProgress}>
-          Meri progress dekhein
-        </button>
-        <button className="btn block" type="button" onClick={onSignOut}>
-          Logout
-        </button>
-        {d.isOwner && onRecords && (
-          <button type="button" className="records-link" onClick={onRecords}>
-            Company records
-          </button>
-        )}
+        <button className="btn primary block" type="submit" disabled={busy}>Save karein</button>
       </form>
+
+      <Fold id="prof-look" title={<b>🎨 Theme aur background</b>} defaultOpen={false}>
+        <div className="f">
+          App ka rang
+          <Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} />
+        </div>
+        <div className="f">
+          Background
+          <Seg
+            label="Background"
+            value={bg.type}
+            onChange={(t) => (t === 'image' && !bg.image ? bgRef.current?.click() : setBg({ type: t }))}
+            options={[{ v: 'none', label: 'Asal' }, { v: 'color', label: 'Ek rang' }, { v: 'gradient', label: 'Gradient' }, { v: 'image', label: 'Apni pic' }]}
+          />
+          <input ref={bgRef} type="file" accept="image/*" hidden onChange={(e) => pickBg(e.target.files?.[0])} />
+        </div>
+        {bg.type === 'color' && (
+          <label className="f row">
+            <input type="color" value={bg.c1 || '#101828'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Background ka rang" />
+            <span className="muted small">Rang chunein</span>
+          </label>
+        )}
+        {bg.type === 'gradient' && (
+          <>
+            <div className="presets">
+              {BG_PRESETS.map((g) => (
+                <button type="button" key={g.c1 + g.c2} className="preset" style={{ background: `linear-gradient(135deg, ${g.c1}, ${g.c2})` }} onClick={() => setBg({ c1: g.c1, c2: g.c2 })} aria-label="Gradient" />
+              ))}
+            </div>
+            <div className="row">
+              <input type="color" value={bg.c1 || '#2B0B14'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Pehla rang" />
+              <input type="color" value={bg.c2 || '#10183A'} onChange={(e) => setBg({ c2: e.target.value })} aria-label="Doosra rang" />
+              <label className="grow f">
+                <span className="muted tiny">Angle {bg.angle ?? 135}°</span>
+                <input type="range" min={0} max={360} value={bg.angle ?? 135} onChange={(e) => setBg({ angle: Number(e.target.value) })} />
+              </label>
+            </div>
+          </>
+        )}
+        {bg.type === 'image' && (
+          <div className="row">
+            {bg.image && <img className="bg-thumb" src={bg.image} alt="" />}
+            <button type="button" className="btn sm" disabled={!!up} onClick={() => bgRef.current?.click()}>{up === 'bg' ? 'Upload…' : 'Pic badlein'}</button>
+          </div>
+        )}
+        {bg.type !== 'none' && (
+          <label className="f">
+            <span className="muted tiny">Andhera (text saaf parhne ke liye): {Math.round((bg.dim ?? 0) * 100)}%</span>
+            <input type="range" min={0} max={0.85} step={0.05} value={bg.dim ?? 0} onChange={(e) => setBg({ dim: Number(e.target.value) })} />
+          </label>
+        )}
+        <div className="f">
+          Khaas rang (buttons, links)
+          <div className="presets">
+            {ACCENTS.map((a) => (
+              <button type="button" key={a} className={'preset dot' + (prefs.accent === a ? ' on' : '')} style={{ background: a }} onClick={() => savePrefs({ ...prefs, accent: a })} aria-label={a} />
+            ))}
+            <input type="color" value={prefs.accent || '#E5383B'} onChange={(e) => savePrefs({ ...prefs, accent: e.target.value })} aria-label="Apna rang" />
+            {prefs.accent && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, accent: undefined })}>Asal</button>}
+          </div>
+        </div>
+      </Fold>
+
+      <div className="f">
+        Zabaan / Language
+        <Seg label="Language" value={prefs.lang === 'en' ? 'en' : 'ur'} onChange={(l) => savePrefs({ ...prefs, lang: l })} options={[{ v: 'ur', label: 'Roman Urdu' }, { v: 'en', label: 'English' }]} />
+      </div>
+
+      {onMusic && <button className="btn block" type="button" onClick={onMusic}>🎵 Music playlist</button>}
+      <button className="btn block" type="button" onClick={onProgress}>Meri progress dekhein</button>
+      <button className="btn block" type="button" onClick={onSignOut}>Logout</button>
+      {d.realOwner && onRecords && (
+        <button type="button" className="records-link" onClick={onRecords}>
+          Company records
+        </button>
+      )}
+      {crop && (
+        <CropSheet
+          file={crop.file}
+          aspect={crop.kind === 'avatar' ? 1 : 3}
+          outWidth={crop.kind === 'avatar' ? 512 : 1500}
+          round={crop.kind === 'avatar'}
+          title={crop.kind === 'avatar' ? 'Profile photo crop' : 'Banner crop'}
+          onClose={() => setCrop(null)}
+          onDone={(f) => uploadCropped(f, crop.kind)}
+        />
+      )}
     </Sheet>
   );
 }

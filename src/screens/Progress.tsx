@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
-import { REJECT_PENALTY, inPeriod, periodOf, rankUsers, roleClass, scoreOf, type PeriodKind, type Score } from '../lib/utils';
+import { REJECT_PENALTY, dayLabel, inPeriod, periodOf, rankUsers, roleClass, scoreOf, type PeriodKind, type Score } from '../lib/utils';
 import { PeriodPicker, ScoreRing, ScoreStats, TaskItem } from '../components/Tasks';
 import { RejectSheet } from '../components/Tasks';
-import { Bar, useNow } from '../components/ui';
+import { Bar, DateFilter, Fold, useNow } from '../components/ui';
 import type { Task } from '../lib/types';
 
 const cls = (v: number | null) => (v == null ? 'muted' : v >= 85 ? 'good' : v >= 65 ? 'warn' : 'bad');
@@ -65,6 +65,7 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
                   <UserAvatar id={r.user_id} />
                   <span className="grow">
                     <span className="t block">{d.nameOf(r.user_id)}{r.user_id === d.uid && <span className="muted"> (aap)</span>}</span>
+                    {d.profileOf(r.user_id)?.title && <span className="ptitle sm block" data-notr>🏆 {d.profileOf(r.user_id)?.title}</span>}
                     <span className="d block">
                       {r.done} complete · {r.late} late · {r.missed} missed{r.rejected ? '' : ''}
                       {r.rejected > 0 && <b className="bad"> · {r.rejected} rejected</b>}
@@ -109,7 +110,9 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
   const breakdown = [...keys.values()]
     .map((e) => ({ ...e, s: scoreOf(e.ts, now), name: d.channels.find((c) => c.id === e.channel_id)?.name || 'Channel' }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.role.localeCompare(b.role));
+  const [hday, setHday] = useState('');
   const history = [...inP].sort((a, b) => b.day.localeCompare(a.day) || a.due_at.localeCompare(b.due_at));
+  const shownHist = hday ? mine.filter((t) => t.day === hday).sort((a, b) => a.due_at.localeCompare(b.due_at)) : history;
   const monthRank = rankUsers(d.tasks, periodOf('month'), now).find((r) => r.user_id === userId);
 
   return (
@@ -119,6 +122,8 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
         <UserAvatar id={userId} />
         <div className="grow">
           <h1>{person?.full_name || 'Member'}{userId === d.uid && <span className="muted h-sub"> (aap)</span>}</h1>
+          {person?.title && <div className="ptitle" data-notr>🏆 {person.title}</div>}
+          {person?.about && <p className="pabout m0" data-notr>{person.about}</p>}
           <p className="muted m0 small">
             {monthRank ? `Is mahine rank #${monthRank.rank}` : 'Is mahine abhi rank nahi'}
             {person?.contact && d.isOwner ? ' · ID: ' + person.contact : ''}
@@ -171,18 +176,26 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
       </section>
 
       <section className="sec">
-        <div className="sec-head">
+        <div className="sec-head wrap">
           <h2>Tasks ki history</h2>
-          <span className="eyebrow">{history.length}</span>
+          <span className="eyebrow">{shownHist.length}</span>
         </div>
-        {history.length ? (
-          <div className="tasks">
-            {history.map((t) => (
-              <TaskItem key={t.id} task={t} now={now} onOpenChannel={openChannel} onReject={setRejecting} />
-            ))}
-          </div>
+        <DateFilter value={hday} onChange={setHday} label="Kis din ke tasks" />
+        {shownHist.length ? (
+          [...new Set(shownHist.map((t) => t.day))].map((day, i) => {
+            const ts = shownHist.filter((t) => t.day === day);
+            return (
+              <Fold key={day} id={'ph-' + userId + day} title={dayLabel(day)} count={ts.length} defaultOpen={i === 0 || !!hday} className="vday">
+                <div className="tasks">
+                  {ts.map((t) => (
+                    <TaskItem key={t.id} task={t} now={now} onOpenChannel={openChannel} onReject={setRejecting} />
+                  ))}
+                </div>
+              </Fold>
+            );
+          })
         ) : (
-          <div className="empty">Is muddat mein koi task nahi.</div>
+          <div className="empty">{hday ? 'Is din koi task nahi.' : 'Is muddat mein koi task nahi.'}</div>
         )}
       </section>
       {rejecting && <RejectSheet task={rejecting} onClose={() => setRejecting(null)} />}

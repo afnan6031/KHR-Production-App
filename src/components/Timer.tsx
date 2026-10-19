@@ -1,5 +1,5 @@
 import type { Task } from '../lib/types';
-import { REJECT_PENALTY, fmtClock, isLate } from '../lib/utils';
+import { REJECT_PENALTY, fmtClock, isLate, fmtWhen } from '../lib/utils';
 import { useNow } from './ui';
 
 /** 01:23:45 */
@@ -61,7 +61,7 @@ export function TaskTimer({ task, big }: { task: Task; big?: boolean }) {
       <div className={'timer running' + (urgent ? ' urgent' : '') + (big ? ' big' : '')} role="timer" aria-live="off">
         <span className="tchip"><i className="pulse" aria-hidden="true" />Waqt chal raha hai</span>
         <span className="tclock num">{hms(left)}</span>
-        <span className="tsub">baqi · deadline {fmtClock(task.due_at)}</span>
+        <span className="tsub">baqi · deadline {fmtWhen(task.due_at)}</span>
         {total > 0 && (
           <span className="tbar" aria-hidden="true">
             <i style={{ width: pct + '%' }} />
@@ -74,7 +74,7 @@ export function TaskTimer({ task, big }: { task: Task; big?: boolean }) {
     <div className={'timer late' + (big ? ' big' : '')} role="timer" aria-live="off">
       <span className="tchip">Deadline guzar gayi</span>
       <span className="tclock num">{hms(now - due)}</span>
-      <span className="tsub">se late · deadline {fmtClock(task.due_at)}</span>
+      <span className="tsub">se late · deadline {fmtWhen(task.due_at)}</span>
     </div>
   );
 }

@@ -3,14 +3,15 @@ import type { Session } from '@supabase/supabase-js';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { isConfigured, supabase } from './lib/supabase';
-import { DataProvider, useData } from './lib/data';
-import type { Video } from './lib/types';
+import { DataProvider, PersonalScope, RealScope, useData } from './lib/data';
 import { AuthScreen, NotConfigured } from './screens/Auth';
 import { ChannelScreen, ChannelsScreen, GateScreen, MyCardsScreen } from './screens/Main';
 import { HomeScreen, TeamScreen } from './screens/Home';
 import { LeaderboardScreen, ProgressScreen } from './screens/Progress';
 import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server';
-import { ChannelSheet, PerfSheet, ProfileSheet, VideoSheet } from './components/Sheets';
+import { ChannelSheet, PerfSheet, ProfileSheet } from './components/Sheets';
+import { MusicProvider, useMusic } from './components/Music';
+import { applyPrefs } from './lib/appearance';
 import { Avatar, Logo, ThemeButton, ToastProvider, runBackHandler } from './components/ui';
 import { BellButton, NotificationsProvider } from './components/Notifications';
 import { initPush, onPushOpen, stopPush, takePendingOpen, type PushOpen } from './lib/push';
@@ -36,7 +37,9 @@ export default function App() {
       {session ? (
         <DataProvider key={session.user.id} uid={session.user.id}>
           <NotificationsProvider>
-            <Shell />
+            <MusicProvider>
+              <ModeShell />
+            </MusicProvider>
           </NotificationsProvider>
         </DataProvider>
       ) : (
@@ -55,7 +58,63 @@ function Splash() {
 }
 
 type Tab = 'home' | 'cards' | 'channels' | 'team' | 'rank' | 'progress' | 'server';
-type SheetState = { kind: 'channel'; id: string | null } | { kind: 'perf' } | { kind: 'video'; video: Video | null } | { kind: 'profile' } | null;
+type SheetState = { kind: 'channel'; id: string | null } | { kind: 'perf' } | { kind: 'profile' } | null;
+type Mode = 'owner' | 'personal';
+const MODE_KEY = 'khr-mode';
+
+/**
+ * v9: Owner ke do mode — "Owner" (poori team ki management) aur "Personal" (sirf apna kaam,
+ * jaise ek member). Personal mein bhi team ke saare notifications aate rehte hain.
+ * Profile ki pasand (background, rang, zabaan) bhi yahin lagti hai.
+ */
+function ModeShell() {
+  const d = useData();
+  const [mode, setModeState] = useState<Mode>(() => {
+    try {
+      return localStorage.getItem(MODE_KEY) === 'personal' ? 'personal' : 'owner';
+    } catch {
+      return 'owner';
+    }
+  });
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {
+      /* storage band */
+    }
+    window.scrollTo(0, 0);
+  };
+  const prefsKey = JSON.stringify(d.me?.prefs || {});
+  useEffect(() => {
+    if (d.me) applyPrefs(d.me.prefs);
+  }, [prefsKey, !!d.me]); // eslint-disable-line react-hooks/exhaustive-deps
+  const personal = d.isOwner && mode === 'personal';
+  return (
+    <PersonalScope on={personal}>
+      <Shell mode={d.isOwner ? mode : null} setMode={setMode} />
+    </PersonalScope>
+  );
+}
+
+function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
+  return (
+    <div className="mode-switch" role="group" aria-label="Mode">
+      <button className={mode === 'owner' ? 'on' : ''} onClick={() => setMode('owner')} title="Poori team ki management">👑 <span>Owner</span></button>
+      <button className={mode === 'personal' ? 'on' : ''} onClick={() => setMode('personal')} title="Sirf mera kaam">👤 <span>Personal</span></button>
+    </div>
+  );
+}
+
+function MusicButton() {
+  const m = useMusic();
+  if (!m) return null;
+  return (
+    <button className={'theme-btn' + (m.current ? ' playing' : '')} onClick={m.openLibrary} aria-label="Music" title="Music">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></svg>
+    </button>
+  );
+}
 
 const ICON = {
   home: (
@@ -95,14 +154,23 @@ const ICON = {
   )
 };
 
-function Shell() {
+function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => void }) {
   const d = useData();
+  const music = useMusic();
   const serverBadge = useServerBadge();
   const [records, setRecords] = useState(false);
   const [tab, setTab] = useState<Tab>('home');
   const [openId, setOpenId] = useState<string | null>(null);
   const [openUser, setOpenUser] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
+  // mode badla to dashboard se shuru
+  const firstMode = useRef(true);
+  useEffect(() => {
+    if (firstMode.current) { firstMode.current = false; return; }
+    setTab('home');
+    setOpenId(null);
+    setOpenUser(null);
+  }, [mode]);
 
   // Android back button: sheet band -> progress/channel se wapas -> home -> app band
   const nav = useRef({ sheet, openId, openUser, tab });
@@ -241,7 +309,6 @@ function Shell() {
         onBack={() => setOpenId(null)}
         onEdit={() => setSheet({ kind: 'channel', id: channel.id })}
         onPerf={() => setSheet({ kind: 'perf' })}
-        onVideo={(video) => setSheet({ kind: 'video', video })}
         openProgress={openProgress}
       />
     );
@@ -249,7 +316,7 @@ function Shell() {
   else if (tab === 'team' && d.isOwner) body = <TeamScreen openProgress={openProgress} />;
   else if (tab === 'cards') body = <MyCardsScreen openChannel={open} />;
   else if (tab === 'rank') body = <LeaderboardScreen openProgress={openProgress} />;
-  else if (tab === 'server') body = <ServerScreen />;
+  else if (tab === 'server') body = <RealScope><ServerScreen /></RealScope>;
   else if (tab === 'progress') body = <ProgressScreen userId={d.uid} openChannel={open} />;
   else body = <HomeScreen openChannel={open} openProgress={openProgress} goTeam={() => go('team')} newChannel={() => setSheet({ kind: 'channel', id: null })} />;
 
@@ -261,13 +328,14 @@ function Shell() {
             <Logo />
             <div>
               <b>KHR Production</b>
-              <small>{d.isOwner ? 'Owner dashboard' : 'Team dashboard'}</small>
+              <small>{d.isOwner ? 'Owner dashboard' : mode === 'personal' ? 'Personal mode' : 'Team dashboard'}</small>
             </div>
           </div>
+          {mode && <ModeSwitch mode={mode} setMode={setMode} />}
+          <MusicButton />
           <ThemeButton />
           <BellButton />
           <button className="who" onClick={() => setSheet({ kind: 'profile' })} aria-label="Mera profile">
-            {d.isOwner && <span className="tag-owner">Owner</span>}
             <Avatar name={d.me.full_name || 'Owner'} url={d.me.avatar_url || undefined} />
           </button>
         </div>
@@ -298,7 +366,6 @@ function Shell() {
         />
       )}
       {sheet?.kind === 'perf' && channel && <PerfSheet channel={channel} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'video' && channel && <VideoSheet channelId={channel.id} video={sheet.video} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'profile' && (
         <ProfileSheet
           onClose={() => setSheet(null)}
@@ -311,9 +378,10 @@ function Shell() {
             setSheet(null);
             setRecords(true);
           }}
+          onMusic={music ? () => { setSheet(null); music.openLibrary(); } : undefined}
         />
       )}
-      {records && d.isOwner && <ChatReviewSheet onClose={() => setRecords(false)} />}
+      {records && d.realOwner && <RealScope><ChatReviewSheet onClose={() => setRecords(false)} /></RealScope>}
     </div>
   );
 }
