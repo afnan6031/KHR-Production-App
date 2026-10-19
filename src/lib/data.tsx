@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
-import type { Channel, DeadlineRequest, DirectMessage, FriendRequest, Member, Message, MusicTrack, Perf, Prefs, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video } from './types';
+import type { Channel, DeadlineRequest, DirectMessage, FriendRequest, Member, Message, MusicPlaylist, MusicPlaylistItem, MusicTrack, Perf, Prefs, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video } from './types';
 import { addDays, perfIndex, todayKey, type PerfIndex } from './utils';
 import { isLocalId, isNetErr, loadOutbox, loadSnapshot, newLocalId, saveOutbox, saveSnapshot, type OutItem, type OutKind } from './offline';
 
@@ -14,6 +14,8 @@ type Tables = {
   messages: Message[];
   deadline_requests: DeadlineRequest[];
   music_tracks: MusicTrack[];
+  music_playlists: MusicPlaylist[];
+  music_playlist_items: MusicPlaylistItem[];
   server_channels: ServerChannel[];
   server_channel_members: ServerChannelMember[];
   server_messages: ServerMessage[];
@@ -21,11 +23,11 @@ type Tables = {
   direct_messages: DirectMessage[];
 };
 type TableName = keyof Tables;
-const TABLES: TableName[] = ['profiles', 'channels', 'channel_members', 'performance', 'videos', 'tasks', 'messages', 'deadline_requests', 'music_tracks',
+const TABLES: TableName[] = ['profiles', 'channels', 'channel_members', 'performance', 'videos', 'tasks', 'messages', 'deadline_requests', 'music_tracks', 'music_playlists', 'music_playlist_items',
   'server_channels', 'server_channel_members', 'server_messages', 'friend_requests', 'direct_messages'];
 /** Chat wale tables: naya message aaye to poora table dobara load karne ke bajaye bas wahi row jod do */
 const INCREMENTAL: TableName[] = ['messages', 'server_messages', 'direct_messages'];
-const EMPTY: Tables = { profiles: [], channels: [], channel_members: [], performance: [], videos: [], tasks: [], messages: [], deadline_requests: [], music_tracks: [],
+const EMPTY: Tables = { profiles: [], channels: [], channel_members: [], performance: [], videos: [], tasks: [], messages: [], deadline_requests: [], music_tracks: [], music_playlists: [], music_playlist_items: [],
   server_channels: [], server_channel_members: [], server_messages: [], friend_requests: [], direct_messages: [] };
 
 export interface ServerChannelInput {
@@ -64,6 +66,8 @@ export interface VideoInput {
   thumbnail_url: string;
   thumbnail_delete_url: string;
   video_url: string;
+  voiceover_url?: string;
+  youtube_url?: string;
   task_id?: string | null;
 }
 
@@ -112,6 +116,11 @@ interface DataCtx extends Tables {
   addTrack: (title: string, url: string) => Promise<void>;
   updateTrack: (id: string, patch: { title?: string; position?: number }) => Promise<void>;
   deleteTrack: (id: string) => Promise<void>;
+  createPlaylist: (name: string) => Promise<string>;
+  renamePlaylist: (id: string, name: string) => Promise<void>;
+  deletePlaylist: (id: string) => Promise<void>;
+  setInPlaylist: (playlistId: string, trackId: string, on: boolean) => Promise<void>;
+  submitTaskWork: (taskId: string, videoId: string) => Promise<void>;
   setTaskDone: (taskId: string, done: boolean) => Promise<void>;
   reviewTask: (taskId: string, reject: boolean, reason?: string) => Promise<void>;
   sendMessage: (channelId: string, body: string, replyTo: string | null) => Promise<void>;
@@ -466,7 +475,9 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     async saveVideo(v) {
       const row = {
         channel_id: v.channel_id, title: v.title, stage: v.stage, due: v.due || null, script: v.script, notes: v.notes,
-        script_url: v.script_url, thumbnail_url: v.thumbnail_url, thumbnail_delete_url: v.thumbnail_delete_url, video_url: v.video_url
+        script_url: v.script_url, thumbnail_url: v.thumbnail_url, thumbnail_delete_url: v.thumbnail_delete_url, video_url: v.video_url,
+        ...(v.voiceover_url !== undefined ? { voiceover_url: v.voiceover_url } : {}),
+        ...(v.youtube_url !== undefined ? { youtube_url: v.youtube_url } : {})
       };
       let id = v.id;
       if (id) must(await supabase.from('videos').update(row).eq('id', id));
@@ -620,6 +631,33 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     async updateTrack(id, patch) {
       must(await supabase.from('music_tracks').update(patch).eq('id', id));
       await fetchTable('music_tracks');
+    },
+    async createPlaylist(name) {
+      const pos = t.music_playlists.reduce((a, x) => Math.max(a, x.position), 0) + 1;
+      const row = must(await supabase.from('music_playlists').insert({ name: name.trim(), position: pos }).select('id').single()) as { id: string };
+      await fetchTable('music_playlists');
+      return row.id;
+    },
+    async renamePlaylist(id, name) {
+      must(await supabase.from('music_playlists').update({ name: name.trim() }).eq('id', id));
+      await fetchTable('music_playlists');
+    },
+    async deletePlaylist(id) {
+      must(await supabase.from('music_playlists').delete().eq('id', id));
+      await Promise.all([fetchTable('music_playlists'), fetchTable('music_playlist_items')]);
+    },
+    async setInPlaylist(playlistId, trackId, on) {
+      if (on) {
+        const pos = t.music_playlist_items.filter((x) => x.playlist_id === playlistId).reduce((a, x) => Math.max(a, x.position), 0) + 1;
+        must(await supabase.from('music_playlist_items').upsert({ playlist_id: playlistId, track_id: trackId, position: pos }));
+      } else {
+        must(await supabase.from('music_playlist_items').delete().eq('playlist_id', playlistId).eq('track_id', trackId));
+      }
+      await fetchTable('music_playlist_items');
+    },
+    async submitTaskWork(taskId, videoId) {
+      const row = must(await supabase.rpc('submit_task_work', { p_task: taskId, p_video: videoId })) as Task;
+      setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));
     },
     async deleteTrack(id) {
       must(await supabase.from('music_tracks').delete().eq('id', id));

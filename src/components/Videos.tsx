@@ -115,6 +115,8 @@ export function VideoTile({ v, onOpen, showDay }: { v: Video; onOpen: () => void
           <i className={v.script_url || v.script ? 'on' : ''}>📄 <span>Script</span></i>
           <i className={v.thumbnail_url ? 'on' : ''}>🖼 <span>Thumbnail</span></i>
           <i className={v.video_url ? 'on' : ''}>🎬 <span>Video</span></i>
+          <i className={v.voiceover_url ? 'on' : ''}>🎙 <span>Voiceover</span></i>
+          <i className={v.youtube_url ? 'on' : ''}>▶ <span>YouTube</span></i>
         </span>
       </span>
     </button>
@@ -282,6 +284,20 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
       ) : (
         <div className="vv-empty muted small">🎬 Abhi video file nahi lagi{canEdit ? ' — Edit dabayein aur upload karein' : ''}</div>
       )}
+      {video.voiceover_url ? (
+        <div className="vo-box">
+          <b>🎙 Voiceover</b>
+          <audio controls src={video.voiceover_url} className="vo-audio" />
+          <a className="btn sm" href={video.voiceover_url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
+        </div>
+      ) : null}
+      {video.youtube_url ? (
+        <div className="script-link">
+          <span className="mono-url">▶ {video.youtube_url.replace(/^https?:\/\//, '')}</span>
+          <a className="btn primary sm" href={video.youtube_url} target="_blank" rel="noopener noreferrer">YouTube par dekhein ↗</a>
+          <button className="btn sm" onClick={() => copy(video.youtube_url!)}>Copy</button>
+        </div>
+      ) : null}
       {video.notes && <div className="note pre">{video.notes}</div>}
       {canEdit && (
         <button className="btn block" onClick={onEdit}>
@@ -306,6 +322,8 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
   const [thumb, setThumb] = useState({ url: video?.thumbnail_url || '', del: video?.thumbnail_delete_url || '' });
   const [notes, setNotes] = useState(video?.notes || '');
   const [videoUrl, setVideoUrl] = useState(video?.video_url || '');
+  const [vo, setVo] = useState(video?.voiceover_url || '');
+  const [yt, setYt] = useState(video?.youtube_url || '');
   const [vidBusy, setVidBusy] = useState(false);
   const [busy, setBusy] = useState<'' | 'img' | 'save'>('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -332,13 +350,15 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     const t = title.trim();
     if (!t) return toast('Video / script ka title likhein');
     if (vidBusy) return toast('Video abhi upload ho rahi hai — 100% hone ka intezar karein');
+    if (vo.trim() && !/^https:\/\//i.test(vo.trim())) return toast('Voiceover ka link https:// se shuru hona chahiye');
+    if (yt.trim() && !/^https:\/\//i.test(yt.trim())) return toast('YouTube ka link https:// se shuru hona chahiye');
     const su = scriptUrl.trim();
     if (su && !/^https?:\/\//i.test(su)) return toast('Script ka link https:// se shuru hona chahiye (Google Docs ka link copy karein)');
     setBusy('save');
     try {
       const id = await d.saveVideo({
         id: video?.id, channel_id: channelId, title: t, stage, due: due || null, script, notes,
-        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, task_id: myTask
+        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, voiceover_url: vo.trim(), youtube_url: yt.trim(), task_id: myTask
       });
       toast(video ? 'Video update ho gayi' : 'Video add ho gayi');
       onSaved(id);
@@ -396,6 +416,14 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
           Video <span className="h">Editor final / draft video yahan upload kare (ya Drive / Gofile link)</span>
           <VideoField value={videoUrl} onChange={setVideoUrl} onBusy={setVidBusy} />
         </div>
+        <label className="f">
+          Voiceover ka link <span className="h">Voice Over wala apne task se file upload karta hai; yahan link theek kar sakte hain</span>
+          <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="https://files.catbox.moe/…" />
+        </label>
+        <label className="f">
+          YouTube link <span className="h">Publish hone ke baad video ka link</span>
+          <input type="url" inputMode="url" value={yt} onChange={(e) => setYt(e.target.value)} placeholder="https://youtu.be/…" />
+        </label>
         <div className="two">
           <label className="f">
             Stage

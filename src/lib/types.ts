@@ -34,6 +34,20 @@ export interface MusicTrack {
   created_at: string;
 }
 
+export interface MusicPlaylist {
+  id: string;
+  user_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
+export interface MusicPlaylistItem {
+  playlist_id: string;
+  track_id: string;
+  position: number;
+  added_at: string;
+}
+
 export interface DeadlineRequest {
   id: string;
   task_id: string;
@@ -113,6 +127,9 @@ export interface Video {
   /** v11: banane / aakhri edit karne wale ka naam (banda team se nikal jaye to bhi rahe) */
   created_by_name?: string;
   updated_by_name?: string;
+  /** v13 */
+  voiceover_url?: string;
+  youtube_url?: string;
 }
 
 export interface Task {
@@ -138,6 +155,8 @@ export interface Task {
   title: string;
   extended_minutes: number;
   assigned_by: string | null;
+  /** v13: kis EP mein kaam laga */
+  video_id?: string | null;
 }
 
 /** v3.1: channel ke din ki script / thumbnail (har din kitni bhi) */

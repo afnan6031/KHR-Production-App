@@ -76,7 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 /* ---------- Bottom sheet ---------- */
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, onClose, children, actions }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
   useBackHandler(true, onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -93,6 +93,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-h">
           <h2>{title}</h2>
+          {actions && <div className="sheet-actions">{actions}</div>}
           <button className="x" onClick={onClose} aria-label="Band karein">
             ×
           </button>

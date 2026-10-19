@@ -8,7 +8,6 @@ import { Bar, Fold, Logo, Seg, Week, useNow } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
 import { VideoBrowser, VideosSheet } from '../components/Videos';
 import { ChatSheet } from '../components/Chat';
-import { AssignTaskSheet } from '../components/Assign';
 import { boardTasks } from './Home';
 
 /* ================= Pending / Rejected ================= */
@@ -116,7 +115,6 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
   const [vTab, setVTab] = useState<'today' | 'history'>('today');
   const [chat, setChat] = useState(false);
   const [vOpen, setVOpen] = useState<{ focus?: string; create?: boolean } | null>(null);
-  const [assign, setAssign] = useState(false);
   const mine = d.rolesOf(channel.id);
   const members = d.channel_members.filter((m) => m.channel_id === channel.id && m.roles.length);
   const vids = d.videos.filter((v) => v.channel_id === channel.id);
@@ -149,7 +147,6 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
           <div className="row">
             <button className="btn sm" onClick={onEdit}>Channel edit karein</button>
             <button className="btn sm" onClick={onPerf}>Performance dein</button>
-            <button className="btn sm primary" onClick={() => setAssign(true)}>+ Kaam assign karein</button>
           </div>
         )}
       </div>
@@ -257,7 +254,6 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
       </Fold>
       {chat && <ChatSheet channelId={channel.id} onClose={() => setChat(false)} />}
       {vOpen && <VideosSheet channelId={channel.id} focus={vOpen.focus} create={vOpen.create} initialTab={vOpen.focus && vids.find((v) => v.id === vOpen.focus)?.day !== todayKey() ? 'history' : 'today'} onClose={() => setVOpen(null)} />}
-      {assign && <AssignTaskSheet channelId={channel.id} onClose={() => setAssign(false)} />}
     </>
   );
 }

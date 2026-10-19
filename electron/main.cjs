@@ -111,6 +111,28 @@ ipcMain.on('khr-bar', (_e, o) => {
   if (!win || !o || !/^#[0-9a-f]{6}$/i.test(o.color)) return;
   try { win.setTitleBarOverlay({ color: o.color, symbolColor: o.dark ? '#E8EBF4' : '#121A2E', height: 32 }); } catch { /* purana Windows */ }
 });
+// v13: Catbox par audio upload (Node ke zariye, file:// wali "Origin: null" ke baghair)
+async function catboxOnce(bytes, name, type, userhash) {
+  const fd = new FormData();
+  fd.append('reqtype', 'fileupload');
+  if (userhash) fd.append('userhash', userhash);
+  fd.append('fileToUpload', new Blob([bytes], { type: type || 'application/octet-stream' }), name || 'audio.mp3');
+  const r = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fd, headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
+  const text = (await r.text()).trim();
+  return { status: r.status, text };
+}
+ipcMain.handle('khr-catbox-upload', async (_e, o) => {
+  let res = await catboxOnce(o.bytes, o.name, o.type, o.userhash);
+  // userhash qabool na ho (412 / error) to bina userhash ke (file phir bhi hamesha rehti hai)
+  if (!/^https:\/\/files\.catbox\.moe\//i.test(res.text) && o.userhash) res = await catboxOnce(o.bytes, o.name, o.type, '');
+  return res;
+});
+ipcMain.handle('khr-fetch-bytes', async (_e, url) => {
+  if (!/^https:\/\/(files\.)?catbox\.moe\//i.test(String(url))) throw new Error('not allowed');
+  const r = await fetch(url, { headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return { type: r.headers.get('content-type') || 'audio/mpeg', bytes: Buffer.from(await r.arrayBuffer()) };
+});
 ipcMain.on('khr-attention', () => { if (win && !win.isFocused()) win.flashFrame(true); });
 ipcMain.on('khr-show', showWindow);
 

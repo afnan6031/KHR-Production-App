@@ -3,7 +3,7 @@ import { useData } from '../lib/data';
 import type { MusicTrack } from '../lib/types';
 import { errorText } from '../lib/utils';
 import { ConfirmButton, Sheet, useToast } from './ui';
-import { canOffline, checkAudioFile, forgetSrc, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadToCatbox } from '../lib/catbox';
+import { checkAudioFile, forgetSrc, isUploaded, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadToCatbox } from '../lib/catbox';
 
 /* =========================================================================
    v9: MUSIC — har user ki apni playlist. YouTube / YouTube Music, SoundCloud,
@@ -89,7 +89,8 @@ interface MusicCtx {
   big: boolean;
   shuffle: boolean;
   repeat: Repeat;
-  play: (id: string) => void;
+  /** queue = kis list se chal raha hai (playlist); na dein to sab gaane */
+  play: (id: string, queue?: string[]) => void;
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -123,7 +124,9 @@ function writePref(k: string, v: unknown) {
 
 export function MusicProvider({ children }: { children: ReactNode }) {
   const d = useData();
-  const tracks = d.music_tracks;
+  const all = d.music_tracks;
+  const [queue, setQueue] = useState<string[] | null>(null);
+  const tracks = useMemo(() => (queue ? (queue.map((id) => all.find((t) => t.id === id)).filter(Boolean) as MusicTrack[]) : all), [queue, all]);
   const [curId, setCurId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [big, setBig] = useState(false);
@@ -131,8 +134,8 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffleState] = useState<boolean>(() => readPref('shuffle', false));
   const [repeat, setRepeat] = useState<Repeat>(() => readPref('repeat', 'all'));
   const history = useRef<string[]>([]);
-  const current = tracks.find((t) => t.id === curId) || null;
-  const idx = current ? tracks.indexOf(current) : -1;
+  const current = all.find((t) => t.id === curId) || null;
+  const idx = current ? tracks.findIndex((t) => t.id === current.id) : -1;
 
   const go = useCallback((id: string) => {
     if (curId) history.current = [...history.current.slice(-50), curId];
@@ -167,7 +170,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
       big,
       shuffle,
       repeat,
-      play: (id) => go(id),
+      play: (id, q) => { setQueue(q && q.length ? q : null); go(id); },
       toggle: () => setPlaying((p) => !p),
       next: () => nextTrack(false),
       prev,
@@ -242,6 +245,7 @@ function useFloating(big: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Pos | null>(() => readPref<Pos | null>('pos', null));
   const [pin, setPin] = useState<'left' | 'right' | null>(() => readPref<'left' | 'right' | null>('pin', null));
+  const [tucked, setTucked] = useState<boolean>(() => readPref('tucked', false));
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const clamp = useCallback((p: Pos): Pos => {
     const el = ref.current;
@@ -295,6 +299,14 @@ function useFloating(big: boolean) {
       });
     }
   };
+  /** side mein chhupao: sirf kinare par chhoti patti dikhe */
+  const tuck = (on: boolean) => {
+    const w = ref.current?.offsetWidth || 340;
+    const side = pin || (pos && pos.x + w / 2 < window.innerWidth / 2 ? 'left' : 'right');
+    if (on && side !== pin) { setPin(side); writePref('pin', side); }
+    setTucked(on);
+    writePref('tucked', on);
+  };
   const togglePin = () => {
     const w = ref.current?.offsetWidth || 340;
     const side = pin ? null : pos && pos.x + w / 2 < window.innerWidth / 2 ? 'left' : 'right';
@@ -302,7 +314,7 @@ function useFloating(big: boolean) {
     writePref('pin', side);
     if (pos) { const n = snap(pos, side); setPos(n); writePref('pos', n); }
   };
-  return { ref, pos, pin, handle, togglePin };
+  return { ref, pos, pin, tucked, tuck, handle: tucked ? {} : handle, togglePin };
 }
 
 /** Asal player — tairta card (chhota ya bara), screen ka koi hissa nahi gherta */
@@ -414,21 +426,33 @@ function Player({ track, playing, big, repeat, onEnded, onState }: { track: Musi
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => setTime({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }),
     onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => setTime({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 })
   };
-  const style = fl.pos ? { left: fl.pos.x, top: fl.pos.y } : { visibility: 'hidden' as const };
+  const w = fl.ref.current?.offsetWidth || 360;
+  const style = !fl.pos
+    ? { visibility: 'hidden' as const }
+    : fl.tucked
+      ? { left: fl.pin === 'left' ? -(w - 30) : window.innerWidth - 30, top: fl.pos.y }
+      : { left: fl.pos.x, top: fl.pos.y };
 
   return (
     <div
       ref={fl.ref}
-      className={'mplayer2' + (big ? ' big' : '') + (isVideo ? ' has-video' : '') + (playing ? ' is-playing' : '') + (fl.pin ? ' pinned' : '')}
+      className={'mplayer2' + (fl.tucked ? ' tucked tucked-' + (fl.pin || 'right') : '') + (big ? ' big' : '') + (isVideo ? ' has-video' : '') + (playing ? ' is-playing' : '') + (fl.pin ? ' pinned' : '')}
       style={style}
       role="region"
       aria-label="Music player"
       data-notr
       {...fl.handle}
     >
+      {fl.tucked && (
+        <button className="mp2-tab" onClick={() => fl.tuck(false)} aria-label="Music player kholein" title="Music player kholein">
+          <span>{fl.pin === 'left' ? '▸' : '◂'}</span>
+          <span className={playing ? 'pulse' : ''}>🎵</span>
+        </button>
+      )}
       <div className="mp2-top">
         <span className="mp2-grip" aria-hidden="true">⠿</span>
         <span className="mp2-head">{big ? 'Now playing' : ''}</span>
+        <button className="mp-btn sm" onClick={() => fl.tuck(true)} title="Side mein chhupayein" aria-label="Side mein chhupayein">{fl.pin === 'left' ? '⇤' : '⇥'}</button>
         <button className={'mp-btn sm' + (fl.pin ? ' on' : '')} onClick={fl.togglePin} title={fl.pin ? 'Pin hatayein (azaad khinchein)' : 'Side mein pin karein'} aria-label="Pin">📌</button>
         <button className="mp-btn sm" onClick={() => m.setBig(!big)} aria-label={big ? 'Chhota karein' : 'Bara karein'} title={big ? 'Chhota' : 'Bara'}>{big ? '▾' : '▴'}</button>
         <button className="mp-btn sm" onClick={m.openLibrary} aria-label="Playlist" title="Playlist">☰</button>
@@ -515,45 +539,27 @@ function Player({ track, playing, big, repeat, onEnded, onState }: { track: Musi
   );
 }
 
-/** Playlist: link paste karein, list, chalayein, tarteeb, hatayein */
+/** Music library: sab gaane, apni playlists, upar "➕ Gaana" (link ya PC / phone se upload) */
 export function MusicSheet({ onClose }: { onClose: () => void }) {
   const d = useData();
   const toast = useToast();
   const m = useMusic();
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'link' | 'upload'>('upload');
-  const [file, setFile] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [pct, setPct] = useState<number | null>(null);
+  const tracks = d.music_tracks;
+  const lists = [...d.music_playlists].sort((a, b) => a.position - b.position);
+  const [view, setView] = useState<string>('all'); // 'all' | 'uploads' | playlist id
+  const [adding, setAdding] = useState<null | 'choose' | 'upload' | 'link'>(null);
+  const [newList, setNewList] = useState<string | null>(null);
+  const [menu, setMenu] = useState<string | null>(null);
   const [offline, setOffline] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<string | null>(null);
-  const tracks = d.music_tracks;
   useEffect(() => { offlineKeys().then((k) => setOffline(new Set(k))); }, []);
 
-  async function upload(e: FormEvent) {
-    e.preventDefault();
-    if (!file) return toast('Pehle audio file chunein');
-    const bad = checkAudioFile(file);
-    if (bad) return toast(bad);
-    setBusy(true);
-    setPct(0);
-    try {
-      const url = await uploadToCatbox(file, setPct);
-      const t = title.trim() || file.name.replace(/\.[^.]+$/, '').slice(0, 200);
-      await d.addTrack(t, url);
-      setFile(null);
-      if (fileRef.current) fileRef.current.value = '';
-      setTitle('');
-      toast('🎵 Upload ho kar playlist mein add ho gaya');
-    } catch (err) {
-      toast(errorText(err));
-    } finally {
-      setBusy(false);
-      setPct(null);
-    }
-  }
+  const inList = (pid: string) => new Set(d.music_playlist_items.filter((x) => x.playlist_id === pid).map((x) => x.track_id));
+  const shown = view === 'all' ? tracks : view === 'uploads' ? tracks.filter((t) => isUploaded(t.url)) : (() => {
+    const order = d.music_playlist_items.filter((x) => x.playlist_id === view).sort((a, b) => a.position - b.position).map((x) => x.track_id);
+    return order.map((id) => tracks.find((t) => t.id === id)).filter(Boolean) as MusicTrack[];
+  })();
+  const curList = lists.find((l) => l.id === view);
 
   async function toggleOffline(url: string) {
     if (offline.has(url)) {
@@ -573,37 +579,8 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
       setSaving(null);
     }
   }
-
-  async function add(e: FormEvent) {
-    e.preventDefault();
-    const u = url.trim();
-    if (!/^https?:\/\//i.test(u)) return toast('Poora link paste karein (https:// se shuru)');
-    setBusy(true);
-    try {
-      let t = title.trim();
-      if (!t) {
-        // naam khud dhoondo (YouTube / SoundCloud / Vimeo)
-        try {
-          const r = await fetch('https://noembed.com/embed?url=' + encodeURIComponent(u));
-          const j = (await r.json()) as { title?: string };
-          t = (j.title || '').slice(0, 200);
-        } catch {
-          /* naam na mile to link hi naam */
-        }
-      }
-      await d.addTrack(t || u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 80), u);
-      setUrl('');
-      setTitle('');
-      toast('Playlist mein add ho gaya');
-    } catch (err) {
-      toast(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const move = async (i: number, dir: -1 | 1) => {
-    const a = tracks[i], b = tracks[i + dir];
+    const a = shown[i], b = shown[i + dir];
     if (!a || !b) return;
     try {
       await d.updateTrack(a.id, { position: b.position === a.position ? b.position + dir : b.position });
@@ -613,21 +590,213 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
     }
   };
 
+  if (adding === 'upload' || adding === 'link')
+    return <AddSong mode={adding} playlistId={curList?.id} onBack={() => setAdding(null)} onClose={onClose} />;
+
   return (
-    <Sheet title="🎵 Meri music playlist" onClose={onClose}>
-      <div className="seg sm">
-        <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>⬆ Audio upload</button>
-        <button type="button" className={mode === 'link' ? 'on' : ''} onClick={() => setMode('link')}>🔗 Link paste</button>
+    <Sheet
+      title="🎵 Meri music"
+      onClose={onClose}
+      actions={<button type="button" className="btn primary sm" onClick={() => setAdding('choose')} aria-label="Gaana add karein" title="Gaana add karein">➕ Gaana</button>}
+    >
+      {adding === 'choose' && (
+        <div className="add-choose">
+          <b>Gaana kaise add karna hai?</b>
+          <div className="two">
+            <button type="button" className="choice" onClick={() => setAdding('upload')}>
+              <span className="choice-ico">⬆</span>
+              <b>PC / phone se upload</b>
+              <small className="muted">MP3, M4A, WAV… — offline bhi chal sakta hai</small>
+            </button>
+            <button type="button" className="choice" onClick={() => setAdding('link')}>
+              <span className="choice-ico">🔗</span>
+              <b>Link paste</b>
+              <small className="muted">YouTube, SoundCloud, Spotify…</small>
+            </button>
+          </div>
+          <button type="button" className="linkbtn" onClick={() => setAdding(null)}>Rehne dein</button>
+        </div>
+      )}
+
+      <div className="pl-chips">
+        <button type="button" className={'chip' + (view === 'all' ? ' on' : '')} onClick={() => setView('all')}>Sab gaane<span className="c">{tracks.length}</span></button>
+        <button type="button" className={'chip' + (view === 'uploads' ? ' on' : '')} onClick={() => setView('uploads')}>⬆ Upload kiye<span className="c">{tracks.filter((t) => isUploaded(t.url)).length}</span></button>
+        {lists.map((l) => (
+          <button type="button" key={l.id} className={'chip' + (view === l.id ? ' on' : '')} onClick={() => setView(l.id)} data-notr>
+            {l.name}<span className="c">{inList(l.id).size}</span>
+          </button>
+        ))}
+        {newList === null ? (
+          <button type="button" className="chip add" onClick={() => setNewList('')}>+ Playlist</button>
+        ) : (
+          <form
+            className="pl-new"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newList.trim()) return;
+              try {
+                const id = await d.createPlaylist(newList);
+                setNewList(null);
+                setView(id);
+                toast('Playlist ban gayi — ab gaanon ke ⋯ se is mein daalein');
+              } catch (err) {
+                toast(errorText(err));
+              }
+            }}
+          >
+            <input autoFocus type="text" maxLength={60} value={newList} onChange={(e) => setNewList(e.target.value)} placeholder="Naam, jaise Naat / Qawwali / Sad" aria-label="Playlist ka naam" />
+            <button className="btn primary sm" type="submit">Banayein</button>
+            <button className="btn sm" type="button" onClick={() => setNewList(null)}>✕</button>
+          </form>
+        )}
       </div>
-      {mode === 'upload' && (
+
+      {curList && (
+        <div className="row between pl-head">
+          <b data-notr>{curList.name}</b>
+          <ConfirmButton className="btn sm" label="Playlist delete" confirmLabel="Pakka? (gaane nahi mitenge)" onConfirm={() => d.deletePlaylist(curList.id).then(() => setView('all'), (e) => toast(errorText(e)))} />
+        </div>
+      )}
+
+      {shown.length ? (
+        <div className="list tracks" data-notr>
+          {shown.map((t, i) => {
+            const s = parseMusic(t.url);
+            const on = m?.current?.id === t.id;
+            const up = isUploaded(t.url);
+            return (
+              <div key={t.id} className={'li track' + (on ? ' on' : '')}>
+                <button className="track-play" onClick={() => (on ? m?.toggle() : m?.play(t.id, shown.map((x) => x.id)))} aria-label={on && m?.playing ? 'Pause' : 'Chalayein'}>
+                  {on && m?.playing ? '⏸' : '▶'}
+                </button>
+                <span className="grow">
+                  <span className="t block one-line">{t.title || t.url}</span>
+                  <span className="d block">{up ? '⬆ Upload kiya' : sourceLabel(s)}{offline.has(t.url) ? ' · ✓ Offline' : ''}</span>
+                </span>
+                {up && (
+                  <button className={'btn sm' + (offline.has(t.url) ? ' on' : '')} disabled={saving === t.url} onClick={() => toggleOffline(t.url)} title={offline.has(t.url) ? 'Offline copy hatayein' : 'Is device mein save karein (internet ke baghair chalane ke liye)'}>
+                    {saving === t.url ? '…' : offline.has(t.url) ? '✓ Offline' : '📥 Offline'}
+                  </button>
+                )}
+                <button className="btn sm" onClick={() => setMenu(menu === t.id ? null : t.id)} aria-label="Aur options" title="Playlist mein daalein / tarteeb / hatayein">⋯</button>
+                {menu === t.id && (
+                  <div className="track-menu">
+                    <span className="muted tiny">Playlist mein:</span>
+                    {lists.length ? lists.map((l) => {
+                      const has = inList(l.id).has(t.id);
+                      return (
+                        <label key={l.id} className="row check">
+                          <input type="checkbox" checked={has} onChange={(e) => d.setInPlaylist(l.id, t.id, e.target.checked).catch((er) => toast(errorText(er)))} />
+                          <span>{l.name}</span>
+                        </label>
+                      );
+                    }) : <span className="muted tiny">Pehle upar "+ Playlist" se playlist banayein.</span>}
+                    <div className="row">
+                      {view === 'all' && (
+                        <>
+                          <button className="btn sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Upar">↑</button>
+                          <button className="btn sm" onClick={() => move(i, 1)} disabled={i === shown.length - 1} aria-label="Neeche">↓</button>
+                        </>
+                      )}
+                      {curList && <button className="btn sm" onClick={() => d.setInPlaylist(curList.id, t.id, false).catch((e) => toast(errorText(e)))}>Is playlist se nikalein</button>}
+                      <ConfirmButton className="btn sm" label="🗑 Gaana mitayein" confirmLabel="Pakka?" onConfirm={() => { if (on) m?.stop(); removeOffline(t.url); forgetSrc(t.url); return d.deleteTrack(t.id).catch((e) => toast(errorText(e))); }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty">
+          <b>{curList ? 'Is playlist mein abhi koi gaana nahi' : 'Abhi koi gaana nahi'}</b>
+          {curList ? '"Sab gaane" mein kisi gaane ke ⋯ dabayein aur is playlist ko chunein.' : 'Upar "➕ Gaana" dabayein — PC / phone se upload karein ya link paste karein.'}
+        </div>
+      )}
+      {shown.length > 0 && (
+        <button className="btn block" onClick={() => m?.play(shown[0].id, shown.map((x) => x.id))}>▶ {curList ? 'Ye playlist chalayein' : 'Sab chalayein'}</button>
+      )}
+      <p className="muted tiny m0">Music sirf aap ko nazar aata hai. Upload kiye gaanon par "📥 Offline" dabane se gaana is phone / PC mein save ho jata hai aur internet ke baghair bhi chalta hai. YouTube / link wale gaane offline nahi ho sakte.</p>
+    </Sheet>
+  );
+}
+
+/** Gaana add: PC / phone se upload (Catbox) ya link paste */
+function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link'; playlistId?: string; onBack: () => void; onClose: () => void }) {
+  const d = useData();
+  const toast = useToast();
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [pct, setPct] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const after = async (u: string, t: string) => {
+    await d.addTrack(t, u);
+    if (playlistId) {
+      // naya gaana chalu playlist mein bhi
+      const id = (await waitTrack(d, u)) || null;
+      if (id) await d.setInPlaylist(playlistId, id, true).catch(() => {});
+    }
+  };
+
+  async function upload(e: FormEvent) {
+    e.preventDefault();
+    if (!file) return toast('Pehle audio file chunein');
+    const bad = checkAudioFile(file);
+    if (bad) return toast(bad);
+    setBusy(true);
+    setPct(0);
+    try {
+      const u = await uploadToCatbox(file, setPct);
+      await after(u, title.trim() || file.name.replace(/\.[^.]+$/, '').slice(0, 200));
+      toast('🎵 Upload ho kar music mein add ho gaya');
+      onBack();
+    } catch (err) {
+      toast(errorText(err));
+    } finally {
+      setBusy(false);
+      setPct(null);
+    }
+  }
+  async function addLink(e: FormEvent) {
+    e.preventDefault();
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) return toast('Poora link paste karein (https:// se shuru)');
+    setBusy(true);
+    try {
+      let t = title.trim();
+      if (!t) {
+        try {
+          const r = await fetch('https://noembed.com/embed?url=' + encodeURIComponent(u));
+          const j = (await r.json()) as { title?: string };
+          t = (j.title || '').slice(0, 200);
+        } catch {
+          /* naam na mile to link hi naam */
+        }
+      }
+      await after(u, t || u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 80));
+      toast('Music mein add ho gaya');
+      onBack();
+    } catch (err) {
+      toast(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet title={mode === 'upload' ? '⬆ Gaana upload karein' : '🔗 Gaane ka link'} onClose={() => (busy ? undefined : onClose())}>
+      <button type="button" className="back" onClick={onBack} disabled={busy}>‹ Wapas</button>
+      {mode === 'upload' ? (
         <form className="form" onSubmit={upload}>
-          <label className="f">
+          <div className="f">
             Audio file <span className="h">MP3, M4A, WAV, OGG ya MP4 audio — 200 MB tak. File Catbox.moe par jati hai, app mein sirf link save hota hai.</span>
             <input ref={fileRef} type="file" hidden accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.opus,.flac" onChange={(e) => { const f = e.target.files?.[0] || null; setFile(f); if (f && !title.trim()) setTitle(f.name.replace(/\.[^.]+$/, '').slice(0, 200)); }} disabled={busy} />
             <button type="button" className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
               🎵 {file ? <span data-notr>{file.name}</span> : 'Audio file chunein (phone / PC se)'}
             </button>
-          </label>
+          </div>
           <label className="f">
             Naam <span className="h">Khaali chhor dein to file ka naam</span>
             <input type="text" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lofi focus mix" />
@@ -638,53 +807,29 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
               <span className="muted tiny">{pct < 0 ? 'Upload ho raha hai…' : pct >= 100 ? 'Catbox file save kar raha hai…' : pct + '%'}</span>
             </div>
           )}
-          <button className="btn primary block" type="submit" disabled={busy || !file}>{busy ? 'Upload ho raha hai…' : '⬆ Upload kar ke playlist mein add karein'}</button>
+          <button className="btn primary block" type="submit" disabled={busy || !file}>{busy ? 'Upload ho raha hai…' : '⬆ Upload karein'}</button>
+        </form>
+      ) : (
+        <form className="form" onSubmit={addLink}>
+          <label className="f">
+            Gaane / video ka link
+            <input type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="YouTube, YouTube Music, SoundCloud, Spotify, mp3 link…" required />
+          </label>
+          <label className="f">
+            Naam <span className="h">Khaali chhor dein to app khud dhoondegi</span>
+            <input type="text" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lofi focus mix" />
+          </label>
+          <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Add ho raha hai…' : '+ Music mein add karein'}</button>
+          <p className="muted tiny m0">Link wale gaane (YouTube waghera) offline nahi ho sakte — offline ke liye PC / phone se upload karein.</p>
         </form>
       )}
-      {mode === 'link' && <form className="form" onSubmit={add}>
-        <label className="f">
-          Gaane / video ka link
-          <input type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="YouTube, YouTube Music, SoundCloud, Spotify, mp3 link…" required />
-        </label>
-        <label className="f">
-          Naam <span className="h">Khaali chhor dein to app khud dhoondegi</span>
-          <input type="text" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lofi focus mix" />
-        </label>
-        <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Add ho raha hai…' : '+ Playlist mein add karein'}</button>
-      </form>}
-      {tracks.length ? (
-        <div className="list tracks" data-notr>
-          {tracks.map((t, i) => {
-            const s = parseMusic(t.url);
-            const on = m?.current?.id === t.id;
-            return (
-              <div key={t.id} className={'li track' + (on ? ' on' : '')}>
-                <button className="track-play" onClick={() => (on ? m?.toggle() : m?.play(t.id))} aria-label={on && m?.playing ? 'Pause' : 'Chalayein'}>
-                  {on && m?.playing ? '⏸' : '▶'}
-                </button>
-                <span className="grow">
-                  <span className="t block one-line">{t.title || t.url}</span>
-                  <span className="d block">{sourceLabel(s)}</span>
-                </span>
-                {canOffline(t.url) && (
-                  <button className={'btn sm' + (offline.has(t.url) ? ' on' : '')} disabled={saving === t.url} onClick={() => toggleOffline(t.url)} title={offline.has(t.url) ? 'Offline copy hatayein' : 'Is device mein save karein (internet ke baghair chalane ke liye)'}>
-                    {saving === t.url ? '…' : offline.has(t.url) ? '✓ Offline' : '📥 Offline'}
-                  </button>
-                )}
-                <button className="btn sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Upar">↑</button>
-                <button className="btn sm" onClick={() => move(i, 1)} disabled={i === tracks.length - 1} aria-label="Neeche">↓</button>
-                <ConfirmButton className="btn sm" label="✕" confirmLabel="Hatayein?" onConfirm={() => { if (on) m?.stop(); removeOffline(t.url); forgetSrc(t.url); return d.deleteTrack(t.id).catch((e) => toast(errorText(e))); }} />
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="empty"><b>Playlist khaali hai</b>Upar kisi bhi gaane ka link paste karein — YouTube, SoundCloud, Spotify ya mp3. Phir yahin se chalayein.</div>
-      )}
-      {tracks.length > 0 && !m?.current && (
-        <button className="btn block" onClick={() => m?.play(tracks[0].id)}>▶ Poori playlist chalayein</button>
-      )}
-      <p className="muted tiny m0">Playlist sirf aap ko nazar aati hai. "📥 Offline" dabane se gaana is phone / PC mein save ho jata hai aur internet ke baghair bhi chalta hai. Spotify par poora gaana sunne ke liye Spotify mein login hona zaroori hai.</p>
     </Sheet>
   );
+}
+
+/** naya gaana list mein aane ka intezar (playlist mein daalne ke liye) */
+async function waitTrack(d: ReturnType<typeof useData>, url: string): Promise<string | undefined> {
+  const { supabase } = await import('../lib/supabase');
+  const { data } = await supabase.from('music_tracks').select('id').eq('url', url).order('created_at', { ascending: false }).limit(1);
+  return (data as { id: string }[] | null)?.[0]?.id ?? d.music_tracks.find((t) => t.url === url)?.id;
 }

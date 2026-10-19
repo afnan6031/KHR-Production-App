@@ -7,6 +7,7 @@ import { Chevron, Seg, Sheet, useFold, useToast } from './ui';
 import { TaskSheet } from './TaskSheet';
 import { TaskTimer } from './Timer';
 import { ChannelTools } from './Videos';
+import { ROLE_WORK, TaskWorkSheet, needsWork } from './TaskWork';
 
 /* ================= One task row ================= */
 export function TaskItem({ task, now, showName, showChannel = true, onOpenChannel, onReject }: {
@@ -26,7 +27,12 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   const mine = task.user_id === d.uid;
   const early = notStarted(task, now);
   // waqt shuru hone se pehle tick nahi (untick hamesha ho sakta hai)
-  const canToggle = mine && st !== 'rejected' && !(early && st !== 'done');
+  const work = needsWork(task) ? ROLE_WORK[task.role] : null;
+  const [workOpen, setWorkOpen] = useState(false);
+  // v13: in roles mein tick nahi — kaam lagao to khud mukammal
+  const canToggle = !work && mine && st !== 'rejected' && !(early && st !== 'done');
+  const canWork = !!work && mine && st !== 'rejected' && !early;
+  const ep = task.video_id ? d.videos.find((v) => v.id === task.video_id) : undefined;
   const canReview = d.isOwner;
   const today = todayKey();
   const vids = d.videos.filter((v) => v.task_id === task.id);
@@ -53,11 +59,11 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
     <div className={'task ' + st}>
       <button
         className="tick"
-        disabled={!canToggle || busy}
-        onClick={toggle}
+        disabled={work ? !canWork : !canToggle || busy}
+        onClick={work ? () => canWork && setWorkOpen(true) : toggle}
         aria-pressed={st === 'done'}
         aria-label={st === 'done' ? 'Complete hata dein' : 'Complete mark karein'}
-        title={canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : early ? 'Waqt shuru hone ke baad tick kar sakenge' : ''}
+        title={work ? (canWork ? work.action : early ? 'Waqt shuru hone ke baad' : '') : canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : early ? 'Waqt shuru hone ke baad tick kar sakenge' : ''}
       >
         {st === 'done' && (
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -82,13 +88,25 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
           {task.day !== today && <span className="muted">{fmtDate(task.day)}</span>}
         </span>
         <TaskTimer task={task} />
-        {(nScripts > 0 || thumbs.length > 0) && (
+        {ep && (
+          <span className="att-ind">
+            <span className="att-chip">{work?.icon} <span data-notr>{ep.title}</span></span>
+            {ep.thumbnail_url && <img src={ep.thumbnail_url} alt="" loading="lazy" />}
+          </span>
+        )}
+        {!ep && (nScripts > 0 || thumbs.length > 0) && (
           <span className="att-ind">
             {nScripts > 0 && <span className="att-chip">{nScripts} script{nScripts > 1 ? 's' : ''}</span>}
             {thumbs.slice(0, 3).map((v) => <img key={v.id} src={v.thumbnail_url} alt={v.title} loading="lazy" />)}
           </span>
         )}
       </button>
+      {work && canWork && (
+        <button className={'btn sm work-btn' + (st === 'done' ? '' : ' primary')} onClick={() => setWorkOpen(true)}>
+          {st === 'done' ? '✎ ' + work.done + ' — badlein' : work.icon + ' ' + work.action}
+        </button>
+      )}
+      {workOpen && <TaskWorkSheet task={task} onClose={() => setWorkOpen(false)} />}
       {open && <TaskSheet taskId={task.id} onClose={() => setOpen(false)} onOpenChannel={onOpenChannel} onReject={onReject} />}
       {canExtend && (
         <button className="btn sm ext-btn" onClick={() => setExtOpen(true)} title="Deadline barhane ki request">

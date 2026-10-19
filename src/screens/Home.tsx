@@ -5,7 +5,6 @@ import type { Task } from '../lib/types';
 import { DAYS_LONG, DAYS_UR, addDays, errorText, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
 import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
 import { ExtensionReview, TaskBoard } from '../components/Tasks';
-import { AssignTaskSheet } from '../components/Assign';
 import { ConfirmButton, Fold, useNow, useToast } from '../components/ui';
 import { MiniScore } from './Progress';
 
@@ -24,7 +23,6 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   const now = useNow(5000);
   const today = todayKey();
   const [scope, setScope] = useState<'team' | 'mine'>('team');
-  const [assign, setAssign] = useState(false);
   const todayCards = useMyCards(true);
   const greet = (
     <div className="hello">
@@ -119,7 +117,6 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
       <section className="sec">
         <div className="sec-head wrap">
           <h2>Aaj ke tasks</h2>
-          <button className="btn sm primary" onClick={() => setAssign(true)}>+ Kaam assign karein</button>
           {myTasks.length > 0 && (
             <div className="seg sm">
               <button className={scope === 'team' ? 'on' : ''} onClick={() => setScope('team')}>Poori team</button>
@@ -156,7 +153,6 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
           </div>
         )}
       </section>
-      {assign && <AssignTaskSheet onClose={() => setAssign(false)} />}
     </>
   );
 }

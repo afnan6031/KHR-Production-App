@@ -448,6 +448,26 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v13: Kaam laga kar hi task mukammal, music playlists, Catbox fix
+
+**Update:** Supabase SQL Editor mein nayi `supabase/schema.sql` Run karein, phir files GitHub par upload karein.
+
+- **Tick khatam — kaam lagao, task mukammal:** Pending / Deadline expired mein har role ke aage us ka button:
+  - Manager → **📝 Title dein** (har line ek title = ek naya EP card)
+  - Script Writer → **📄 Script lagayein** (link ya app mein likhi)
+  - Voice Over → **🎙 Voiceover lagayein** (audio file Catbox par, ya link)
+  - Editor → **🎬 Video upload karein** (Gofile, progress bar ke saath, ya link)
+  - Graphic Designer → **🖼 Thumbnail lagayein** (ImgBB)
+  - Publisher → **▶ YouTube link dein** (EP "Published" ho jata hai)
+  - Pehle **"Kis EP mein?"** chunein (ya ＋ Naya EP) — kaam usi EP ke card mein channel mein nazar aata hai. Lagate hi task khud mukammal. In roles ke log ab khaali tick nahi kar sakte (database bhi rokta hai); owner phir bhi kar sakta hai.
+  - Ghalti ho to channel → us EP ka card → **✎ Badlein** (script, video, thumbnail, voiceover, YouTube link, title sab).
+- **"+ Kaam assign karein" button hata diya** (kaam roz khud bante hain).
+- **Music:** upar × ke saath **➕ Gaana** → "PC / phone se upload" ya "Link paste". Apni **playlists** banayein (Naat, Qawwali, Sad…), gaane ke **⋯** se playlist mein daalein / nikalein. "⬆ Upload kiye" alag. **📥 Offline** sirf upload kiye gaanon par (YouTube / link offline nahi ho sakte); jis device par offline kiya, wahan internet ke baghair chalta hai.
+- **Catbox "HTTP 412" fix:** Windows app ab upload app ke andar se karti hai (browser wali rukawat nahi), aur userhash qabool na ho to bina userhash dobara (file phir bhi hamesha rehti hai).
+- **Player side mein chhupayein:** player ki upar wali patti mein **⇥** — player kinare mein chala jata hai, sirf chhoti 🎵 patti dikhti hai; us par tap = wapas.
+
+---
+
 ## v12: Naya music player
 
 - **Timeline:** gaane ki patti (bare player mein waveform) par tap ya khinch kar gaana aage / peeche — YouTube aur audio (mp3 / Catbox / offline) dono mein.

@@ -1456,6 +1456,124 @@ create trigger videos_zz_names before insert or update on public.videos for each
 update public.videos v set created_by_name = coalesce(p.full_name, '')
   from public.profiles p where p.id = v.created_by and v.created_by_name = '';
 
+-- ============================================================
+-- v13: KAAM ATTACH KAR KE HI COMPLETE (tick khatam)
+--   Script Writer = script (link / likhi hui), Editor = video, Graphic Designer = thumbnail,
+--   Voice Over = voiceover, Manager = title, Publisher = YouTube link.
+--   Kaam ek EP (video card) mein lagta hai, wahi card channel mein nazar aata hai.
+-- ============================================================
+alter table public.videos add column if not exists voiceover_url text not null default '';
+alter table public.videos add column if not exists youtube_url text not null default '';
+alter table public.videos drop constraint if exists videos_v13_links_check;
+alter table public.videos add constraint videos_v13_links_check check (
+  (voiceover_url = '' or (voiceover_url ~* '^https://' and char_length(voiceover_url) <= 2000))
+  and (youtube_url = '' or (youtube_url ~* '^https://' and char_length(youtube_url) <= 2000))
+);
+alter table public.tasks add column if not exists video_id uuid references public.videos(id) on delete set null;
+
+-- kis role ka kaam kis cheez se poora hota hai
+create or replace function public.role_needs_work(p_role text) returns boolean
+language sql immutable as $$
+  select p_role in ('Script Writer', 'Editor', 'Graphic Designer', 'Voice Over', 'Manager', 'Publisher')
+$$;
+create or replace function public.role_work_done(p_role text, v public.videos) returns boolean
+language sql stable as $$
+  select case p_role
+    when 'Script Writer' then v.script_url <> '' or btrim(v.script) <> ''
+    when 'Editor' then v.video_url <> ''
+    when 'Graphic Designer' then v.thumbnail_url <> ''
+    when 'Voice Over' then v.voiceover_url <> ''
+    when 'Manager' then btrim(v.title) <> ''
+    when 'Publisher' then v.youtube_url <> ''
+    else true end
+$$;
+
+-- tick: in roles ke member khud tick nahi kar sakte (owner phir bhi kar sakta hai)
+create or replace function public.set_task_done(p_task uuid, p_done boolean) returns public.tasks
+language plpgsql security definer set search_path = public as $$
+declare t public.tasks;
+begin
+  if p_done and exists (select 1 from public.tasks where id = p_task and start_at is not null and start_at > now()) then
+    raise exception 'Is task ka waqt abhi shuru nahi hua. Start time ke baad tick karein.';
+  end if;
+  if p_done and not public.is_owner() and exists (
+    select 1 from public.tasks where id = p_task and kind = 'daily' and public.role_needs_work(role)
+  ) then
+    raise exception 'Is role ka kaam attach kar ke hi complete hota hai (script / video / thumbnail / voiceover / title / YouTube link).';
+  end if;
+  update public.tasks
+     set status = case when p_done then 'done' else 'pending' end,
+         completed_at = case when p_done then now() else null end
+   where id = p_task
+     and status <> 'rejected'
+     and public.is_approved()
+     and (user_id = auth.uid() or public.is_owner())
+  returning * into t;
+  if t.id is null then raise exception 'Ye task aap update nahi kar sakte (ya owner ne reject kiya hua hai).'; end if;
+  return t;
+end $$;
+
+-- kaam attach hua: EP (video) check kar ke task mukammal
+create or replace function public.submit_task_work(p_task uuid, p_video uuid) returns public.tasks
+language plpgsql security definer set search_path = public as $$
+declare t public.tasks; v public.videos;
+begin
+  select * into t from public.tasks where id = p_task;
+  if t.id is null or (t.user_id <> auth.uid() and not public.is_owner()) or not public.is_approved() then
+    raise exception 'Ye task aap ka nahi.';
+  end if;
+  if t.status = 'rejected' then raise exception 'Owner ne ye task reject kiya hua hai.'; end if;
+  if t.start_at is not null and t.start_at > now() then raise exception 'Is task ka waqt abhi shuru nahi hua.'; end if;
+  select * into v from public.videos where id = p_video;
+  if v.id is null or v.channel_id <> t.channel_id then raise exception 'Ye EP is channel ka nahi.'; end if;
+  if not public.role_work_done(t.role, v) then
+    raise exception 'Pehle % ka kaam is EP mein lagayein.', t.role;
+  end if;
+  update public.tasks set status = 'done', completed_at = coalesce(completed_at, now()), video_id = p_video
+   where id = p_task returning * into t;
+  return t;
+end $$;
+grant execute on function public.submit_task_work(uuid, uuid) to authenticated;
+
+-- ---------- Music: apni playlists (Naat, Qawwali, Sad…) ----------
+create table if not exists public.music_playlists (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  name        text not null check (char_length(btrim(name)) between 1 and 60),
+  position    int not null default 0,
+  created_at  timestamptz not null default now()
+);
+alter table public.music_playlists enable row level security;
+drop policy if exists mpl_own on public.music_playlists;
+create policy mpl_own on public.music_playlists for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create table if not exists public.music_playlist_items (
+  playlist_id uuid not null references public.music_playlists(id) on delete cascade,
+  track_id    uuid not null references public.music_tracks(id) on delete cascade,
+  position    int not null default 0,
+  added_at    timestamptz not null default now(),
+  primary key (playlist_id, track_id)
+);
+alter table public.music_playlist_items enable row level security;
+drop policy if exists mpi_own on public.music_playlist_items;
+create policy mpi_own on public.music_playlist_items for all to authenticated
+  using (exists (select 1 from public.music_playlists p where p.id = playlist_id and p.user_id = auth.uid()))
+  with check (
+    exists (select 1 from public.music_playlists p where p.id = playlist_id and p.user_id = auth.uid())
+    and exists (select 1 from public.music_tracks m where m.id = track_id and m.user_id = auth.uid())
+  );
+
+do $$
+declare t text;
+begin
+  foreach t in array array['music_playlists', 'music_playlist_items'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when others then null;
+    end;
+  end loop;
+end $$;
+
 -- realtime: naye tables
 do $$
 declare t text;

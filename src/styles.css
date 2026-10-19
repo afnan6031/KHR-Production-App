@@ -1149,3 +1149,31 @@ body.tinted-ui .mplayer2 { background: color-mix(in srgb, var(--tint-surface) 94
 .mp2-ctl .mp-btn { width: 38px; height: 38px; font-size: 16px; }
 .mp2-ctl .mp-btn.main.big { width: 58px; height: 58px; font-size: 22px; }
 @media (max-width: 520px) { .mplayer2.big .mp2-stage:not(.embed) { width: 180px; height: 180px; } }
+
+/* ================= v13: music library ================= */
+.sheet-h { gap: 8px; }
+.sheet-h h2 { flex: 1; }
+.sheet-actions { display: flex; gap: 6px; align-items: center; }
+.add-choose { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.choice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.choice:hover { border-color: var(--accent); }
+.choice-ico { font-size: 22px; }
+.pl-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip.add { border-style: dashed; }
+.pl-new { display: flex; gap: 6px; flex: 1 1 100%; }
+.pl-new input { flex: 1; }
+.pl-head { padding: 0 2px; }
+.track { flex-wrap: wrap; position: relative; }
+.track-menu { flex: 1 1 100%; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.track-menu .row { flex-wrap: wrap; gap: 6px; }
+.mplayer2 { transition: left .28s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
+.mplayer2.tucked { cursor: default; }
+.mplayer2.tucked > :not(.mp2-tab) { visibility: hidden; }
+.mp2-tab { position: absolute; top: 0; bottom: 0; width: 30px; border: 0; background: var(--accent); color: var(--accent-fg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; z-index: 2; padding: 0; }
+.tucked-right .mp2-tab { left: 0; border-radius: 18px 0 0 18px; }
+.tucked-left .mp2-tab { right: 0; border-radius: 0 18px 18px 0; }
+.mp2-tab .pulse { animation: uppulse .8s ease-in-out infinite alternate; }
+.mplayer2:active { transition: none; }
+.vo-box { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; background: var(--surface-2); }
+.vo-audio { width: 100%; max-width: 420px; height: 36px; }
+.work-btn { align-self: flex-start; }

@@ -7,6 +7,12 @@
  */
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
+type DesktopBridge = {
+  catboxUpload?: (bytes: ArrayBuffer, name: string, type: string, userhash: string) => Promise<{ status: number; text: string }>;
+  fetchBytes?: (url: string) => Promise<{ type: string; bytes: Uint8Array }>;
+};
+const desk = () => (window as unknown as { khrDesktop?: DesktopBridge }).khrDesktop;
+
 const USERHASH = (import.meta.env.VITE_CATBOX_USERHASH as string | undefined) || '9278fdb8ccc65a11a55508b';
 const API = 'https://catbox.moe/user/api.php';
 export const MAX_AUDIO_BYTES = 200 * 1024 * 1024; // Catbox ki hadd
@@ -40,10 +46,29 @@ function okUrl(text: string): string {
   throw new Error('Catbox ne upload qabool nahi kiya: ' + (t.slice(0, 120) || 'khaali jawab'));
 }
 
-/** Audio upload — progress (0..100); Android par progress ka andaza nahi hota (-1) */
+const isUrl = (t: string) => /^https:\/\/files\.catbox\.moe\/\S+$/i.test((t || '').trim());
+
+/** Audio upload — progress (0..100); Android / Windows app mein progress ka andaza nahi hota (-1).
+ *  Userhash qabool na ho (misal HTTP 412) to bina userhash dobara (file phir bhi hamesha rehti hai). */
 export async function uploadToCatbox(file: File, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<string> {
   const bad = checkAudioFile(file);
   if (bad) throw new Error(bad);
+  try {
+    return await uploadOnce(file, onProgress, signal, USERHASH);
+  } catch (e) {
+    if ((e as Error).message === 'Upload cancel ho gaya') throw e;
+    return uploadOnce(file, onProgress, signal, '');
+  }
+}
+
+async function uploadOnce(file: File, onProgress: (pct: number) => void, signal: AbortSignal | undefined, userhash: string): Promise<string> {
+  const d = desk();
+  if (d?.catboxUpload) {
+    onProgress(-1);
+    const res = await d.catboxUpload(await file.arrayBuffer(), file.name.replace(/[^\w.\- ()&]+/g, '_') || 'audio.mp3', file.type || 'audio/mpeg', userhash);
+    if (isUrl(res.text)) return res.text.trim();
+    throw new Error('Catbox upload nahi hua (HTTP ' + res.status + ')' + (res.text && res.text.length < 120 ? ': ' + res.text : ''));
+  }
   if (Capacitor.isNativePlatform()) {
     onProgress(-1);
     const value = await blobToBase64(file);
@@ -54,7 +79,7 @@ export async function uploadToCatbox(file: File, onProgress: (pct: number) => vo
       dataType: 'formData',
       data: [
         { type: 'string', key: 'reqtype', value: 'fileupload' },
-        { type: 'string', key: 'userhash', value: USERHASH },
+        ...(userhash ? [{ type: 'string', key: 'userhash', value: userhash }] : []),
         { type: 'base64File', key: 'fileToUpload', value, fileName: file.name.replace(/[^\w.\- ]+/g, '_') || 'audio.mp3', contentType: file.type || 'audio/mpeg' }
       ],
       responseType: 'text',
@@ -82,7 +107,7 @@ export async function uploadToCatbox(file: File, onProgress: (pct: number) => vo
     xhr.onabort = () => reject(new Error('Upload cancel ho gaya'));
     const fd = new FormData();
     fd.append('reqtype', 'fileupload');
-    fd.append('userhash', USERHASH);
+    if (userhash) fd.append('userhash', userhash);
     fd.append('fileToUpload', file, file.name);
     xhr.send(fd);
   });
@@ -121,7 +146,15 @@ export async function offlineKeys(): Promise<string[]> {
 /** gaana download kar ke is device mein rakh lo */
 export async function saveOffline(url: string): Promise<void> {
   let blob: Blob;
-  if (Capacitor.isNativePlatform()) {
+  const dk = desk();
+  if (dk?.fetchBytes) {
+    try {
+      const r = await dk.fetchBytes(url);
+      blob = new Blob([r.bytes as unknown as BlobPart], { type: r.type });
+    } catch {
+      throw new Error('Download nahi hua. Internet check karein.');
+    }
+  } else if (Capacitor.isNativePlatform()) {
     const res = await CapacitorHttp.get({ url, responseType: 'blob', readTimeout: 600000 });
     if (res.status < 200 || res.status >= 300) throw new Error('Download nahi hua (HTTP ' + res.status + ')');
     const type = String(res.headers?.['Content-Type'] || res.headers?.['content-type'] || 'audio/mpeg');
@@ -172,4 +205,6 @@ export function forgetSrc(url: string) {
 }
 
 /** Catbox / seedhi audio file — offline save ho sakti hai */
-export const canOffline = (url: string) => /^https:\/\/files\.catbox\.moe\//i.test(url) || /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(url);
+/** sirf apne upload kiye (Catbox) gaane offline ho sakte hain — YouTube / links nahi */
+export const canOffline = (url: string) => /^https:\/\/files\.catbox\.moe\//i.test(url);
+export const isUploaded = canOffline;
