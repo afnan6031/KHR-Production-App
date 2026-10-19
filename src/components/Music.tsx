@@ -552,6 +552,7 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
   const [menu, setMenu] = useState<string | null>(null);
   const [offline, setOffline] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<string | null>(null);
+  const [savePct, setSavePct] = useState(0);
   useEffect(() => { offlineKeys().then((k) => setOffline(new Set(k))); }, []);
 
   const inList = (pid: string) => new Set(d.music_playlist_items.filter((x) => x.playlist_id === pid).map((x) => x.track_id));
@@ -569,8 +570,9 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
       return toast('Offline copy hata di');
     }
     setSaving(url);
+    setSavePct(0);
     try {
-      await saveOffline(url);
+      await saveOffline(url, setSavePct);
       setOffline((s) => new Set(s).add(url));
       toast('📥 Offline save ho gaya — ab internet ke baghair bhi chalega');
     } catch (err) {
@@ -675,7 +677,7 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
                 </span>
                 {up && (
                   <button className={'btn sm' + (offline.has(t.url) ? ' on' : '')} disabled={saving === t.url} onClick={() => toggleOffline(t.url)} title={offline.has(t.url) ? 'Offline copy hatayein' : 'Is device mein save karein (internet ke baghair chalane ke liye)'}>
-                    {saving === t.url ? '…' : offline.has(t.url) ? '✓ Offline' : '📥 Offline'}
+                    {saving === t.url ? (savePct ? savePct + '%' : '…') : offline.has(t.url) ? '✓ Offline' : '📥 Offline'}
                   </button>
                 )}
                 <button className="btn sm" onClick={() => setMenu(menu === t.id ? null : t.id)} aria-label="Aur options" title="Playlist mein daalein / tarteeb / hatayein">⋯</button>

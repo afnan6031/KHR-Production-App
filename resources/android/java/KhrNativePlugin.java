@@ -33,6 +33,17 @@ public class KhrNativePlugin extends Plugin {
     public void load() {
         final Activity act = getActivity();
         final View root = act.getWindow().getDecorView();
+        // v14: scroll karte waqt daayein taraf wali patli line (scrollbar) nazar na aaye — jaise baqi apps
+        try {
+            WebView web = getBridge().getWebView();
+            if (web != null) {
+                web.setVerticalScrollBarEnabled(false);
+                web.setHorizontalScrollBarEnabled(false);
+                web.setScrollbarFadingEnabled(true);
+            }
+        } catch (Exception ignored) {
+            // koi baat nahi
+        }
         ViewCompat.setWindowInsetsAnimationCallback(
             root,
             new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {

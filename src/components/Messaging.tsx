@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useData } from '../lib/data';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
@@ -45,7 +45,21 @@ export function Linkify({ text }: { text: string }) {
 
 /* ---------- v9: Discord jaisa likhna: # bara heading, **bold**, *italic*, ~~kata~~, `code`, > quote ---------- */
 const INLINE_RE = /(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|`[^`\n]+`|\*[^*\n]+\*|https?:\/\/[^\s<>"']+)/g;
-function Inline({ text }: { text: string }) {
+const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** @naam / @everyone dhoondne wala pattern (lambe naam pehle) */
+export function mentionRe(names: string[]): RegExp | null {
+  const list = [...new Set(names.filter((n) => n && n.trim()))].sort((a, b) => b.length - a.length).map(escRe);
+  return new RegExp('(@(?:everyone|' + (list.length ? list.join('|') : '\\u0000') + '))(?![\\w])', 'gi');
+}
+function Inline({ text, mre }: { text: string; mre?: RegExp | null }) {
+  if (mre) {
+    const segs = text.split(mre);
+    if (segs.length > 1)
+      return <>{segs.map((p, i) => (i % 2 === 1 ? <span key={i} className="mention">{p}</span> : <InlineBase key={i} text={p} />))}</>;
+  }
+  return <InlineBase text={text} />;
+}
+function InlineBase({ text }: { text: string }) {
   const parts = text.split(INLINE_RE);
   return (
     <>
@@ -61,16 +75,16 @@ function Inline({ text }: { text: string }) {
     </>
   );
 }
-export function RichText({ text }: { text: string }) {
+export function RichText({ text, mre }: { text: string; mre?: RegExp | null }) {
   const lines = text.split('\n');
   return (
     <>
       {lines.map((ln, i) => {
         const h = ln.match(/^(#{1,3})\s+(.*)$/);
-        if (h) return <div key={i} className={'md-h' + h[1].length}><Inline text={h[2]} /></div>;
-        if (/^>\s?/.test(ln)) return <div key={i} className="md-quote"><Inline text={ln.replace(/^>\s?/, '')} /></div>;
-        if (/^[-•]\s+/.test(ln)) return <div key={i} className="md-li">• <Inline text={ln.replace(/^[-•]\s+/, '')} /></div>;
-        return <div key={i} className="md-p">{ln ? <Inline text={ln} /> : <br />}</div>;
+        if (h) return <div key={i} className={'md-h' + h[1].length}><Inline text={h[2]} mre={mre} /></div>;
+        if (/^>\s?/.test(ln)) return <div key={i} className="md-quote"><Inline text={ln.replace(/^>\s?/, '')} mre={mre} /></div>;
+        if (/^[-•]\s+/.test(ln)) return <div key={i} className="md-li">• <Inline text={ln.replace(/^[-•]\s+/, '')} mre={mre} /></div>;
+        return <div key={i} className="md-p">{ln ? <Inline text={ln} mre={mre} /> : <br />}</div>;
       })}
     </>
   );
@@ -136,6 +150,13 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
       toast(errorText(e));
     }
   };
+  const mre = useMemo(() => mentionRe(d.profiles.map((p) => p.full_name)), [d.profiles]);
+  const myName = (d.me?.full_name || '').toLowerCase();
+  const mentionsMe = (m: FeedItem) => {
+    if (!m.body || m.user_id === d.uid) return false;
+    const b = m.body.toLowerCase();
+    return b.includes('@everyone') || (!!myName && b.includes('@' + myName));
+  };
   const endRef = useRef<HTMLDivElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -174,7 +195,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
       <div
         key={m.id}
         id={'m-' + m.id}
-        className={'fmsg' + (grouped ? ' grouped' : '') + (sel === m.id ? ' sel' : '') + (m.pinned_at ? ' pinned' : '')}
+        className={'fmsg' + (grouped ? ' grouped' : '') + (sel === m.id ? ' sel' : '') + (m.pinned_at ? ' pinned' : '') + (mentionsMe(m) ? ' mention-me' : '')}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a,button,textarea,input,img')) return;
           setSel((x) => (x === m.id ? null : m.id));
@@ -225,7 +246,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
           ) : (
             m.body && (
               <div className="fmsg-body" data-notr>
-                <RichText text={m.body} />
+                <RichText text={m.body} mre={mre} />
                 {m.edited_at && <span className="fmsg-edited muted"> (edited)</span>}
               </div>
             )
@@ -238,6 +259,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
           )}
           {m.pinned_at && <span className="fmsg-pin">📌 Pinned</span>}
           {local && <SendState pending={m.pending} failed={m.failed} />}
+          <button type="button" className="fmsg-more" onClick={() => setSel((x) => (x === m.id ? null : m.id))} aria-label="Message options" title="Options">⋯</button>
           <div className="fmsg-actions" role="toolbar" aria-label="Message options">
             {onReply && !local && <button className="act" onClick={() => { onReply(m); setSel(null); }} title="Reply">↩ Reply</button>}
             {m.body && <button className="act" onClick={() => { copy(m); setSel(null); }} title="Copy text">⧉ Copy</button>}
@@ -280,7 +302,10 @@ function videoTitle(body: string, url: string): string | undefined {
 }
 
 /** Message likhne ki jagah: text + image (ImgBB) + video (Gofile) + reply */
-export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend }: {
+export interface Mentionable { id: string; name: string; url?: string; sub?: string }
+export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend, mentions }: {
+  /** v14: @ likhne par in logon ki list (+ @everyone) */
+  mentions?: Mentionable[];
   placeholder: string;
   disabledNote?: string;
   replyTo?: FeedItem | null;
@@ -295,6 +320,31 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [emoji, setEmoji] = useState(false);
+  const [mq, setMq] = useState<{ q: string; at: number } | null>(null);
+  const [mi, setMi] = useState(0);
+  const mList = useMemo(() => {
+    if (!mq || !mentions) return [] as Mentionable[];
+    const q = mq.q.toLowerCase();
+    const all: Mentionable[] = [{ id: 'everyone', name: 'everyone', sub: 'Sab ko mention' }, ...mentions];
+    return all.filter((x) => x.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [mq, mentions]);
+  const checkMention = (val: string, caret: number) => {
+    if (!mentions) return;
+    const before = val.slice(0, caret);
+    const m = /(^|\s)@([^\s@]{0,30})$/.exec(before);
+    if (m) { setMq({ q: m[2], at: caret - m[2].length - 1 }); setMi(0); } else setMq(null);
+  };
+  const pickMention = (x: Mentionable) => {
+    if (!mq) return;
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? text.length;
+    const ins = '@' + x.name + ' ';
+    const nt = text.slice(0, mq.at) + ins + text.slice(caret);
+    setText(nt);
+    setMq(null);
+    const pos = mq.at + ins.length;
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(pos, pos); });
+  };
   const vid = useVideoUpload();
   const vidRef = useRef<HTMLInputElement>(null);
   async function pickVideo(f: File | undefined) {
@@ -356,6 +406,12 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mq && mList.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMi((i) => (i + 1) % mList.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMi((i) => (i - 1 + mList.length) % mList.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mList[mi] || mList[0]); return; }
+      if (e.key === 'Escape') { setMq(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) {
       e.preventDefault();
       send();
@@ -380,6 +436,17 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
         </div>
       )}
       {vid.uploading && vid.file && vid.prog && <UploadBar file={vid.file} prog={vid.prog} onCancel={vid.cancel} />}
+      {mq && mList.length > 0 && (
+        <div className="mention-pop" role="listbox" aria-label="Mention karein">
+          {mList.map((x, i) => (
+            <button type="button" key={x.id} role="option" aria-selected={i === mi} className={i === mi ? 'on' : ''} onMouseDown={(e) => { e.preventDefault(); pickMention(x); }}>
+              {x.id === 'everyone' ? <span className="av">@</span> : <Avatar name={x.name} url={x.url} />}
+              <b data-notr>@{x.name}</b>
+              {x.sub && <small>{x.sub}</small>}
+            </button>
+          ))}
+        </div>
+      )}
       {emoji && <EmojiPicker onPick={insert} onClose={() => setEmoji(false)} />}
       <div className="composer-row">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} />
@@ -400,7 +467,8 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
           rows={Math.min(5, Math.max(1, text.split('\n').length))}
           maxLength={4000}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); checkMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+          onClick={(e) => checkMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKey}
           placeholder={placeholder}
           aria-label={placeholder}

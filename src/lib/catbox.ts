@@ -144,8 +144,62 @@ export async function offlineKeys(): Promise<string[]> {
 }
 
 /** gaana download kar ke is device mein rakh lo */
-export async function saveOffline(url: string): Promise<void> {
-  let blob: Blob;
+const hdr = (h: Record<string, string> | undefined, k: string) => {
+  if (!h) return '';
+  const key = Object.keys(h).find((x) => x.toLowerCase() === k.toLowerCase());
+  return key ? String(h[key]) : '';
+};
+
+/** Android: file chhote tukron (Range) mein — bari file ek dafa mein mangwane par connection toot jata tha
+ *  ("unexpected end of stream"). Har tukra 3 dafa koshish. */
+async function nativeChunked(url: string, onProgress?: (pct: number) => void): Promise<Blob> {
+  const CHUNK = 1024 * 1024; // 1 MB
+  const parts: Blob[] = [];
+  let start = 0;
+  let total = -1;
+  let type = 'audio/mpeg';
+  for (let guard = 0; guard < 2000; guard++) {
+    const end = total > 0 ? Math.min(total - 1, start + CHUNK - 1) : start + CHUNK - 1;
+    let res: Awaited<ReturnType<typeof CapacitorHttp.get>> | null = null;
+    let lastErr: unknown = null;
+    for (let tryN = 0; tryN < 3 && !res; tryN++) {
+      try {
+        res = await CapacitorHttp.get({
+          url,
+          responseType: 'blob',
+          headers: { Range: `bytes=${start}-${end}`, 'Accept-Encoding': 'identity', Connection: 'close' },
+          connectTimeout: 20000,
+          readTimeout: 60000
+        });
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 600 * (tryN + 1)));
+      }
+    }
+    if (!res) throw lastErr instanceof Error ? lastErr : new Error('Download nahi hua');
+    if (res.status === 200) {
+      // server ne Range nahi maana: poori file ek dafa mein aa gayi
+      type = hdr(res.headers, 'Content-Type') || type;
+      onProgress?.(100);
+      return base64ToBlob(String(res.data), type);
+    }
+    if (res.status !== 206) throw new Error('Download nahi hua (HTTP ' + res.status + ')');
+    type = hdr(res.headers, 'Content-Type') || type;
+    const m = /\/(\d+)\s*$/.exec(hdr(res.headers, 'Content-Range'));
+    if (m) total = Number(m[1]);
+    const part = base64ToBlob(String(res.data), type);
+    parts.push(part);
+    start += part.size;
+    if (total > 0) onProgress?.(Math.min(99, Math.round((start / total) * 100)));
+    if (part.size === 0 || (total > 0 && start >= total)) break;
+  }
+  onProgress?.(100);
+  return new Blob(parts, { type });
+}
+
+/** gaana download kar ke is device mein rakh lo (progress 0..100) */
+export async function saveOffline(url: string, onProgress?: (pct: number) => void): Promise<void> {
+  let blob: Blob | null = null;
   const dk = desk();
   if (dk?.fetchBytes) {
     try {
@@ -154,23 +208,26 @@ export async function saveOffline(url: string): Promise<void> {
     } catch {
       throw new Error('Download nahi hua. Internet check karein.');
     }
-  } else if (Capacitor.isNativePlatform()) {
-    const res = await CapacitorHttp.get({ url, responseType: 'blob', readTimeout: 600000 });
-    if (res.status < 200 || res.status >= 300) throw new Error('Download nahi hua (HTTP ' + res.status + ')');
-    const type = String(res.headers?.['Content-Type'] || res.headers?.['content-type'] || 'audio/mpeg');
-    blob = base64ToBlob(String(res.data), type);
   } else {
-    let r: Response;
+    // pehle seedha (sab se tez); na chale to Android par tukron mein
     try {
-      r = await fetch(url, { mode: 'cors' });
+      const r = await fetch(url, { mode: 'cors' });
+      if (r.ok) blob = await r.blob();
     } catch {
-      throw new Error('Download nahi hua. Internet check karein (web browser kabhi is site ko rok deta hai — Android / Windows app mein try karein).');
+      /* neeche dusra tareeqa */
     }
-    if (!r.ok) throw new Error('Download nahi hua (HTTP ' + r.status + ')');
-    blob = await r.blob();
+    if (!blob && Capacitor.isNativePlatform()) {
+      try {
+        blob = await nativeChunked(url, onProgress);
+      } catch (e) {
+        throw new Error('Download beech mein ruk gaya (internet kamzor ho sakta hai). Dobara "📥 Offline" dabayein. ' + ((e as Error)?.message || ''));
+      }
+    }
+    if (!blob) throw new Error('Download nahi hua. Internet check karein (web browser kabhi is site ko rok deta hai — Android / Windows app mein try karein).');
   }
+  if (!blob.size) throw new Error('Download khaali aaya. Dobara try karein.');
   try {
-    await idb('readwrite', (s) => s.put(blob, url));
+    await idb('readwrite', (s) => s.put(blob!, url));
   } catch {
     throw new Error('Phone / PC mein jagah nahi ya storage band hai.');
   }

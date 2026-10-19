@@ -906,7 +906,7 @@ input[type="color"] { width: 40px; height: 32px; padding: 0; border: 1px solid v
 #khr-bg::after { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, var(--bg-dim, 0)); }
 body.custom-bg { background: transparent; }
 html:has(body.custom-bg) { background: var(--bg); }
-body.custom-bg .panel, body.custom-bg .stat, body.custom-bg .bsec, body.custom-bg .empty, body.custom-bg .mini-scores {
+body.custom-bg .panel, body.custom-bg .stat, body.custom-bg .bsec, body.custom-bg .empty, body.custom-bg .mini-scores .mini {
   background-color: color-mix(in srgb, var(--surface) 86%, transparent);
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
@@ -1177,3 +1177,29 @@ body.tinted-ui .mplayer2 { background: color-mix(in srgb, var(--tint-surface) 94
 .vo-box { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; background: var(--surface-2); }
 .vo-audio { width: 100%; max-width: 420px; height: 36px; }
 .work-btn { align-self: flex-start; }
+
+/* ================= v14: chat header / typing patti background ke saath, saaf kone, ⋯ menu, @mention ================= */
+body.custom-bg .mini-scores { background: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.stat, .mini, .panel, .bsec, .card { background-clip: padding-box; }
+body.custom-bg .chat-head, body.custom-bg .chat-pane .composer { background-color: color-mix(in srgb, var(--pane-chat) 80%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+body.tinted-ui .chat-head, body.tinted-ui .chat-pane .composer { background-color: color-mix(in srgb, var(--tint-head) 82%, transparent); border-color: var(--line); }
+body.tinted-ui .top, body.tinted-ui nav.tabs { border-color: color-mix(in srgb, var(--tint-line) 60%, transparent); }
+/* message ke buttons: hover par sirf ⋯, us par click = menu */
+.fmsg { position: relative; }
+.fmsg-more { position: absolute; top: 4px; right: 8px; width: 30px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font-size: 16px; line-height: 1; display: none; z-index: 2; padding: 0; }
+@media (hover: hover) { .fmsg:hover .fmsg-more { display: block; } }
+@media (hover: none) { .fmsg-more { display: block; opacity: .55; border-color: transparent; background: transparent; } }
+.fmsg.sel .fmsg-more { display: block; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); opacity: 1; }
+@media (hover: hover) {
+  .fmsg:hover .fmsg-actions { display: none !important; }
+  .fmsg.sel .fmsg-actions, .fmsg.sel:hover .fmsg-actions { display: flex !important; top: 32px; right: 8px; }
+}
+/* @mention */
+.mention { background: color-mix(in srgb, #FACC15 22%, transparent); color: #FDE68A; border-radius: 5px; padding: 0 3px; font-weight: 700; }
+:root[data-theme="light"] .mention { color: #92400E; }
+.fmsg.mention-me { background: color-mix(in srgb, #FACC15 9%, transparent); box-shadow: inset 3px 0 0 #FACC15; }
+.mention-pop { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); max-height: 260px; overflow-y: auto; }
+.mention-pop button { display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--fg); padding: 6px 8px; border-radius: 8px; text-align: left; font-size: 14px; }
+.mention-pop button.on, .mention-pop button:hover { background: var(--surface-2); }
+.mention-pop .av { width: 26px; height: 26px; font-size: 11px; }
+.mention-pop small { color: var(--muted); }

@@ -448,6 +448,16 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v14: @mention, ⋯ message menu, Android scroll line, offline download fix
+
+- **@mention (server channels):** typing box mein `@` likhein to us channel ke log aur **@everyone** ki list aati hai (↑ ↓ / Enter ya tap). Jis message mein aap ka naam ya @everyone ho wo **peela** highlight hota hai; @naam chat mein bhi peela dikhta hai.
+- **Message ke options:** ab har message par buttons nahi aate — sirf **⋯** (PC par mouse le jane se, phone par halka sa); ⋯ dabane par Jawab / Copy / Badlein / Aage bhejein / Pin / Mitayein.
+- **Android:** scroll karte waqt daayein taraf wali line ab nazar nahi aati.
+- **Offline gaana (Android):** "unexpected end of stream" error — ab gaana 1 MB ke tukron mein download hota hai (har tukra 3 dafa koshish), button par % dikhta hai.
+- **Background ke saath:** server chat ka upar wala channel naam aur neeche typing wali patti bhi ab background ke rang / blur mein. Home ke boxes ke kone saaf (peeche chokor patti khatam).
+
+---
+
 ## v13: Kaam laga kar hi task mukammal, music playlists, Catbox fix
 
 **Update:** Supabase SQL Editor mein nayi `supabase/schema.sql` Run karein, phir files GitHub par upload karein.

@@ -54,7 +54,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
             <span className="eyebrow">{DAYS_LONG[weekdayOf(today)]}</span>
           </div>
           <TaskBoard tasks={myTasks} now={now} onOpenChannel={openChannel} foldId="board-me" emptyAll="Aaj aap ke kisi channel ka kaam ka din nahi, ya owner ne abhi aap ko kisi channel mein role nahi diya." />
-          <p className="muted tiny m0">Kaam khatam ho to gol nishan par tick karein. Deadline mein 30 minute reh jayein ya guzar jaye to "⏳ Waqt barhayein" se owner se waqt maang sakte hain.</p>
+          <p className="muted tiny m0">Apne role ka kaam (title, script, voiceover, video, thumbnail, YouTube link) task ke button se lagayein — lagate hi task mukammal ho jata hai. Deadline mein 30 minute reh jayein ya guzar jaye to "⏳ Waqt barhayein" se owner se waqt maang sakte hain.</p>
         </section>
         {todayCards.length > 0 && (
           <section className="sec">

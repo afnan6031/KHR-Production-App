@@ -229,6 +229,7 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
         empty={<><b>#{ch.name} mein khush aamdeed</b>{canPost ? 'Pehla message likhein. Tip: "# " se bara heading, **bold**, *italic*.' : 'Yahan owner ke announcements aayenge.'}</>}
       />
       <Composer
+        mentions={channelPeople(d, ch).filter((p) => p.id !== d.uid && p.full_name).map((p) => ({ id: p.id, name: p.full_name, url: p.avatar_url || undefined, sub: p.server_role || undefined }))}
         placeholder={'#' + ch.name}
         disabledNote={canPost ? undefined : 'Is channel mein sirf owner message kar sakta hai.'}
         replyTo={reply}
