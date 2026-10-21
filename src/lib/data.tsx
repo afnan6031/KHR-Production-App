@@ -69,6 +69,8 @@ export interface VideoInput {
   voiceover_url?: string;
   youtube_url?: string;
   task_id?: string | null;
+  /** v15: kis din ki video (aage ki date bhi) */
+  day?: string;
 }
 
 export type ChatTarget = { kind: 'srv'; channel: string } | { kind: 'dm'; peer: string };
@@ -163,6 +165,8 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   const timers = useRef<Partial<Record<TableName, number>>>({});
+  /** v15: har chat table ka sab se naya (server wala) message — catch-up ke liye */
+  const latestRef = useRef<Partial<Record<TableName, string>>>({});
   // v10: outbox — internet ke intezar wale messages
   const outbox = useRef<OutItem[]>(loadOutbox(uid));
   const [outVer, setOutVer] = useState(0);
@@ -289,42 +293,122 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       .catch(console.error)
       .finally(() => alive && setLoading(false));
     // internet wapas aaye: pending messages bhejo + fresh data
-    const onOnline = () => { setOffline(false); flush().then(() => reload().catch(console.error)); };
+    const onOnline = () => { setOffline(false); flush().then(() => reload().catch(console.error)); window.setTimeout(() => rebuild(), 500); };
     const onOffline = () => setOffline(true);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     const retry = window.setInterval(() => { if (outbox.current.some((o) => !o.failed)) flush(); }, 15000);
     // Realtime: koi bhi table badle to wahi table dobara load ho (RLS ke mutabiq)
-    const ch = supabase.channel('khr-live');
     const refetch = (name: TableName) => {
       window.clearTimeout(timers.current[name]);
       timers.current[name] = window.setTimeout(() => fetchTable(name).catch(console.error), 250);
     };
-    TABLES.forEach((name) => {
-      ch.on('postgres_changes', { event: '*', schema: 'public', table: name }, (payload) => {
-        if (INCREMENTAL.includes(name)) {
-          const row = payload.new as { id?: string };
-          const old = payload.old as { id?: string };
-          setT((prev) => {
-            const list = prev[name] as { id: string }[];
-            if (payload.eventType === 'DELETE') return { ...prev, [name]: list.filter((x) => x.id !== old.id) };
-            if (!row?.id) return prev;
-            const i = list.findIndex((x) => x.id === row.id);
-            if (i >= 0) return { ...prev, [name]: list.map((x) => (x.id === row.id ? row : x)) };
-            return { ...prev, [name]: [row, ...list] };
-          });
-          return;
-        }
-        refetch(name);
-        // private channel mein add/remove: channel list aur us ke messages bhi dobara
-        if (name === 'server_channel_members' || name === 'server_channels') {
-          refetch('server_channels');
-          refetch('server_messages');
-        }
-        if (name === 'friend_requests') refetch('direct_messages');
+    const upsertRow = (name: TableName, row: { id: string }) =>
+      setT((prev) => {
+        const list = prev[name] as { id: string }[];
+        const i = list.findIndex((x) => x.id === row.id);
+        if (i >= 0) return { ...prev, [name]: list.map((x) => (x.id === row.id ? row : x)) };
+        return { ...prev, [name]: [row, ...list] };
       });
+    /**
+     * v15: jo messages realtime se reh gaye (PC so gaya, internet gaya, token purana) wo khud le aao —
+     * sirf aakhri message ke baad wale (bohot kam data).
+     */
+    const catchUp = async () => {
+      if (!alive || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+      await Promise.all(INCREMENTAL.map(async (name) => {
+        const cur = (latestRef.current[name] || '');
+        if (!cur) return;
+        const since = new Date(new Date(cur).getTime() - 5000).toISOString();
+        const { data, error } = await supabase.from(name).select('*').gt('created_at', since).order('created_at', { ascending: true }).limit(500);
+        if (error || !data?.length) return;
+        setT((prev) => {
+          const list = prev[name] as { id: string }[];
+          const have = new Set(list.map((x) => x.id));
+          const fresh = (data as { id: string }[]).filter((x) => !have.has(x.id));
+          if (!fresh.length) return prev;
+          return { ...prev, [name]: [...fresh.reverse(), ...list] };
+        });
+      })).catch(() => {});
+    };
+    let ch: ReturnType<typeof supabase.channel> | null = null;
+    let healthy = false;
+    let rebuilding = false;
+    const subscribe = () => {
+      const c = supabase.channel('khr-live-' + Date.now());
+      TABLES.forEach((name) => {
+        c.on('postgres_changes', { event: '*', schema: 'public', table: name }, (payload) => {
+          if (INCREMENTAL.includes(name)) {
+            const row = payload.new as { id?: string; body?: string };
+            const old = payload.old as { id?: string };
+            if (payload.eventType === 'DELETE') {
+              setT((prev) => ({ ...prev, [name]: (prev[name] as { id: string }[]).filter((x) => x.id !== old.id) }));
+              return;
+            }
+            if (!row?.id) return;
+            // bara message: realtime kabhi adhoora bhejta hai -> poori row database se
+            const errs = (payload as unknown as { errors?: unknown[] }).errors;
+            if ((errs && errs.length) || row.body === undefined || row.body === null) {
+              supabase.from(name).select('*').eq('id', row.id).maybeSingle().then(({ data }) => { if (data) upsertRow(name, data as { id: string }); });
+              return;
+            }
+            upsertRow(name, row as { id: string });
+            return;
+          }
+          refetch(name);
+          // private channel mein add/remove: channel list aur us ke messages bhi dobara
+          if (name === 'server_channel_members' || name === 'server_channels') {
+            refetch('server_channels');
+            refetch('server_messages');
+          }
+          if (name === 'friend_requests') refetch('direct_messages');
+        });
+      });
+      c.subscribe((status) => {
+        if (c !== ch) return;
+        if (status === 'SUBSCRIBED') {
+          const wasDown = !healthy;
+          healthy = true;
+          if (wasDown) catchUp();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          healthy = false;
+          window.setTimeout(rebuild, 3000);
+        }
+      });
+      ch = c;
+    };
+    /** realtime toot gaya: naya token le kar dobara jodo, aur beech ke messages le aao */
+    const rebuild = async () => {
+      if (!alive || rebuilding) return;
+      rebuilding = true;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) supabase.realtime.setAuth(data.session.access_token);
+        const old = ch;
+        ch = null;
+        if (old) await supabase.removeChannel(old).catch(() => {});
+        if (!alive) return;
+        subscribe();
+        catchUp();
+      } finally {
+        rebuilding = false;
+      }
+    };
+    subscribe();
+    // token naya hua (har ghante) -> realtime ko bhi naya token
+    const { data: authSub } = supabase.auth.onAuthStateChange((ev, sess) => {
+      if ((ev === 'TOKEN_REFRESHED' || ev === 'SIGNED_IN') && sess?.access_token) supabase.realtime.setAuth(sess.access_token);
     });
-    ch.subscribe();
+    // nigrani: har 20 second — jura nahi to dobara jodo; jura hai to bhi har 2 minute halka sa catch-up
+    let beat = 0;
+    const watch = window.setInterval(() => {
+      beat++;
+      const st = (ch as unknown as { state?: string } | null)?.state;
+      if (!healthy || (st && st !== 'joined' && st !== 'joining')) { healthy = false; rebuild(); }
+      else if (beat % 6 === 0) catchUp();
+    }, 20000);
+    const onFocus = () => { catchUp(); if (!healthy) rebuild(); };
+    window.addEventListener('focus', onFocus);
 
     // Kaun online hai (Discord jaisa hara nishan)
     const pres = supabase.channel('khr-presence', { config: { presence: { key: uid } } });
@@ -347,9 +431,13 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       alive = false;
       window.clearInterval(tick);
       window.clearInterval(retry);
+      window.clearInterval(watch);
+      window.removeEventListener('focus', onFocus);
+      authSub.subscription.unsubscribe();
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      supabase.removeChannel(ch);
+      if (ch) supabase.removeChannel(ch);
+      ch = null;
       supabase.removeChannel(pres);
       document.removeEventListener('visibilitychange', onVis);
     };
@@ -365,6 +453,14 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     }, 2000);
     return () => window.clearTimeout(id);
   }, [t, loading, uid]);
+
+  useEffect(() => {
+    INCREMENTAL.forEach((n) => {
+      let max = '';
+      for (const x of t[n] as { id: string; created_at: string }[]) if (!isLocalId(x.id) && x.created_at > max) max = x.created_at;
+      latestRef.current[n] = max || new Date(Date.now() - 864e5).toISOString();
+    });
+  }, [t.messages, t.server_messages, t.direct_messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const me = useMemo(() => t.profiles.find((p) => p.id === uid) || null, [t.profiles, uid]);
   const isOwner = !!me?.is_owner;
@@ -477,7 +573,8 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
         channel_id: v.channel_id, title: v.title, stage: v.stage, due: v.due || null, script: v.script, notes: v.notes,
         script_url: v.script_url, thumbnail_url: v.thumbnail_url, thumbnail_delete_url: v.thumbnail_delete_url, video_url: v.video_url,
         ...(v.voiceover_url !== undefined ? { voiceover_url: v.voiceover_url } : {}),
-        ...(v.youtube_url !== undefined ? { youtube_url: v.youtube_url } : {})
+        ...(v.youtube_url !== undefined ? { youtube_url: v.youtube_url } : {}),
+        ...(v.day ? { day: v.day } : {})
       };
       let id = v.id;
       if (id) must(await supabase.from('videos').update(row).eq('id', id));

@@ -3,10 +3,11 @@ import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import type { Task } from '../lib/types';
 import { DAYS_LONG, DAYS_UR, addDays, errorText, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
-import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
+import { CardSizePicker, MemberCard, OwnerCard, useCardSize, useMyCards } from '../components/Cards';
 import { ExtensionReview, TaskBoard } from '../components/Tasks';
 import { ConfirmButton, Fold, useNow, useToast } from '../components/ui';
 import { MiniScore } from './Progress';
+import { DayStrip, DayTasks } from '../components/DayPlan';
 
 /** Aaj ke tasks + pichle 7 din ke jo abhi bhi pending hain + aane wale khaas kaam (custom) */
 export function boardTasks(tasks: Task[], today: string, userId?: string) {
@@ -23,6 +24,10 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   const now = useNow(5000);
   const today = todayKey();
   const [scope, setScope] = useState<'team' | 'mine'>('team');
+  // v15: kisi bhi din ka kaam (kal, agla hafta, pichla hafta…)
+  const [day, setDay] = useState(today);
+  const isNow = day === today;
+  const [size, setSize] = useCardSize();
   const todayCards = useMyCards(true);
   const greet = (
     <div className="hello">
@@ -50,21 +55,26 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
         </button>
         <section className="sec">
           <div className="sec-head">
-            <h2>Aaj ke kaam</h2>
-            <span className="eyebrow">{DAYS_LONG[weekdayOf(today)]}</span>
+            <h2>{isNow ? 'Aaj ke kaam' : 'Is din ka kaam'}</h2>
+            <span className="eyebrow">{DAYS_LONG[weekdayOf(day)]}</span>
           </div>
-          <TaskBoard tasks={myTasks} now={now} onOpenChannel={openChannel} foldId="board-me" emptyAll="Aaj aap ke kisi channel ka kaam ka din nahi, ya owner ne abhi aap ko kisi channel mein role nahi diya." />
+          <DayStrip value={day} onChange={setDay} />
+          {isNow ? (
+            <TaskBoard tasks={myTasks} now={now} onOpenChannel={openChannel} foldId="board-me" emptyAll="Aaj aap ke kisi channel ka kaam ka din nahi, ya owner ne abhi aap ko kisi channel mein role nahi diya." />
+          ) : (
+            <DayTasks day={day} userId={d.uid} now={now} onOpenChannel={openChannel} foldId="day-me" />
+          )}
           <p className="muted tiny m0">Apne role ka kaam (title, script, voiceover, video, thumbnail, YouTube link) task ke button se lagayein — lagate hi task mukammal ho jata hai. Deadline mein 30 minute reh jayein ya guzar jaye to "⏳ Waqt barhayein" se owner se waqt maang sakte hain.</p>
         </section>
         {todayCards.length > 0 && (
           <section className="sec">
             <div className="sec-head">
               <h2>Aaj ke channel</h2>
-              <span className="eyebrow">{todayCards.length} channels</span>
+              <CardSizePicker value={size} onChange={setSize} />
             </div>
-            <div className="cards">
+            <div className={'cards size-' + size}>
               {todayCards.map(({ ch, roles }) => (
-                <MemberCard key={ch.id} ch={ch} roles={roles} onOpen={() => openChannel(ch.id)} />
+                <MemberCard key={ch.id} ch={ch} roles={roles} size={size} onOpen={() => openChannel(ch.id)} />
               ))}
             </div>
           </section>
@@ -81,7 +91,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   todayAll.forEach((t) => {
     const st = taskState(t, now);
     if (st === 'pending') cnt.pending++;
-    else if (st === 'expired') cnt.expired++;
+    else if (st === 'expired' || st === 'ended') cnt.expired++;
     else cnt.done++;
   });
   const pending = d.profiles.filter((p) => p.status === 'pending');
@@ -116,7 +126,7 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
       )}
       <section className="sec">
         <div className="sec-head wrap">
-          <h2>Aaj ke tasks</h2>
+          <h2>{isNow ? 'Aaj ke tasks' : 'Is din ke tasks'}</h2>
           {myTasks.length > 0 && (
             <div className="seg sm">
               <button className={scope === 'team' ? 'on' : ''} onClick={() => setScope('team')}>Poori team</button>
@@ -124,6 +134,10 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
             </div>
           )}
         </div>
+        <DayStrip value={day} onChange={setDay} />
+        {!isNow ? (
+          <DayTasks day={day} userId={scope === 'mine' ? d.uid : undefined} showName={scope === 'team'} now={now} onOpenChannel={openChannel} foldId={'day-' + scope} />
+        ) : (
         <TaskBoard
           tasks={shown}
           now={now}
@@ -132,16 +146,17 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
           foldId={'board-' + scope}
           emptyAll={d.channels.length ? 'Aaj kisi channel ka kaam ka din nahi, ya channels mein abhi team add nahi.' : 'Pehle channel card banayein aur us mein team ko roles dein.'}
         />
+        )}
       </section>
       <section className="sec">
         <div className="sec-head">
           <h2>Aaj ki production</h2>
-          <span className="eyebrow">{todayCh.length} channels</span>
+          {todayCh.length > 0 && <CardSizePicker value={size} onChange={setSize} />}
         </div>
         {todayCh.length ? (
-          <div className="cards">
+          <div className={'cards size-' + size}>
             {todayCh.map((c) => (
-              <OwnerCard key={c.id} ch={c} onOpen={() => openChannel(c.id)} />
+              <OwnerCard key={c.id} ch={c} size={size} onOpen={() => openChannel(c.id)} />
             ))}
           </div>
         ) : d.channels.length ? (

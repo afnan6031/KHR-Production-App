@@ -164,6 +164,10 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
   const [openId, setOpenId] = useState<string | null>(null);
   const [openUser, setOpenUser] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
+  // v15: har tab ki apni yaad — jo channel / progress khula tha, wapas aane par wahi (app dobara khule to dashboard)
+  const mem = useRef<Partial<Record<Tab, { openId: string | null; openUser: string | null; y: number }>>>({});
+  const [srvVisited, setSrvVisited] = useState(false);
+  useEffect(() => { if (tab === 'server') setSrvVisited(true); }, [tab]);
   // mode badla to dashboard se shuru
   const firstMode = useRef(true);
   useEffect(() => {
@@ -171,6 +175,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
     setTab('home');
     setOpenId(null);
     setOpenUser(null);
+    mem.current = {};
   }, [mode]);
 
   // Android back button: sheet band -> progress/channel se wapas -> home -> app band
@@ -205,13 +210,16 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
 
   // header aur neeche wali patti ki asli unchai (server ko poori window mein fit karne ke liye)
   useEffect(() => {
+    // v15: sirf badalne par likho — har 1.5 second root par likhna poori app ka style dobara banwata tha (jhatka / flicker)
+    const last: Record<string, string> = {};
+    const put = (k: string, v: string) => { if (last[k] !== v) { last[k] = v; document.documentElement.style.setProperty(k, v); } };
     const set = () => {
       const h = document.querySelector('.top')?.getBoundingClientRect().height || 56;
       const n = document.querySelector('nav.tabs')?.getBoundingClientRect().height || 60;
-      document.documentElement.style.setProperty('--hdr', h + 'px');
-      document.documentElement.style.setProperty('--navh', n + 'px');
+      put('--hdr', Math.round(h) + 'px');
+      put('--navh', Math.round(n) + 'px');
       const o = document.querySelector('.offline-bar')?.getBoundingClientRect().height || 0;
-      document.documentElement.style.setProperty('--offh', o + 'px');
+      put('--offh', Math.round(o) + 'px');
     };
     set();
     window.addEventListener('resize', set);
@@ -222,8 +230,8 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
   // offline patti aaye / jaye to server ki jagah foran theek
   useEffect(() => {
     const id = window.requestAnimationFrame(() => {
-      const o = document.querySelector('.offline-bar')?.getBoundingClientRect().height || 0;
-      document.documentElement.style.setProperty('--offh', o + 'px');
+      const o = Math.round(document.querySelector('.offline-bar')?.getBoundingClientRect().height || 0) + 'px';
+      if (document.documentElement.style.getPropertyValue('--offh') !== o) document.documentElement.style.setProperty('--offh', o);
     });
     return () => window.cancelAnimationFrame(id);
   }, [d.offline, d.pendingCount]);
@@ -301,10 +309,22 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
     window.scrollTo(0, 0);
   };
   const go = (t: Tab) => {
+    if (t === tab) {
+      // usi tab par dobara tap: us tab ka dashboard (shuru)
+      setOpenId(null);
+      setOpenUser(null);
+      delete mem.current[t];
+      window.scrollTo(0, 0);
+      return;
+    }
+    mem.current[tab] = { openId, openUser, y: window.scrollY };
+    const back = mem.current[t];
+    const okCh = back?.openId && d.channels.some((c) => c.id === back.openId) ? back.openId : null;
     setTab(t);
-    setOpenId(null);
-    setOpenUser(null);
-    window.scrollTo(0, 0);
+    setOpenId(okCh);
+    setOpenUser(back?.openUser || null);
+    const y = back ? back.y : 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
   };
   const channel = openId ? d.channels.find((c) => c.id === openId) : null;
   const pending = d.profiles.filter((p) => p.status === 'pending').length;
@@ -324,6 +344,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
         { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge }
       ];
 
+  const serverOn = tab === 'server' && !channel && !openUser;
   let body: JSX.Element;
   if (openUser) body = <ProgressScreen key={openUser} userId={openUser} onBack={() => setOpenUser(null)} openChannel={open} />;
   else if (channel)
@@ -340,7 +361,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
   else if (tab === 'team' && d.isOwner) body = <TeamScreen openProgress={openProgress} />;
   else if (tab === 'cards') body = <MyCardsScreen openChannel={open} />;
   else if (tab === 'rank') body = <LeaderboardScreen openProgress={openProgress} />;
-  else if (tab === 'server') body = <RealScope><ServerScreen /></RealScope>;
+  else if (tab === 'server') body = <></>;
   else if (tab === 'progress') body = <ProgressScreen userId={d.uid} openChannel={open} />;
   else body = <HomeScreen openChannel={open} openProgress={openProgress} goTeam={() => go('team')} newChannel={() => setSheet({ kind: 'channel', id: null })} />;
 
@@ -371,12 +392,20 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
           {d.pendingCount > 0 ? <b>{d.pendingCount} message internet ka intezar kar rahe hain.</b> : 'Message bhejein, internet aate hi chale jayenge.'}
         </div>
       )}
-      <main className={tab === 'server' && !channel && !openUser ? 'server-main' : ''}>{body}</main>
+      <main className={serverOn ? 'server-main' : ''}>
+        {!serverOn && body}
+        {/* v15: Server hamesha zinda rehta hai (chhupa) — tab badlein to likha hua text, khuli chat, scroll sab wahi */}
+        {(srvVisited || serverOn) && (
+          <div className="srv-keep" style={{ display: serverOn ? 'contents' : 'none' }}>
+            <RealScope><ServerScreen active={serverOn} /></RealScope>
+          </div>
+        )}
+      </main>
 
       <nav className="tabs">
         <div className="in">
           {tabs.map((t) => (
-            <button key={t.k} className={tab === t.k && !channel && !openUser ? 'on' : ''} onClick={() => go(t.k)}>
+            <button key={t.k} className={tab === t.k ? 'on' : ''} onClick={() => go(t.k)}>
               {t.icon}
               {t.label}
               {!!t.badge && <span className="badge">{t.badge}</span>}

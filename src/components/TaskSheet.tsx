@@ -7,7 +7,7 @@ import { ChannelTools, VideosSheet } from './Videos';
 import { TaskTimer } from './Timer';
 import { ExtensionReview, ExtensionSheet } from './Tasks';
 
-const STATE_LABEL = { pending: 'Pending', expired: 'Deadline expired', done: 'Completed', rejected: 'Rejected' } as const;
+const STATE_LABEL = { pending: 'Pending', expired: 'Deadline expired', ended: 'Deadline ended', done: 'Completed', rejected: 'Rejected' } as const;
 
 /** Waqt ke saath date bhi (agar task ke din se alag ho) */
 function when(iso: string | null, day: string) {
@@ -38,7 +38,7 @@ export function TaskSheet({ taskId, onClose, onOpenChannel, onReject }: { taskId
       <div className="ts-head">
         <div className="row between">
           <b className="ts-ch">{ch?.name || 'Channel'}</b>
-          <span className={'stage ' + (st === 'done' ? 'published' : st === 'expired' || st === 'rejected' ? 'review' : '')}>{STATE_LABEL[st]}</span>
+          <span className={'stage ' + (st === 'done' ? 'published' : st === 'expired' || st === 'ended' || st === 'rejected' ? 'review' : '')}>{STATE_LABEL[st]}</span>
         </div>
         {task.kind === 'custom' && <div className="task-custom big">📌 {task.title}</div>}
         <div className="row">
@@ -54,6 +54,8 @@ export function TaskSheet({ taskId, onClose, onOpenChannel, onReject }: { taskId
             <b className={'num ' + (isLate(task) ? 'warn' : '')}>{task.completed_at ? when(task.completed_at, task.day) : '—'}</b>
           </div>
         </div>
+        {st === 'expired' && <p className="grace-tag m0">⏳ Deadline guzar gayi — 24 ghante ki extra deadline {fmtClock(new Date(new Date(task.due_at).getTime() + 864e5).toISOString())} ({fmtDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(new Date(new Date(task.due_at).getTime() + 864e5)))}) tak. Is mein complete = 0 point, na kiya to −5 point.</p>}
+        {st === 'ended' && <div className="alert">Extra 24 ghante bhi guzar gaye — −5 point.</div>}
         {task.extended_minutes > 0 && <p className="muted tiny m0">⏳ Owner ne deadline {task.extended_minutes} minute barhayi.</p>}
         {notStarted(task, now) && <p className="muted tiny m0">Is kaam ka waqt abhi shuru nahi hua.</p>}
         {st === 'rejected' && <div className="alert">Owner ne reject kiya{task.rejected_reason ? ': ' + task.rejected_reason : ''}. Progress se −{REJECT_PENALTY}%.</div>}
@@ -84,7 +86,7 @@ export function TaskSheet({ taskId, onClose, onOpenChannel, onReject }: { taskId
             Channel kholein
           </button>
         )}
-        {d.isOwner && onReject && (st === 'done' || st === 'expired') && (
+        {d.isOwner && onReject && (st === 'done' || st === 'expired' || st === 'ended') && (
           <button className="btn danger" onClick={() => { onClose(); onReject(task); }}>
             Reject
           </button>

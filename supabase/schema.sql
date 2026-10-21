@@ -1585,3 +1585,143 @@ begin
     end;
   end loop;
 end $$;
+
+-- ============================================================
+-- v15: 24 GHANTE KI EXTRA DEADLINE + ADVANCE VIDEOS
+--   Deadline guzri → 24 ghante ki extra deadline (complete = 0 point).
+--   Extra deadline bhi guzri → member complete nahi kar sakta (−5 point, app mein hisaab). Owner phir bhi kar sakta hai.
+--   Reject → kul progress se −10% (app mein hisaab).
+--   Videos: aane wale dinon (channel ke din) ki video pehle se bana sakte hain (title, script, voiceover, video, thumbnail, YouTube link).
+-- ============================================================
+create or replace function public.task_closed(t public.tasks) returns boolean
+language sql stable as $$ select t.status = 'pending' and t.due_at + interval '24 hours' <= now() $$;
+
+create or replace function public.set_task_done(p_task uuid, p_done boolean) returns public.tasks
+language plpgsql security definer set search_path = public as $$
+declare t public.tasks;
+begin
+  if p_done and exists (select 1 from public.tasks where id = p_task and start_at is not null and start_at > now()) then
+    raise exception 'Is task ka waqt abhi shuru nahi hua. Start time ke baad tick karein.';
+  end if;
+  if p_done and not public.is_owner() and exists (
+    select 1 from public.tasks where id = p_task and kind = 'daily' and public.role_needs_work(role)
+  ) then
+    raise exception 'Is role ka kaam attach kar ke hi complete hota hai (script / video / thumbnail / voiceover / title / YouTube link).';
+  end if;
+  if p_done and not public.is_owner() and exists (select 1 from public.tasks x where x.id = p_task and public.task_closed(x)) then
+    raise exception 'Deadline ke baad ki 24 ghante ki extra deadline bhi khatam ho chuki hai. Ab ye task complete nahi ho sakta.';
+  end if;
+  update public.tasks
+     set status = case when p_done then 'done' else 'pending' end,
+         completed_at = case when p_done then now() else null end
+   where id = p_task
+     and status <> 'rejected'
+     and public.is_approved()
+     and (user_id = auth.uid() or public.is_owner())
+  returning * into t;
+  if t.id is null then raise exception 'Ye task aap update nahi kar sakte (ya owner ne reject kiya hua hai).'; end if;
+  return t;
+end $$;
+
+create or replace function public.submit_task_work(p_task uuid, p_video uuid) returns public.tasks
+language plpgsql security definer set search_path = public as $$
+declare t public.tasks; v public.videos;
+begin
+  select * into t from public.tasks where id = p_task;
+  if t.id is null or (t.user_id <> auth.uid() and not public.is_owner()) or not public.is_approved() then
+    raise exception 'Ye task aap ka nahi.';
+  end if;
+  if t.status = 'rejected' then raise exception 'Owner ne ye task reject kiya hua hai.'; end if;
+  if t.start_at is not null and t.start_at > now() then raise exception 'Is task ka waqt abhi shuru nahi hua.'; end if;
+  if not public.is_owner() and public.task_closed(t) then
+    raise exception 'Deadline ke baad ki 24 ghante ki extra deadline bhi khatam ho chuki hai. Ab ye task complete nahi ho sakta.';
+  end if;
+  select * into v from public.videos where id = p_video;
+  if v.id is null or v.channel_id <> t.channel_id then raise exception 'Ye EP is channel ka nahi.'; end if;
+  if not public.role_work_done(t.role, v) then
+    raise exception 'Pehle % ka kaam is EP mein lagayein.', t.role;
+  end if;
+  update public.tasks set status = 'done', completed_at = coalesce(completed_at, now()), video_id = p_video
+   where id = p_task returning * into t;
+  return t;
+end $$;
+grant execute on function public.set_task_done(uuid, boolean) to authenticated;
+grant execute on function public.submit_task_work(uuid, uuid) to authenticated;
+
+-- Video ka din: aaj se 60 din pehle tak, ya 120 din aage tak (advance kaam). App din na bheje to aaj.
+create or replace function public.stamp_video() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare today date := public.app_today();
+begin
+  new.title := btrim(new.title);
+  if auth.uid() is null or current_setting('khr.migrating', true) = '1' then return new; end if;
+  new.updated_by := auth.uid();
+  new.updated_at := now();
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    new.created_at := now();
+    if new.day is null or new.day < today - 60 or new.day > today + 120 then new.day := today; end if;
+  else
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+    new.channel_id := old.channel_id;
+    if new.day is null or (new.day is distinct from old.day and (new.day < today - 60 or new.day > today + 120)) then new.day := old.day; end if;
+    new.from_attachment := old.from_attachment;
+  end if;
+  if new.task_id is not null and not exists (select 1 from public.tasks t where t.id = new.task_id and t.channel_id = new.channel_id) then
+    new.task_id := null;
+  end if;
+  return new;
+end $$;
+
+-- Deadline notifications: khatam par "24 ghante extra", aur extra deadline khatam hone par bhi (bit 8)
+create or replace function public.khr_deadline_tick() returns void
+language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    update public.tasks t set push_sent = push_sent | 1
+    where status = 'pending' and (push_sent & 1) = 0 and start_at is not null
+      and start_at <= now() and start_at > now() - interval '15 minutes' and due_at > now()
+    returning t.id, t.user_id, t.channel_id, t.role, t.due_at
+  loop
+    perform public.khr_notify(array[r.user_id], null, '▶ Kaam ka waqt shuru',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' · deadline ' || to_char(r.due_at at time zone public.app_tz(), 'HH12:MI AM'),
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  for r in
+    update public.tasks t set push_sent = push_sent | 2
+    where status = 'pending' and (push_sent & 2) = 0
+      and due_at - interval '10 minutes' <= now() and due_at - interval '10 minutes' > now() - interval '15 minutes' and due_at > now()
+    returning t.id, t.user_id, t.channel_id, t.role, t.due_at
+  loop
+    perform public.khr_notify(array[r.user_id], null, '⏰ 10 minute baqi',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' ki deadline ' || to_char(r.due_at at time zone public.app_tz(), 'HH12:MI AM') || ' par khatam',
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  for r in
+    update public.tasks t set push_sent = push_sent | 4
+    where status = 'pending' and (push_sent & 4) = 0
+      and due_at <= now() and due_at > now() - interval '15 minutes'
+    returning t.id, t.user_id, t.channel_id, t.role
+  loop
+    perform public.khr_notify(array[r.user_id], null, '⛔ Deadline khatam',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' — 24 ghante ki extra deadline shuru (is mein complete = 0 point, na kiya to −5)',
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  for r in
+    update public.tasks t set push_sent = push_sent | 8
+    where status = 'pending' and (push_sent & 8) = 0
+      and due_at + interval '24 hours' <= now() and due_at + interval '24 hours' > now() - interval '15 minutes'
+    returning t.id, t.user_id, t.channel_id, t.role
+  loop
+    perform public.khr_notify(array[r.user_id], null, '✕ Extra deadline bhi khatam',
+      coalesce((select name from public.channels where id = r.channel_id), 'Channel') || ' · ' || r.role || ' — task reh gaya (−5 point)',
+      jsonb_build_object('type', 'deadline', 'channel', r.channel_id));
+  end loop;
+  if exists (select 1 from public.push_outbox where sent_at is null and created_at < now() - interval '1 minute') then
+    perform public.khr_push_kick();
+  end if;
+  delete from public.push_outbox where created_at < now() - interval '3 days';
+end $$;
+revoke execute on function public.khr_deadline_tick() from public, anon, authenticated;

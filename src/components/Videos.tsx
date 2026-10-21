@@ -2,7 +2,9 @@ import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useData } from '../lib/data';
 import { STAGES, type Stage, type Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
-import { dayLabel, errorText, fmtClock, fmtDate, stageLabel, todayKey } from '../lib/utils';
+import { DAYS_LONG, addDays, dayLabel, errorText, fmtClock, fmtDate, isToday, stageLabel, todayKey, weekdayOf } from '../lib/utils';
+import type { Channel } from '../lib/types';
+import { checkAudioFile, uploadToCatbox } from '../lib/catbox';
 import { ConfirmButton, DateFilter, Fold, Sheet, Stop, useToast } from './ui';
 import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
@@ -25,8 +27,26 @@ const IconHistory = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>
 );
 
-type Tab = 'today' | 'history';
+type Tab = 'today' | 'upcoming' | 'history';
 type Open = { kind: 'videos'; tab?: Tab; focus?: string; create?: boolean } | { kind: 'chat' } | null;
+
+/** v15: channel ke aane wale kaam ke din (aaj se ~5 hafte) — advance mein video lagane ke liye */
+export function upcomingDays(ch: Channel | undefined, n = 35): string[] {
+  const today = todayKey();
+  const out: string[] = [];
+  for (let i = 0; i <= n; i++) {
+    const k = addDays(today, i);
+    if (!ch || isToday(ch, k)) out.push(k);
+  }
+  return out;
+}
+export function dayOption(k: string): string {
+  const today = todayKey();
+  const base = DAYS_LONG[weekdayOf(k)] + ', ' + fmtDate(k);
+  if (k === today) return 'Aaj · ' + base;
+  if (k === addDays(today, 1)) return 'Aane wala kal · ' + base;
+  return base;
+}
 
 /** video kis ne banayi — team se nikal bhi jaye to naam rahe */
 export function useMaker() {
@@ -45,7 +65,7 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
   const today = todayKey();
   const all = d.videos.filter((v) => v.channel_id === channelId);
   const todays = all.filter((v) => v.day === today).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const old = all.length - todays.length;
+  const old = all.filter((v) => v.day < today).length;
   const msgCount = d.messages.filter((m) => m.channel_id === channelId).length;
   const unread = useUnread(channelId);
 
@@ -139,7 +159,8 @@ export function VideoBrowser({ channelId, tab, setTab, onOpen, onCreate }: {
   const [stage, setStage] = useState<Stage | 'all'>('all');
   const all = useMemo(() => d.videos.filter((v) => v.channel_id === channelId), [d.videos, channelId]);
   const todays = all.filter((v) => v.day === today).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const olds = all.filter((v) => v.day !== today);
+  const olds = all.filter((v) => v.day < today);
+  const ups = all.filter((v) => v.day > today).sort((a, b) => a.day.localeCompare(b.day) || a.created_at.localeCompare(b.created_at));
   const ql = q.trim().toLowerCase();
   const list = olds
     .filter((v) => (!day || v.day === day) && (stage === 'all' || v.stage === stage) && (!ql || v.title.toLowerCase().includes(ql)))
@@ -150,6 +171,9 @@ export function VideoBrowser({ channelId, tab, setTab, onOpen, onCreate }: {
       <div className="vb-tabs">
         <button type="button" className={'vb-tab' + (tab === 'today' ? ' on' : '')} onClick={() => setTab('today')}>
           🎬 Aaj ki videos <b className="num">{todays.length}</b>
+        </button>
+        <button type="button" className={'vb-tab' + (tab === 'upcoming' ? ' on' : '')} onClick={() => setTab('upcoming')}>
+          📅 Aane wali <b className="num">{ups.length}</b>
         </button>
         <button type="button" className={'vb-tab' + (tab === 'history' ? ' on' : '')} onClick={() => setTab('history')}>
           <IconHistory /> Purani videos <b className="num">{olds.length}</b>
@@ -162,6 +186,18 @@ export function VideoBrowser({ channelId, tab, setTab, onOpen, onCreate }: {
           <div className="vgrid">{todays.map((v) => <VideoTile key={v.id} v={v} onOpen={() => onOpen(v)} />)}</div>
         ) : (
           <div className="empty">Aaj abhi koi video nahi.{onCreate ? ' Upar "+ Nai video" se banayein.' : ''}</div>
+        ))}
+
+      {tab === 'upcoming' &&
+        (ups.length ? (
+          [...new Set(ups.map((v) => v.day))].map((day) => (
+            <div key={day} className="vb-day">
+              <div className="vb-day-h">{dayOption(day)}</div>
+              <div className="vgrid">{ups.filter((v) => v.day === day).map((v) => <VideoTile key={v.id} v={v} onOpen={() => onOpen(v)} />)}</div>
+            </div>
+          ))
+        ) : (
+          <div className="empty">Aane wale dinon ki koi video nahi.{onCreate ? ' "+ Nai video" dabayein aur din chunein — title, script, voiceover, video, thumbnail, YouTube link sab advance mein laga sakte hain.' : ''}</div>
         ))}
 
       {tab === 'history' && (
@@ -325,10 +361,38 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
   const [vo, setVo] = useState(video?.voiceover_url || '');
   const [yt, setYt] = useState(video?.youtube_url || '');
   const [vidBusy, setVidBusy] = useState(false);
-  const [busy, setBusy] = useState<'' | 'img' | 'save'>('');
+  const [busy, setBusy] = useState<'' | 'img' | 'save' | 'vo'>('');
+  const [voPct, setVoPct] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const voRef = useRef<HTMLInputElement>(null);
   const ch = d.channels.find((c) => c.id === channelId);
-  const myTask = taskId || d.tasks.find((t) => t.channel_id === channelId && t.user_id === d.uid && t.day === todayKey())?.id || null;
+  // v15: kis din ki video — channel ke aane wale din (advance kaam)
+  const days = useMemo(() => {
+    const list = upcomingDays(ch);
+    if (video?.day && !list.includes(video.day)) list.unshift(video.day);
+    return list;
+  }, [ch, video?.day]);
+  const [day, setDay] = useState<string>(video?.day || days[0] || todayKey());
+  const [customDay, setCustomDay] = useState(false);
+  const myTask = taskId || d.tasks.find((t) => t.channel_id === channelId && t.user_id === d.uid && t.day === day)?.id || null;
+
+  async function pickVo(f: File | undefined) {
+    if (voRef.current) voRef.current.value = '';
+    if (!f) return;
+    const bad = checkAudioFile(f);
+    if (bad) return toast(bad);
+    setBusy('vo');
+    setVoPct(0);
+    try {
+      setVo(await uploadToCatbox(f, setVoPct));
+      toast('🎙 Voiceover upload ho gaya');
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setBusy('');
+      setVoPct(null);
+    }
+  }
 
   async function pick(f: File | undefined) {
     if (!f) return;
@@ -349,7 +413,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     e.preventDefault();
     const t = title.trim();
     if (!t) return toast('Video / script ka title likhein');
-    if (vidBusy) return toast('Video abhi upload ho rahi hai — 100% hone ka intezar karein');
+    if (vidBusy || busy === 'vo') return toast('Upload abhi chal raha hai — 100% hone ka intezar karein');
     if (vo.trim() && !/^https:\/\//i.test(vo.trim())) return toast('Voiceover ka link https:// se shuru hona chahiye');
     if (yt.trim() && !/^https:\/\//i.test(yt.trim())) return toast('YouTube ka link https:// se shuru hona chahiye');
     const su = scriptUrl.trim();
@@ -358,7 +422,8 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     try {
       const id = await d.saveVideo({
         id: video?.id, channel_id: channelId, title: t, stage, due: due || null, script, notes,
-        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, voiceover_url: vo.trim(), youtube_url: yt.trim(), task_id: myTask
+        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, voiceover_url: vo.trim(), youtube_url: yt.trim(), task_id: myTask,
+        day: day || undefined
       });
       toast(video ? 'Video update ho gayi' : 'Video add ho gayi');
       onSaved(id);
@@ -373,11 +438,25 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     <Sheet
       title={video ? 'Video edit' : 'Nai video'}
       onClose={() => {
-        if (vidBusy && !window.confirm('Video abhi upload ho rahi hai. Band karne se upload ruk jayega. Phir bhi band karein?')) return;
+        if ((vidBusy || busy === 'vo') && !window.confirm('Upload abhi chal raha hai. Band karne se upload ruk jayega. Phir bhi band karein?')) return;
         onClose();
       }}
     >
       <form className="form" onSubmit={submit}>
+        <label className="f">
+          Kis din ki video? <span className="h">{ch?.schedule_type === 'daily' ? 'Roz ka channel' : 'Is channel ke kaam ke din'} — aage ke din chun kar advance mein kaam laga sakte hain</span>
+          {customDay ? (
+            <span className="row">
+              <input type="date" value={day} min={addDays(todayKey(), -60)} max={addDays(todayKey(), 120)} onChange={(e) => setDay(e.target.value)} />
+              <button type="button" className="btn sm" onClick={() => { setCustomDay(false); if (!days.includes(day)) setDay(days[0] || todayKey()); }}>List</button>
+            </span>
+          ) : (
+            <select value={day} onChange={(e) => (e.target.value === '__x' ? setCustomDay(true) : setDay(e.target.value))}>
+              {days.map((k) => <option key={k} value={k}>{dayOption(k)}</option>)}
+              <option value="__x">📅 Koi aur date…</option>
+            </select>
+          )}
+        </label>
         <label className="f">
           Title <span className="h">Video / script ka naam, jaise "EP 087 | California Wildfire"</span>
           <input id="v-title" type="text" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. EP 087 | California Wildfire" />
@@ -416,10 +495,21 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
           Video <span className="h">Editor final / draft video yahan upload kare (ya Drive / Gofile link)</span>
           <VideoField value={videoUrl} onChange={setVideoUrl} onBusy={setVidBusy} />
         </div>
-        <label className="f">
-          Voiceover ka link <span className="h">Voice Over wala apne task se file upload karta hai; yahan link theek kar sakte hain</span>
-          <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="https://files.catbox.moe/…" />
-        </label>
+        <div className="f">
+          Voiceover <span className="h">Audio file (MP3, WAV, M4A…) Catbox par upload karein, ya link paste karein</span>
+          <input ref={voRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus,.flac" hidden onChange={(e) => pickVo(e.target.files?.[0])} />
+          <div className="row">
+            <button type="button" className="btn" disabled={busy !== ''} onClick={() => voRef.current?.click()}>
+              {busy === 'vo' ? 'Upload ho raha hai…' + (voPct != null && voPct >= 0 ? ' ' + Math.round(voPct) + '%' : '') : vo ? '🎙 Voiceover badlein' : '🎙 Voiceover upload karein'}
+            </button>
+            {vo && <button type="button" className="btn sm" onClick={() => setVo('')}>Hatayein</button>}
+          </div>
+          {voPct !== null && (
+            <div className="upbar"><div className="upbar-track"><i style={{ width: (voPct < 0 ? 100 : voPct) + '%' }} className={voPct < 0 || voPct >= 100 ? 'done' : ''} /></div></div>
+          )}
+          <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="ya link: https://files.catbox.moe/…" aria-label="Voiceover ka link" />
+          {vo && /^https:\/\//i.test(vo) && <audio controls src={vo} className="vo-audio" />}
+        </div>
         <label className="f">
           YouTube link <span className="h">Publish hone ke baad video ka link</span>
           <input type="url" inputMode="url" value={yt} onChange={(e) => setYt(e.target.value)} placeholder="https://youtu.be/…" />

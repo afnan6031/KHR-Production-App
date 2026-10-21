@@ -5,6 +5,10 @@
  */
 export const UR: Record<string, string> = {
   'Pending': 'Baqi',
+  'Expired': 'Guzri',
+  'Ended': 'Khatam',
+  'Done': 'Mukammal',
+  'Deadline ended': 'Extra deadline bhi khatam',
   'Now playing': 'Abhi chal raha hai',
   'Aaj pending': 'Aaj baqi',
   'Aaj expired': 'Aaj deadline guzri',

@@ -47,46 +47,114 @@ export function fmtDur(ms: number): string {
 }
 
 /* ---------------- Tasks & scoring ---------------- */
+/** v15: deadline guzarne ke baad 24 ghante ki "extra deadline" */
+export const GRACE_MS = 24 * 3600 * 1000;
+export const graceEnd = (t: Task) => new Date(t.due_at).getTime() + GRACE_MS;
+
+/**
+ * pending  = deadline abhi nahi aayi
+ * expired  = deadline guzar gayi, 24 ghante ki extra deadline chal rahi hai (ab bhi complete ho sakta hai, 0 point)
+ * ended    = extra deadline bhi khatam (−5 point)
+ */
 export function taskState(t: Task, now = Date.now()): TaskState {
   if (t.status === 'done') return 'done';
   if (t.status === 'rejected') return 'rejected';
-  return new Date(t.due_at).getTime() <= now ? 'expired' : 'pending';
+  const due = new Date(t.due_at).getTime();
+  if (due > now) return 'pending';
+  return due + GRACE_MS > now ? 'expired' : 'ended';
 }
 
 export function isLate(t: Task): boolean {
   return !!t.completed_at && new Date(t.completed_at).getTime() > new Date(t.due_at).getTime();
 }
 
-export const REJECT_PENALTY = 5;
+/** v15 points: waqt par 10 · extra deadline mein 0 · extra deadline bhi guzar gayi −5 · reject: kul score se −10% */
+export const PTS_ON_TIME = 10;
+export const PTS_LATE = 0;
+export const PTS_MISSED = -5;
+export const REJECT_PENALTY = 10;
 
 export interface Score {
   score: number | null;   // null = abhi koi task count nahi hua
+  points: number;         // waqt par 10, late 0, missed −5
   total: number;          // period ke saare tasks
-  counted: number;        // jo count hue (done + rejected + expired)
-  done: number;
-  late: number;
+  counted: number;        // jo count hue (done + rejected + ended)
+  done: number;           // saare complete (waqt par + late)
+  onTime: number;
+  late: number;           // extra 24 ghante mein complete
   rejected: number;
-  missed: number;         // deadline nikal gayi, kaam nahi hua
+  missed: number;         // extra deadline bhi guzar gayi, kaam nahi hua
+  grace: number;          // abhi extra deadline chal rahi hai
   pending: number;        // abhi waqt baqi hai
+  extended: number;       // jin ki deadline owner ne barhayi
+  /** waqt par kaam deadline se ausatan kitne minute pehle hua (barabari mein jaldi wala aage) */
+  earlyMin: number;
 }
 
 /**
- * Progress % = (complete tasks / count hone wale tasks) x 100  −  5% har rejected task.
- * Rejected task complete mein count nahi hota (0 milta hai) aur upar se 5% minus.
- * Jin tasks ki deadline abhi nahi aayi wo count nahi hote, taake din ke beech mein kisi ka % na gire.
+ * Progress % = points ÷ (count hue tasks × 10) × 100 − 10% har rejected task (0 se kam nahi).
+ * Jin tasks ki deadline (ya extra 24 ghante) abhi chal rahi hai wo count nahi hote, taake beech mein kisi ka % na gire.
  */
 export function scoreOf(tasks: Task[], now = Date.now()): Score {
-  const s: Score = { score: null, total: tasks.length, counted: 0, done: 0, late: 0, rejected: 0, missed: 0, pending: 0 };
+  const s: Score = { score: null, points: 0, total: tasks.length, counted: 0, done: 0, onTime: 0, late: 0, rejected: 0, missed: 0, grace: 0, pending: 0, extended: 0, earlyMin: 0 };
+  let early = 0;
   for (const t of tasks) {
     const st = taskState(t, now);
+    if ((t.extended_minutes || 0) > 0) s.extended++;
     if (st === 'pending') { s.pending++; continue; }
+    if (st === 'expired') { s.grace++; continue; }
     s.counted++;
-    if (st === 'done') { s.done++; if (isLate(t)) s.late++; }
-    else if (st === 'rejected') s.rejected++;
-    else s.missed++;
+    if (st === 'done') {
+      s.done++;
+      if (isLate(t)) { s.late++; s.points += PTS_LATE; }
+      else {
+        s.onTime++;
+        s.points += PTS_ON_TIME;
+        early += Math.max(0, (new Date(t.due_at).getTime() - new Date(t.completed_at!).getTime()) / 60000);
+      }
+    } else if (st === 'rejected') s.rejected++;
+    else { s.missed++; s.points += PTS_MISSED; }
   }
-  if (s.counted > 0) s.score = Math.max(0, Math.round((s.done / s.counted) * 100 - REJECT_PENALTY * s.rejected));
+  if (s.onTime) s.earlyMin = Math.round(early / s.onTime);
+  if (s.counted > 0) s.score = Math.max(0, Math.min(100, Math.round((Math.max(0, s.points) / (s.counted * PTS_ON_TIME)) * 100 - REJECT_PENALTY * s.rejected)));
   return s;
+}
+
+/* ---------------- v15: channel ki auto performance ---------------- */
+/** ek task ki channel performance (100 mein se) */
+function taskPerf(t: Task, now: number): number | null {
+  const st = taskState(t, now);
+  if (st === 'pending' || st === 'expired') return null;
+  if (st === 'done') {
+    if (isLate(t)) return 40;
+    return (t.extended_minutes || 0) > 0 ? 75 : 100;
+  }
+  return 0; // rejected ya missed
+}
+export interface RolePerf { role: string; pct: number | null; counted: number; onTime: number; extended: number; late: number; missed: number; rejected: number; pending: number }
+export interface ChannelPerf { pct: number | null; roles: RolePerf[]; counted: number }
+export const CHANNEL_PERF_RULES = 'Har task: waqt par 100 · deadline barhwa kar waqt par 75 · extra 24 ghante mein (delay) 40 · expire / reject 0. Pehle har role ka ausat, phir sab roles barabar wazan se — 4 role wala aur 6 role wala channel ek hi paimane par.';
+/** channel ke saare roles ka ausat — har role barabar (jitne bhi log hon) */
+export function channelPerf(tasks: Task[], roles: string[], now = Date.now()): ChannelPerf {
+  const list = [...new Set([...roles, ...tasks.map((t) => t.role)])];
+  const out: RolePerf[] = list.map((role) => {
+    const r: RolePerf = { role, pct: null, counted: 0, onTime: 0, extended: 0, late: 0, missed: 0, rejected: 0, pending: 0 };
+    let sum = 0;
+    tasks.filter((t) => t.role === role).forEach((t) => {
+      const v = taskPerf(t, now);
+      if (v == null) { r.pending++; return; }
+      r.counted++;
+      sum += v;
+      const st = taskState(t, now);
+      if (st === 'done') { if (isLate(t)) r.late++; else if ((t.extended_minutes || 0) > 0) r.extended++; else r.onTime++; }
+      else if (st === 'rejected') r.rejected++;
+      else r.missed++;
+    });
+    if (r.counted) r.pct = Math.round(sum / r.counted);
+    return r;
+  });
+  const rated = out.filter((r) => r.pct != null);
+  return { pct: rated.length ? Math.round(rated.reduce((a, r) => a + r.pct!, 0) / rated.length) : null, roles: out, counted: rated.reduce((a, r) => a + r.counted, 0) };
 }
 
 /* ---------------- Periods (daily / weekly / monthly) ---------------- */
@@ -119,19 +187,35 @@ export function inPeriod(t: Task, p: Period): boolean {
   return t.day >= p.from && t.day <= p.to;
 }
 
-export interface RankRow extends Score { user_id: string; rank: number }
+export interface RankRow extends Score { user_id: string; rank: number; prod: number }
 
-/** Leaderboard: score, phir zyada complete, phir kam rejected */
+/**
+ * v15 Leaderboard: score → points → zyada complete → kam late (extra deadline) → kam expire → kam extension → kam reject
+ * → us ke channels ki production (auto performance) → deadline se kitna pehle kaam kiya (2PM wala 4:38PM wale se aage).
+ */
 export function rankUsers(tasks: Task[], p: Period, now = Date.now()): RankRow[] {
+  const inP = tasks.filter((t) => inPeriod(t, p));
   const by = new Map<string, Task[]>();
-  tasks.filter((t) => inPeriod(t, p)).forEach((t) => by.set(t.user_id, [...(by.get(t.user_id) || []), t]));
-  const rows = [...by.entries()]
-    .map(([user_id, ts]) => ({ user_id, ...scoreOf(ts, now), rank: 0 }))
-    .filter((r) => r.score !== null)
-    .sort((a, b) => (b.score! - a.score!) || (b.done - a.done) || (a.rejected - b.rejected));
+  inP.forEach((t) => by.set(t.user_id, [...(by.get(t.user_id) || []), t]));
+  const chPct = new Map<string, number>();
+  const chOf = (id: string) => {
+    if (!chPct.has(id)) chPct.set(id, channelPerf(inP.filter((t) => t.channel_id === id), [], now).pct ?? 0);
+    return chPct.get(id)!;
+  };
+  const rows: RankRow[] = [...by.entries()]
+    .map(([user_id, ts]) => {
+      const chans = [...new Set(ts.map((t) => t.channel_id))];
+      const prod = chans.length ? Math.round(chans.reduce((a, c) => a + chOf(c), 0) / chans.length) : 0;
+      return { user_id, ...scoreOf(ts, now), rank: 0, prod };
+    })
+    .filter((r) => r.score !== null);
+  const cmp = (a: RankRow, b: RankRow) =>
+    b.score! - a.score! || b.points - a.points || b.done - a.done || a.late - b.late || a.missed - b.missed ||
+    a.extended - b.extended || a.rejected - b.rejected || b.prod - a.prod || b.earlyMin - a.earlyMin;
+  rows.sort(cmp);
   rows.forEach((r, i) => {
     const prev = rows[i - 1];
-    r.rank = prev && prev.score === r.score && prev.done === r.done && prev.rejected === r.rejected ? prev.rank : i + 1;
+    r.rank = prev && cmp(prev, r) === 0 ? prev.rank : i + 1;
   });
   return rows;
 }

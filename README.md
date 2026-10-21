@@ -448,6 +448,29 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v15: deadline ke naye rules, din chun kar kaam, smooth 120Hz, Discord jaisa typing box
+
+**Supabase update zaroori:** SQL Editor mein poori `supabase/schema.sql` dobara chalayein (purana data mehfooz rehta hai).
+
+- **PC / website par messages:** realtime toot jaye (PC so jaye, internet jaye, token purana ho) to app khud dobara jurti hai aur beech ke reh gaye messages le aati hai — har 20 second nigrani, window par wapas aane par bhi. App band kar ke kholne ki zaroorat nahi. **2000 characters** tak ka message (ginti box ke neeche).
+- **Likha hua text bachta hai:** Server mein kuch likh rahe hon aur Tasks / Rank par chale jayein to wapas aane par text, khuli chat aur scroll wahi.
+- **Wapas wahin:** har tab yaad rakhta hai ke kaun sa channel khula tha. App naye sire se khule (ya usi tab par dobara tap) to dashboard.
+- **Deadline ke naye rules:** deadline guzri → **24 ghante ki extra deadline** (is mein complete = **0 point**). Extra deadline bhi guzar gayi → **−5 point**, aur member ab complete nahi kar sakta (owner kar sakta hai). "⏳ Waqt barhayein" waise hi. Reject → kul score se **−10%**.
+- **Today board:** Pending / Deadline expired / Deadline ended / Completed shuru mein band — sirf ginti; arrow dabane par list. Expired task ke saath extra deadline ka waqt.
+- **Ranking:** score barabar ho to: zyada points → kam late → kam expire → kam extension → kam reject → channel ki production → jis ne deadline se zyada pehle kaam kiya (2 PM wala 4:38 PM wale se aage).
+- **Channel ki auto performance:** har task — waqt par 100, barha kar waqt par 75, extra 24 ghante mein 40, expire/reject 0. Pehle har role ka ausat, phir sab roles barabar — 4 role aur 6 role wale channel ek paimane par.
+- **Din chun kar kaam dekhein:** "Aaj" aur "Mere cards" par din ki patti (‹ › se hafta aage/peeche, 📅 calendar). Guzra din = kya hua tha; aane wala din = kaunsa kaam hai aur EP mein kya pehle se lag chuka hai.
+- **Advance kaam:** channel → "+ Nai video" → **kis din ki video** (channel ke aane wale din, agle mahine tak). Title, script, voiceover, video, thumbnail, YouTube link pehle se — us din task button se wahi EP chun kar mukammal.
+- **Voiceover upload:** Voice Over task mein audio file (Catbox) ya link — deadline ke baad (extra deadline mein) bhi.
+- **Owner preview:** Channels screen (aur Zaati mode ke Mere cards) par upar user ke naam — tap karein to wahi cards jo us user ko nazar aate hain.
+- **Card size:** Large / Medium / Small / List — har device par yaad.
+- **Message ⋯ menu:** upar-neeche list (neeche jagah kam ho to upar khulta hai): Jawab, Quote, Mention, Text copy, Link copy, Badlein, Aage bhejein, Pin, Mark unread, Message info, Mitayein.
+- **Typing box:** Discord jaisa — likhte hue khud lamba hota hai (screen ke ~45% tak), phir andar scroll.
+- **Progress:** naya chhota UI — ek line mein saare numbers, channels tiles mein, kam scroll.
+- **Smooth (60 / 90 / 120 / 144 Hz):** Android app ab phone ka sab se tez refresh rate maangti hai. Har card ke peeche ka live blur hataya (yahi 30fps ki wajah tha); background ki blur tasveer ek dafa ban kar yaad rehti hai. App khulte waqt ka flicker (pehle ek rang phir doosra) aur har 1.5 second ka chhota jhatka theek.
+
+---
+
 ## v14: @mention, ⋯ message menu, Android scroll line, offline download fix
 
 - **@mention (server channels):** typing box mein `@` likhein to us channel ke log aur **@everyone** ki list aati hai (↑ ↓ / Enter ya tap). Jis message mein aap ka naam ya @everyone ho wo **peela** highlight hota hai; @naam chat mein bhi peela dikhta hai.

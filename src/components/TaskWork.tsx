@@ -50,7 +50,8 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     () => d.videos.filter((v) => v.channel_id === task.channel_id).sort((a, b) => b.day.localeCompare(a.day) || b.created_at.localeCompare(a.created_at)).slice(0, 60),
     [d.videos, task.channel_id]
   );
-  const firstOpen = eps.find((v) => !hasWork(cfg.kind, v));
+  // v15: pehle wo EP jo isi din ke liye (advance mein) banaya gaya
+  const firstOpen = eps.find((v) => v.day === task.day && !hasWork(cfg.kind, v)) || eps.find((v) => v.day === task.day) || eps.find((v) => !hasWork(cfg.kind, v));
   const linked = task.video_id ? eps.find((v) => v.id === task.video_id) : undefined;
   const [epId, setEpId] = useState<string>(cfg.kind === 'title' ? 'new' : linked?.id || firstOpen?.id || (eps[0]?.id ?? 'new'));
   const ep = epId === 'new' ? undefined : eps.find((v) => v.id === epId);
@@ -117,7 +118,8 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     video_url: v?.video_url || '',
     voiceover_url: v?.voiceover_url || '',
     youtube_url: v?.youtube_url || '',
-    task_id: v ? undefined : task.id
+    task_id: v ? undefined : task.id,
+    day: v ? undefined : task.day
   });
   const advance = (s: Stage) => (STAGE_ORDER.indexOf(cfg.stage) > STAGE_ORDER.indexOf(s) ? cfg.stage : s);
 
@@ -205,7 +207,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
               <select value={epId} onChange={(e) => pickEp(e.target.value)}>
                 {eps.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {(v.day === today ? 'Aaj · ' : v.day.slice(5) + ' · ') + v.title + (hasWork(cfg.kind, v) ? '  ✓' : '')}
+                    {(v.day === today ? 'Aaj · ' : v.day > today ? '📅 ' + v.day.slice(5) + ' · ' : v.day.slice(5) + ' · ') + v.title + (hasWork(cfg.kind, v) ? '  ✓ (pehle se laga)' : '')}
                   </option>
                 ))}
                 <option value="new">＋ Naya EP</option>

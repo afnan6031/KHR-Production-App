@@ -12,8 +12,8 @@ const seenKey = (id: string) => 'khr-sseen-' + id;
 const getSeen = (id: string) => {
   try { return localStorage.getItem(seenKey(id)) || ''; } catch { return ''; }
 };
-const markSeen = (id: string) => {
-  try { localStorage.setItem(seenKey(id), new Date().toISOString()); } catch { /* storage band */ }
+const markSeen = (id: string, at?: string) => {
+  try { localStorage.setItem(seenKey(id), at || new Date().toISOString()); } catch { /* storage band */ }
   window.dispatchEvent(new Event(SEEN_EVENT));
 };
 function useSeenTick() {
@@ -47,7 +47,7 @@ function saveLast(l: Last) {
   try { localStorage.setItem(LAST_KEY, JSON.stringify(l)); } catch { /* storage band */ }
 }
 
-export function ServerScreen() {
+export function ServerScreen({ active = true }: { active?: boolean }) {
   const d = useData();
   const [last, setLast] = useState<Last>(readLast);
   const [pane, setPaneState] = useState<Pane>(last.pane);
@@ -106,7 +106,7 @@ export function ServerScreen() {
   const channelId = view.kind === 'channel' ? view.id : '';
   // phone par chat khuli ho to back = server ki list (dashboard nahi)
   const narrow = typeof window !== 'undefined' && !window.matchMedia('(min-width: 980px)').matches;
-  useBackHandler(narrow && view.kind !== 'home', () => setView({ kind: 'home' }));
+  useBackHandler(active && narrow && view.kind !== 'home', () => setView({ kind: 'home' }));
 
   return (
     <div className={'srv ' + (view.kind === 'home' ? 'at-home' : 'at-chat') + (view.kind === 'channel' ? ' with-members' : '')}>
@@ -127,8 +127,8 @@ export function ServerScreen() {
       </aside>
 
       <section className="srv-main">
-        {view.kind === 'channel' && <ChannelChat key={view.id} channelId={view.id} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} onEdit={(c) => setEditing(c)} onMembers={() => setShowMembers(true)} />}
-        {view.kind === 'dm' && <DMChat key={view.peer} peer={view.peer} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} />}
+        {view.kind === 'channel' && <ChannelChat key={view.id} active={active} channelId={view.id} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} onEdit={(c) => setEditing(c)} onMembers={() => setShowMembers(true)} />}
+        {view.kind === 'dm' && <DMChat key={view.peer} active={active} peer={view.peer} onBack={() => setView({ kind: 'home' })} onOpenUser={setProfile} />}
         {view.kind === 'home' && <div className="srv-placeholder muted">{pane === 'friends' ? 'Kisi friend ki chat chunein' : 'Koi channel chunein'}</div>}
       </section>
 
@@ -185,7 +185,7 @@ function ChannelList({ current, onOpen, onEdit }: { current: string; onOpen: (id
 }
 
 /* ================= Channel chat ================= */
-function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { channelId: string; onBack: () => void; onOpenUser: (id: string) => void; onEdit: (c: ServerChannel) => void; onMembers: () => void }) {
+function ChannelChat({ active, channelId, onBack, onOpenUser, onEdit, onMembers }: { active: boolean; channelId: string; onBack: () => void; onOpenUser: (id: string) => void; onEdit: (c: ServerChannel) => void; onMembers: () => void }) {
   const d = useData();
   const [reply, setReply] = useState<FeedItem | null>(null);
   const [img, setImg] = useState<string | null>(null);
@@ -194,7 +194,7 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
   const ch = d.server_channels.find((c) => c.id === channelId);
   const items = useMemo(() => d.server_messages.filter((m) => m.channel_id === channelId).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-400), [d.server_messages, channelId]);
   const byId = useMemo(() => new Map(d.server_messages.map((m) => [m.id, m as FeedItem])), [d.server_messages]);
-  useEffect(() => { markSeen(channelId); }, [channelId, items.length]);
+  useEffect(() => { if (active) markSeen(channelId); }, [channelId, items.length, active]);
   if (!ch) return <div className="srv-placeholder muted">Ye channel ab maujood nahi ya aap is mein nahi.</div>;
   const canPost = d.isOwner || !ch.read_only;
   const memberCount = ch.is_private ? d.server_channel_members.filter((m) => m.channel_id === ch.id).length : null;
@@ -226,11 +226,14 @@ function ChannelChat({ channelId, onBack, onOpenUser, onEdit, onMembers }: { cha
         kind="srv"
         canPin={canPost}
         onForward={setFwd}
+        composeKey={canPost ? 'srv-' + ch.id : undefined}
+        onMarkUnread={(m) => markSeen(ch.id, new Date(new Date(m.created_at).getTime() - 1).toISOString())}
         empty={<><b>#{ch.name} mein khush aamdeed</b>{canPost ? 'Pehla message likhein. Tip: "# " se bara heading, **bold**, *italic*.' : 'Yahan owner ke announcements aayenge.'}</>}
       />
       <Composer
         mentions={channelPeople(d, ch).filter((p) => p.id !== d.uid && p.full_name).map((p) => ({ id: p.id, name: p.full_name, url: p.avatar_url || undefined, sub: p.server_role || undefined }))}
         placeholder={'#' + ch.name}
+        draftKey={'srv-' + ch.id}
         disabledNote={canPost ? undefined : 'Is channel mein sirf owner message kar sakta hai.'}
         replyTo={reply}
         onCancelReply={() => setReply(null)}
@@ -387,7 +390,7 @@ function FriendsPane({ current, onOpenDM, onOpenUser }: { current: string; onOpe
   );
 }
 
-function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void; onOpenUser: (id: string) => void }) {
+function DMChat({ active, peer, onBack, onOpenUser }: { active: boolean; peer: string; onBack: () => void; onOpenUser: (id: string) => void }) {
   const d = useData();
   const [img, setImg] = useState<string | null>(null);
   const [reply, setReply] = useState<FeedItem | null>(null);
@@ -404,7 +407,7 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
     [d.direct_messages, peer, d.uid]
   );
   const dmById = useMemo(() => new Map(items.map((m) => [m.id, m as FeedItem])), [items]);
-  useEffect(() => { d.markDMRead(peer).catch(() => {}); }, [peer, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (active) d.markDMRead(peer).catch(() => {}); }, [peer, items.length, active]); // eslint-disable-line react-hooks/exhaustive-deps
   const allowed = d.canDM(peer);
   const fs = d.friendState(peer);
 
@@ -431,10 +434,12 @@ function DMChat({ peer, onBack, onOpenUser }: { peer: string; onBack: () => void
         byId={dmById}
         onReply={allowed ? setReply : undefined}
         onForward={setFwd}
+        composeKey={allowed ? 'dm-' + peer : undefined}
         empty={<><b>{p?.full_name} ke saath baat shuru karein</b>Kaam ki update, sawal, link ya image bhejein.</>}
       />
       <Composer
         placeholder="Message likhein…"
+        draftKey={'dm-' + peer}
         replyTo={reply}
         onCancelReply={() => setReply(null)}
         disabledNote={allowed ? undefined : fs.state === 'sent' ? 'Friend request bheji hui hai. Accept hone ke baad message kar sakenge.' : 'Message karne ke liye pehle friend banein (profile se request bhejein).'}

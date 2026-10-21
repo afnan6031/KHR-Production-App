@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import type { Channel } from '../lib/types';
-import { channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
-import { MemberCard, OwnerCard, useMyCards } from '../components/Cards';
+import { CHANNEL_PERF_RULES, channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
+import { CardSizePicker, MemberCard, OwnerCard, useCardSize, useChannelPerf, useMyCards } from '../components/Cards';
 import { Bar, Fold, Logo, Seg, Week, useNow } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
 import { VideoBrowser, VideosSheet } from '../components/Videos';
 import { ChatSheet } from '../components/Chat';
 import { boardTasks } from './Home';
+import { DayStrip, DayTasks } from '../components/DayPlan';
 
 /* ================= Pending / Rejected ================= */
 export function GateScreen({ onSignOut }: { onSignOut: () => void }) {
@@ -49,47 +50,118 @@ export function GateScreen({ onSignOut }: { onSignOut: () => void }) {
 
 /* ================= My cards ================= */
 export function MyCardsScreen({ openChannel }: { openChannel: (id: string) => void }) {
-  const cards = useMyCards(false);
+  const d = useData();
+  const [size, setSize] = useCardSize();
+  // v15: owner upar se kisi bhi user ko chun kar dekh sake ke us ke paas kaun se cards hain
+  const [who, setWho] = useState<string>(d.uid);
+  const people = d.realOwner ? d.profiles.filter((p) => p.id !== d.uid && p.status === 'approved' && !p.is_owner).sort((a, b) => a.full_name.localeCompare(b.full_name)) : [];
+  const uid = people.some((p) => p.id === who) ? who : d.uid;
+  const cards = useMyCards(false, uid);
+  const person = d.profileOf(uid);
+  const now = useNow(15000);
+  const today = todayKey();
+  // v15: din chun kar dekhein us din kya kaam tha / hai
+  const [day, setDay] = useState(today);
   return (
     <>
-      <div className="hello">
-        <h1>Mere cards</h1>
-        <p>Har channel ka ek card — us mein aap ke saare roles.</p>
+      <div className="sec-head wrap">
+        <div className="hello">
+          <h1>{uid === d.uid ? 'Mere cards' : (person?.full_name || 'Member') + ' ke cards'}</h1>
+          <p>{uid === d.uid ? 'Har channel ka ek card — us mein aap ke saare roles.' : 'Preview: is user ko yahi cards nazar aate hain.'}</p>
+        </div>
+        <CardSizePicker value={size} onChange={setSize} />
       </div>
+      {people.length > 0 && <WhoPick value={uid} onChange={setWho} allLabel="Mere" />}
+      <section className="sec day-sec">
+        <div className="sec-head">
+          <h2>{day === today ? 'Aaj ka kaam' : 'Is din ka kaam'}</h2>
+        </div>
+        <DayStrip value={day} onChange={setDay} />
+        {day === today ? (
+          <TaskBoard tasks={boardTasks(d.tasks, today, uid)} now={now} onOpenChannel={openChannel} foldId={'mc-' + uid} emptyAll="Aaj kisi card ka kaam ka din nahi." />
+        ) : (
+          <DayTasks day={day} userId={uid} now={now} onOpenChannel={openChannel} foldId={'mcd-' + uid} />
+        )}
+      </section>
       {cards.length ? (
-        <div className="cards">
+        <div className={'cards size-' + size}>
           {cards.map(({ ch, roles }) => (
-            <MemberCard key={ch.id} ch={ch} roles={roles} onOpen={() => openChannel(ch.id)} />
+            <MemberCard key={ch.id} ch={ch} roles={roles} userId={uid} size={size} onOpen={() => openChannel(ch.id)} />
           ))}
         </div>
       ) : (
         <div className="empty">
-          <b>Abhi koi card nahi</b>Jab owner aap ko kisi channel mein role dega, card yahan aa jayega.
+          <b>Abhi koi card nahi</b>{uid === d.uid ? 'Jab owner aap ko kisi channel mein role dega, card yahan aa jayega.' : 'Is user ko abhi kisi channel mein role nahi mila.'}
         </div>
       )}
     </>
   );
 }
 
+
+/** v15: owner upar se kisi bhi user ko chune — us ke cards ka preview */
+export function WhoPick({ value, onChange, allLabel, allValue }: { value: string; onChange: (id: string) => void; allLabel: string; allValue?: string }) {
+  const d = useData();
+  const people = d.profiles.filter((p) => p.id !== d.uid && p.status === 'approved' && !p.is_owner).sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const first = allValue ?? d.uid;
+  return (
+    <div className="who-pick" role="tablist" aria-label="Kis user ke cards">
+      <button role="tab" aria-selected={value === first} className={value === first ? 'on' : ''} onClick={() => onChange(first)}>
+        {allValue === undefined && <UserAvatar id={d.uid} />} <span>{allLabel}</span>
+      </button>
+      {people.map((p) => {
+        const n = d.channels.filter((c) => d.rolesOf(c.id, p.id).length).length;
+        return (
+          <button key={p.id} role="tab" aria-selected={value === p.id} className={value === p.id ? 'on' : ''} onClick={() => onChange(p.id)}>
+            <UserAvatar id={p.id} /> <span data-notr>{p.full_name}</span> <b className="num">{n}</b>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ================= Channels (owner) ================= */
 export function ChannelsScreen({ openChannel, newChannel }: { openChannel: (id: string) => void; newChannel: () => void }) {
   const d = useData();
+  const [size, setSize] = useCardSize();
+  // v15: kisi user ko chunein to wahi cards jo use nazar aate hain
+  const [who, setWho] = useState('all');
+  const picked = who !== 'all' && d.profiles.some((p) => p.id === who) ? who : 'all';
+  const userCards = useMyCards(false, picked === 'all' ? d.uid : picked);
   const list = [...d.channels].sort((a, b) => a.name.localeCompare(b.name));
   return (
     <>
-      <div className="sec-head">
+      <div className="sec-head wrap">
         <div className="hello">
           <h1>Channels</h1>
           <p>{list.length} channel cards</p>
         </div>
-        <button className="btn primary" onClick={newChannel}>
-          + Naya
-        </button>
+        <div className="row">
+          <CardSizePicker value={size} onChange={setSize} />
+          <button className="btn primary" onClick={newChannel}>
+            + Naya
+          </button>
+        </div>
       </div>
-      {list.length ? (
-        <div className="cards">
+      {list.length > 0 && <WhoPick value={picked} onChange={setWho} allLabel="Sab channels" allValue="all" />}
+      {picked !== 'all' ? (
+        userCards.length ? (
+          <>
+            <p className="muted small m0 who-note">Preview: <b data-notr>{d.nameOf(picked)}</b> ko yahi cards nazar aate hain.</p>
+            <div className={'cards size-' + size}>
+              {userCards.map(({ ch, roles }) => (
+                <MemberCard key={ch.id} ch={ch} roles={roles} userId={picked} size={size} onOpen={() => openChannel(ch.id)} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="empty"><b>Koi card nahi</b>Is user ko abhi kisi channel mein role nahi mila.</div>
+        )
+      ) : list.length ? (
+        <div className={'cards size-' + size}>
           {list.map((c) => (
-            <OwnerCard key={c.id} ch={c} onOpen={() => openChannel(c.id)} />
+            <OwnerCard key={c.id} ch={c} size={size} onOpen={() => openChannel(c.id)} />
           ))}
         </div>
       ) : (
@@ -112,13 +184,14 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
   const period = periodOf(pk);
   const chTasks = d.tasks.filter((t) => t.channel_id === channel.id);
   const todayTasks = boardTasks(chTasks, todayKey());
-  const [vTab, setVTab] = useState<'today' | 'history'>('today');
+  const [vTab, setVTab] = useState<'today' | 'upcoming' | 'history'>('today');
   const [chat, setChat] = useState(false);
   const [vOpen, setVOpen] = useState<{ focus?: string; create?: boolean } | null>(null);
   const mine = d.rolesOf(channel.id);
   const members = d.channel_members.filter((m) => m.channel_id === channel.id && m.roles.length);
   const vids = d.videos.filter((v) => v.channel_id === channel.id);
   const canWork = d.isOwner || d.realOwner || mine.length > 0;
+  const cperf = useChannelPerf(channel, pk === 'day' ? 'week' : pk);
 
   return (
     <>
@@ -173,6 +246,30 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
         </div>
         <TaskBoard tasks={todayTasks} now={now} showName groupByChannel={false} foldId={'ch-' + channel.id} emptyAll={members.length ? 'Aaj is channel ka kaam ka din nahi.' : 'Is channel mein abhi team add nahi.'} />
       </section>
+
+      <Fold id={'cp-' + channel.id} className="panel" title={<h2>📈 Channel performance</h2>} defaultOpen extra={<b className={'num cp-big ' + (cperf.pct == null ? 'muted' : perfClass(cperf.pct))}>{cperf.pct == null ? '—' : cperf.pct + '%'}</b>}>
+        <Seg label="Progress muddat" value={pk === 'day' ? 'week' : pk} onChange={setPk} options={[{ v: 'week', label: 'Is hafte' }, { v: 'month', label: 'Is mahine' }]} />
+        <div className="cp-grid">
+          {cperf.roles.map((r) => (
+            <div key={r.role} className="cp-role">
+              <div className="row between">
+                <span className={'role sm ' + roleClass(r.role)}>{r.role}</span>
+                <b className={'num ' + (r.pct == null ? 'muted' : perfClass(r.pct))}>{r.pct == null ? '—' : r.pct + '%'}</b>
+              </div>
+              <Bar pct={r.pct ?? 0} cls={r.pct == null ? '' : perfClass(r.pct)} />
+              <div className="cp-stats">
+                <span title="Waqt par">✓ {r.onTime}</span>
+                <span title="Deadline barha kar waqt par" className="warn">⏳ {r.extended}</span>
+                <span title="Extra 24 ghante mein (delay)" className="warn">⌛ {r.late}</span>
+                <span title="Expire / reh gaya" className="bad">✕ {r.missed}</span>
+                {r.rejected > 0 && <span title="Reject" className="bad">⛔ {r.rejected}</span>}
+              </div>
+            </div>
+          ))}
+          {!cperf.roles.length && <p className="muted small m0">Abhi is channel mein roles nahi.</p>}
+        </div>
+        <p className="muted tiny m0">{CHANNEL_PERF_RULES}</p>
+      </Fold>
 
       {members.length > 0 && (
         <Fold id={'tl-' + channel.id} className="panel" title={<h2>Roz ki timeline</h2>} defaultOpen extra={d.isOwner ? <button className="btn sm" onClick={onEdit}>Waqt badlein</button> : undefined}>
@@ -253,7 +350,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
         )}
       </Fold>
       {chat && <ChatSheet channelId={channel.id} onClose={() => setChat(false)} />}
-      {vOpen && <VideosSheet channelId={channel.id} focus={vOpen.focus} create={vOpen.create} initialTab={vOpen.focus && vids.find((v) => v.id === vOpen.focus)?.day !== todayKey() ? 'history' : 'today'} onClose={() => setVOpen(null)} />}
+      {vOpen && <VideosSheet channelId={channel.id} focus={vOpen.focus} create={vOpen.create} initialTab={(() => { const vd = vOpen.focus ? vids.find((v) => v.id === vOpen.focus)?.day : undefined; return !vd || vd === todayKey() ? 'today' : vd > todayKey() ? 'upcoming' : 'history'; })()} onClose={() => setVOpen(null)} />}
     </>
   );
 }

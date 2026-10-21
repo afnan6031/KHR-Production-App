@@ -22,6 +22,9 @@ export function applyTheme(choice = getTheme()) {
   if (choice === 'system') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', choice);
   const dark = isDark(choice);
+  // index.html ka pehle-frame wala rang ab CSS sambhalta hai
+  root.style.removeProperty('background');
+  root.style.colorScheme = dark ? 'dark' : 'light';
   const meta = document.querySelector('meta[name="theme-color"]');
   meta?.setAttribute('content', dark ? '#0B1124' : '#FFFFFF');
   // Windows app ki upar wali patti + Android status bar bhi isi rang mein

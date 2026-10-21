@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
-import { REJECT_PENALTY, dayLabel, inPeriod, periodOf, rankUsers, roleClass, scoreOf, type PeriodKind, type Score } from '../lib/utils';
-import { PeriodPicker, ScoreRing, ScoreStats, TaskItem } from '../components/Tasks';
+import { PTS_LATE, PTS_MISSED, PTS_ON_TIME, REJECT_PENALTY, dayLabel, inPeriod, periodOf, rankUsers, roleClass, scoreOf, type PeriodKind, type Score } from '../lib/utils';
+import { PeriodPicker, ScoreRing, TaskItem } from '../components/Tasks';
 import { RejectSheet } from '../components/Tasks';
-import { Bar, DateFilter, Fold, useNow } from '../components/ui';
+import { DateFilter, useNow } from '../components/ui';
 import type { Task } from '../lib/types';
 
 const cls = (v: number | null) => (v == null ? 'muted' : v >= 85 ? 'good' : v >= 65 ? 'warn' : 'bad');
@@ -51,7 +51,7 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
                 <UserAvatar id={r.user_id} />
                 <b className="pname">{d.nameOf(r.user_id)}</b>
                 <span className={'num pscore ' + cls(r.score)}>{r.score}%</span>
-                <small className="muted">{r.done}/{r.counted} tasks</small>
+                <small className="muted">{r.points} pts · {r.done}/{r.counted}</small>
                 {r.rejected > 0 && <small className="bad">{r.rejected} rejected</small>}
                 <span className="plinth" aria-hidden="true" />
               </button>
@@ -67,7 +67,8 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
                     <span className="t block">{d.nameOf(r.user_id)}{r.user_id === d.uid && <span className="muted"> (aap)</span>}</span>
                     {d.profileOf(r.user_id)?.title && <span className="ptitle sm block" data-notr>🏆 {d.profileOf(r.user_id)?.title}</span>}
                     <span className="d block">
-                      {r.done} complete · {r.late} late · {r.missed} missed{r.rejected ? '' : ''}
+                      {r.points} points · {r.onTime} waqt par · {r.late} extra mein · {r.missed} ended
+                      {r.extended > 0 && <span className="warn"> · {r.extended} extension</span>}
                       {r.rejected > 0 && <b className="bad"> · {r.rejected} rejected</b>}
                     </span>
                   </span>
@@ -79,13 +80,14 @@ export function LeaderboardScreen({ openProgress }: { openProgress: (uid: string
         </>
       )}
       <p className="muted tiny m0">
-        Score = waqt par ya late complete tasks ÷ jin tasks ki deadline guzar chuki × 100. Har rejected task count nahi hota aur upar se −{REJECT_PENALTY}% lagta hai. Barabar score par zyada complete tasks wala upar.
+        Points: waqt par complete = {PTS_ON_TIME} · deadline ke baad 24 ghante ki extra deadline mein = {PTS_LATE} · extra deadline bhi guzar gayi = {PTS_MISSED}. Score = points ÷ (tasks × {PTS_ON_TIME}) × 100, aur har rejected task par kul score se −{REJECT_PENALTY}%.
+        Barabar score par: zyada points → kam late → kam expire → kam extension → kam reject → channel ki behtar production → deadline se zyada pehle kaam (2 PM wala 4:38 PM wale se aage).
       </p>
     </>
   );
 }
 
-/* ================= One person's progress ================= */
+/* ================= One person's progress (v15: chhota, saaf — kam scroll) ================= */
 export function ProgressScreen({ userId, onBack, openChannel }: { userId: string; onBack?: () => void; openChannel: (id: string) => void }) {
   const d = useData();
   const now = useNow();
@@ -97,78 +99,81 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
   const mine = d.tasks.filter((t) => t.user_id === userId);
   const inP = mine.filter((t) => inPeriod(t, p));
   const total = scoreOf(inP, now);
-  const quick = (['day', 'week', 'month'] as const).map((k) => ({ k, s: scoreOf(mine.filter((t) => inPeriod(t, periodOf(k))), now) }));
-
-  // per channel + role breakdown
-  const keys = new Map<string, { channel_id: string; role: string; ts: Task[] }>();
-  inP.forEach((t) => {
-    const k = t.channel_id + '|' + t.role;
-    const e = keys.get(k) || { channel_id: t.channel_id, role: t.role, ts: [] };
-    e.ts.push(t);
-    keys.set(k, e);
-  });
-  const breakdown = [...keys.values()]
-    .map((e) => ({ ...e, s: scoreOf(e.ts, now), name: d.channels.find((c) => c.id === e.channel_id)?.name || 'Channel' }))
-    .sort((a, b) => a.name.localeCompare(b.name) || a.role.localeCompare(b.role));
-  const [hday, setHday] = useState('');
-  const history = [...inP].sort((a, b) => b.day.localeCompare(a.day) || a.due_at.localeCompare(b.due_at));
-  const shownHist = hday ? mine.filter((t) => t.day === hday).sort((a, b) => a.due_at.localeCompare(b.due_at)) : history;
   const monthRank = rankUsers(d.tasks, periodOf('month'), now).find((r) => r.user_id === userId);
+
+  // channel → roles (chhote tiles)
+  const byCh = new Map<string, Map<string, Task[]>>();
+  inP.forEach((t) => {
+    const m = byCh.get(t.channel_id) || new Map<string, Task[]>();
+    m.set(t.role, [...(m.get(t.role) || []), t]);
+    byCh.set(t.channel_id, m);
+  });
+  const chans = [...byCh.entries()]
+    .map(([cid, roles]) => ({
+      cid,
+      name: d.channels.find((c) => c.id === cid)?.name || 'Channel',
+      s: scoreOf([...roles.values()].flat(), now),
+      roles: [...roles.entries()].map(([role, ts]) => ({ role, s: scoreOf(ts, now) })).sort((a, b) => a.role.localeCompare(b.role))
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // history: ek waqt mein ek din (din ki patti se chunein)
+  const days = [...new Set(inP.map((t) => t.day))].sort((a, b) => b.localeCompare(a));
+  const [hday, setHday] = useState('');
+  const [pick, setPick] = useState('');
+  const curDay = hday || (days.includes(pick) ? pick : days[0]) || '';
+  const dayTasks = (hday ? mine : inP).filter((t) => t.day === curDay).sort((a, b) => a.due_at.localeCompare(b.due_at));
 
   return (
     <>
       {onBack && <button className="back" onClick={onBack}>‹ Wapas</button>}
-      <div className="prof-head">
+      <div className="pg-head">
         <UserAvatar id={userId} />
         <div className="grow">
           <h1>{person?.full_name || 'Member'}{userId === d.uid && <span className="muted h-sub"> (aap)</span>}</h1>
           {person?.title && <div className="ptitle" data-notr>🏆 {person.title}</div>}
-          {person?.about && <p className="pabout m0" data-notr>{person.about}</p>}
           <p className="muted m0 small">
             {monthRank ? `Is mahine rank #${monthRank.rank}` : 'Is mahine abhi rank nahi'}
             {person?.contact && d.isOwner ? ' · ID: ' + person.contact : ''}
           </p>
         </div>
       </div>
-      <div className="mini-scores static">
-        {quick.map(({ k, s }) => (
-          <MiniScore key={k} label={k === 'day' ? 'Aaj' : k === 'week' ? 'Is hafte' : 'Is mahine'} s={s} />
-        ))}
-      </div>
 
       <PeriodPicker kind={kind} offset={offset} onKind={setKind} onOffset={setOffset} />
-      <section className="panel overall">
-        <ScoreRing score={total.score} />
-        <div className="grow">
-          <div className="eyebrow">Overall progress</div>
-          <div className="small muted">{p.label}</div>
-          <ScoreStats s={total} />
+
+      <section className="pg-sum">
+        <ScoreRing score={total.score} size={78} />
+        <div className="pg-chips">
+          <span className="pc good"><b className="num">{total.onTime}</b><small>Waqt par</small></span>
+          <span className="pc warn"><b className="num">{total.late}</b><small>Extra mein</small></span>
+          <span className="pc bad"><b className="num">{total.missed}</b><small>Ended</small></span>
+          <span className="pc bad"><b className="num">{total.rejected}</b><small>Rejected</small></span>
+          <span className="pc"><b className="num">{total.pending + total.grace}</b><small>Baqi</small></span>
+          <span className="pc accent"><b className="num">{total.points}</b><small>Points</small></span>
         </div>
       </section>
 
       <section className="sec">
-        <h2>Har channel par progress</h2>
-        {breakdown.length ? (
-          <div className="panel">
-            <div className="list">
-              {breakdown.map((b) => (
-                <button className="li" key={b.channel_id + b.role} onClick={() => openChannel(b.channel_id)}>
-                  <span className="grow stack tight">
-                    <span className="row between">
-                      <span className="t">{b.name}</span>
-                      <b className={'num ' + cls(b.s.score)}>{b.s.score == null ? '—' : b.s.score + '%'}</b>
+        <div className="sec-head"><h2>Channels</h2><span className="eyebrow">{chans.length}</span></div>
+        {chans.length ? (
+          <div className="pg-tiles">
+            {chans.map((c) => (
+              <button key={c.cid} className="pg-tile" onClick={() => openChannel(c.cid)}>
+                <span className="row between">
+                  <b className="pg-tile-t">{c.name}</b>
+                  <b className={'num ' + cls(c.s.score)}>{c.s.score == null ? '—' : c.s.score + '%'}</b>
+                </span>
+                <span className="pg-roles">
+                  {c.roles.map((r) => (
+                    <span key={r.role} className="pg-role">
+                      <i className={'role sm ' + roleClass(r.role)}>{r.role}</i>
+                      <small className={'num ' + cls(r.s.score)}>{r.s.score == null ? '—' : r.s.score + '%'}</small>
+                      <small className="muted">{r.s.done}/{r.s.counted}</small>
                     </span>
-                    <span className="row between">
-                      <span className={'role sm ' + roleClass(b.role)}>{b.role}</span>
-                      <span className="d">
-                        {b.s.done}/{b.s.counted} complete{b.s.late ? ` · ${b.s.late} late` : ''}{b.s.rejected ? ` · ${b.s.rejected} rejected` : ''}{b.s.pending ? ` · ${b.s.pending} pending` : ''}
-                      </span>
-                    </span>
-                    <Bar pct={b.s.score ?? 0} cls={b.s.score == null ? '' : cls(b.s.score)} />
-                  </span>
-                </button>
-              ))}
-            </div>
+                  ))}
+                </span>
+              </button>
+            ))}
           </div>
         ) : (
           <div className="empty">Is muddat mein koi task nahi.</div>
@@ -178,22 +183,28 @@ export function ProgressScreen({ userId, onBack, openChannel }: { userId: string
       <section className="sec">
         <div className="sec-head wrap">
           <h2>Tasks ki history</h2>
-          <span className="eyebrow">{shownHist.length}</span>
+          <DateFilter value={hday} onChange={setHday} label="Koi aur din" />
         </div>
-        <DateFilter value={hday} onChange={setHday} label="Kis din ke tasks" />
-        {shownHist.length ? (
-          [...new Set(shownHist.map((t) => t.day))].map((day, i) => {
-            const ts = shownHist.filter((t) => t.day === day);
-            return (
-              <Fold key={day} id={'ph-' + userId + day} title={dayLabel(day)} count={ts.length} defaultOpen={i === 0 || !!hday} className="vday">
-                <div className="tasks">
-                  {ts.map((t) => (
-                    <TaskItem key={t.id} task={t} now={now} onOpenChannel={openChannel} onReject={setRejecting} />
-                  ))}
-                </div>
-              </Fold>
-            );
-          })
+        {days.length > 0 && !hday && (
+          <div className="pg-days" role="tablist" aria-label="Din">
+            {days.map((day) => {
+              const ts = inP.filter((t) => t.day === day);
+              const sc = scoreOf(ts, now);
+              return (
+                <button key={day} role="tab" aria-selected={day === curDay} className={day === curDay ? 'on' : ''} onClick={() => setPick(day)}>
+                  <span>{dayLabel(day).replace(/, \d{4}$/, '')}</span>
+                  <b className={'num ' + cls(sc.score)}>{sc.score == null ? ts.length : sc.score + '%'}</b>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {dayTasks.length ? (
+          <div className="tasks">
+            {dayTasks.map((t) => (
+              <TaskItem key={t.id} task={t} now={now} onOpenChannel={openChannel} onReject={setRejecting} />
+            ))}
+          </div>
         ) : (
           <div className="empty">{hday ? 'Is din koi task nahi.' : 'Is muddat mein koi task nahi.'}</div>
         )}

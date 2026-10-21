@@ -1,5 +1,5 @@
 import type { Task } from '../lib/types';
-import { REJECT_PENALTY, fmtClock, isLate, fmtWhen } from '../lib/utils';
+import { GRACE_MS, PTS_MISSED, REJECT_PENALTY, fmtClock, isLate, fmtWhen } from '../lib/utils';
 import { useNow } from './ui';
 
 /** 01:23:45 */
@@ -28,7 +28,7 @@ export function TaskTimer({ task, big }: { task: Task; big?: boolean }) {
     const diff = Math.abs(new Date(task.completed_at!).getTime() - due);
     return (
       <div className={'timer done' + (late ? ' late' : '') + (big ? ' big' : '')}>
-        <span className="tchip">{late ? 'Late complete' : 'Waqt par complete'}</span>
+        <span className="tchip">{late ? 'Extra deadline mein complete · 0 point' : 'Waqt par complete'}</span>
         <span className="tclock">{fmtClock(task.completed_at)}</span>
         <span className="tsub">{late ? `deadline ke ${hms(diff)} baad` : `deadline se ${hms(diff)} pehle`}</span>
       </div>
@@ -70,11 +70,21 @@ export function TaskTimer({ task, big }: { task: Task; big?: boolean }) {
       </div>
     );
   }
+  // v15: deadline ke baad 24 ghante ki extra deadline
+  const grace = due + GRACE_MS;
+  if (now < grace) {
+    return (
+      <div className={'timer late grace' + (big ? ' big' : '')} role="timer" aria-live="off">
+        <span className="tchip">⏳ Extra deadline</span>
+        <span className="tclock num">{hms(grace - now)}</span>
+        <span className="tsub">baqi · {fmtWhen(new Date(grace).toISOString())} tak (is mein complete = 0 point, na kiya to {PTS_MISSED})</span>
+      </div>
+    );
+  }
   return (
-    <div className={'timer late' + (big ? ' big' : '')} role="timer" aria-live="off">
-      <span className="tchip">Deadline guzar gayi</span>
-      <span className="tclock num">{hms(now - due)}</span>
-      <span className="tsub">se late · deadline {fmtWhen(task.due_at)}</span>
+    <div className={'timer late ended' + (big ? ' big' : '')} role="timer" aria-live="off">
+      <span className="tchip">Deadline ended</span>
+      <span className="tsub">extra 24 ghante bhi guzar gaye · {PTS_MISSED} point · deadline {fmtWhen(task.due_at)}</span>
     </div>
   );
 }

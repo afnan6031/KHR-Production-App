@@ -189,7 +189,8 @@ export interface Message {
 }
 
 /** Screen par dikhne wali halat */
-export type TaskState = 'pending' | 'expired' | 'done' | 'rejected';
+/** v15: expired = 24 ghante ki extra deadline chal rahi hai, ended = wo bhi khatam */
+export type TaskState = 'pending' | 'expired' | 'ended' | 'done' | 'rejected';
 
 export const ROLES =['Script Writer', 'Editor', 'Manager', 'Graphic Designer', 'Publisher', 'Voice Over'] as const;
 

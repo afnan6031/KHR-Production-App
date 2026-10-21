@@ -1203,3 +1203,180 @@ body.tinted-ui .top, body.tinted-ui nav.tabs { border-color: color-mix(in srgb, 
 .mention-pop button.on, .mention-pop button:hover { background: var(--surface-2); }
 .mention-pop .av { width: 26px; height: 26px; font-size: 11px; }
 .mention-pop small { color: var(--muted); }
+
+/* ================= v15: ⋯ menu upar-neeche (Discord jaisa), bara message box, extra deadline ================= */
+.fmsg-actions, .fmsg.sel .fmsg-actions, .fmsg.sel:hover .fmsg-actions {
+  display: flex !important; flex-direction: column; flex-wrap: nowrap; gap: 1px; position: absolute; top: 32px; right: 8px; bottom: auto;
+  min-width: 210px; max-width: calc(100vw - 32px); padding: 6px; margin: 0; height: auto !important; opacity: 1 !important;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, .35); z-index: 30;
+  animation: menuin .12s ease-out;
+}
+.fmsg-actions.up, .fmsg.sel .fmsg-actions.up { top: auto; bottom: calc(100% - 30px); }
+@keyframes menuin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.fmsg-actions .act { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: none; color: var(--fg); padding: 8px 10px; font-size: 14px; font-weight: 500; border-radius: 8px; }
+.fmsg-actions .act i { font-style: normal; width: 18px; text-align: center; flex: none; opacity: .9; }
+.fmsg-actions .act:hover, .fmsg-actions .act:focus-visible { background: var(--accent); color: var(--accent-fg); }
+.fmsg-actions .act.danger { color: var(--bad); }
+.fmsg-actions .act.danger:hover { background: var(--bad); color: #fff; }
+.act-sep { height: 1px; background: var(--line); margin: 4px 4px; flex: none; }
+.fmsg-info { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--muted); }
+/* bara message box: likhte hue khud lamba (screen ke ~45% tak), phir andar scroll */
+.composer-row { align-items: flex-end; }
+.composer-row textarea { min-height: 44px; max-height: 45vh; resize: none; line-height: 1.45; font-size: 15px; padding: 10px 12px; overflow-y: hidden; }
+.chat-pane .composer-row { gap: 6px; }
+.chat-pane .composer-row textarea { border-radius: 12px; }
+.char-count { align-self: flex-end; font-size: 11px; color: var(--muted); margin-top: -2px; }
+.char-count.bad { color: var(--bad); font-weight: 700; }
+/* extra deadline */
+.grace-tag { display: inline-block; font-size: 12px; font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 8px; padding: 2px 8px; margin: 2px 0; }
+.timer.ended .tchip { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.bsec.ended .dot { background: #9CA3AF; }
+.bsec.ended { border-top-color: #9CA3AF; }
+.bsec-hint { font-size: 11px; font-weight: 500; margin-left: 4px; }
+.bsec-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* v15: board — band hisse chhoti tiles (ek line mein), khula hissa poori chaurai */
+.board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 10px; }
+@media (min-width: 760px) { .board { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.board .bsec.open { grid-column: 1 / -1; }
+.board .bsec.closed { padding: 10px 12px; }
+.board .bsec.closed .bsec-h h3 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board .bsec.closed .bsec-hint { display: none; }
+.bsec-h { cursor: pointer; width: 100%; background: none; border: 0; color: inherit; padding: 0; text-align: left; }
+
+/* ================= v15: card size (Large / Medium / Small / List) ================= */
+.size-pick { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.size-pick button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; color: var(--muted); padding: 5px 8px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+.size-pick button svg { width: 15px; height: 15px; fill: currentColor; }
+.size-pick button.on { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+@media (max-width: 520px) { .size-pick button span { display: none; } .size-pick button { padding: 6px 8px; } }
+.metrics.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.metrics.tight { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 6px; }
+.metrics.tight .metric { padding: 7px 9px; }
+.metrics.tight .metric .v { font-size: 17px; }
+.metrics.three .metric .v { font-size: 19px; }
+@media (max-width: 420px) { .metrics.three { grid-template-columns: 1fr 1fr; } .metrics.three .metric:last-child { grid-column: 1 / -1; } }
+.cards.size-m { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)) !important; }
+.cards.size-s { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)) !important; gap: 10px; }
+.cards.size-list { grid-template-columns: 1fr !important; gap: 6px; }
+.card.size-m { padding: 12px; gap: 10px; }
+.card.size-m h3 { font-size: 17px; }
+.card.size-s { padding: 10px; gap: 8px; border-radius: 14px; }
+.card.size-s h3 { font-size: 15px; }
+.card.size-s .tools-btns .tlabel { display: none; }
+.card.size-s .tools-btns { grid-template-columns: 1fr 1fr; }
+.role-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.card.size-list { flex-direction: row; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; flex-wrap: wrap; }
+.card.size-list .cl-name { display: flex; align-items: center; gap: 8px; min-width: 140px; flex: 1 1 160px; }
+.card.size-list .cl-name b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.size-list .cl-roles { display: flex; flex-wrap: wrap; gap: 4px; flex: 2 1 200px; min-width: 0; }
+.card.size-list .cl-num { display: flex; flex-direction: column; align-items: flex-end; min-width: 58px; }
+.card.size-list .cl-num small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+.card.size-list .cl-num b { font-size: 15px; }
+.card.size-list .cl-go { font-size: 22px; color: var(--muted); }
+@media (max-width: 560px) { .card.size-list .cl-roles { order: 5; flex-basis: 100%; } }
+.role-perf { display: flex; flex-wrap: wrap; gap: 6px; }
+.role-perf .rp { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 3px; border-radius: 999px; background: var(--surface-2); font-size: 12px; }
+.role-perf .rp i { font-style: normal; }
+.role-perf .rp.good b { color: var(--good); } .role-perf .rp.warn b { color: var(--warn); } .role-perf .rp.bad b { color: var(--bad); }
+/* owner: kis user ke cards */
+.who-pick { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin-bottom: 6px; }
+.who-pick button { display: inline-flex; align-items: center; gap: 7px; flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 4px 12px 4px 4px; font-size: 13px; font-weight: 600; }
+.who-pick button .av { width: 26px; height: 26px; font-size: 11px; }
+.who-pick button b { font-size: 11px; background: var(--surface-2); border-radius: 999px; padding: 0 7px; }
+.who-pick button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.who-pick button.on b { background: color-mix(in srgb, var(--accent-fg) 20%, transparent); }
+/* channel performance panel */
+.cp-big { font-size: 20px; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 8px; }
+.cp-role { background: var(--surface-2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.cp-stats { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; font-family: var(--f-mono); }
+.cp-stats .warn { color: var(--warn); } .cp-stats .bad { color: var(--bad); }
+
+/* ================= v15: Progress — chhota aur saaf ================= */
+.pg-head { display: flex; align-items: center; gap: 12px; }
+.pg-head .av { width: 48px; height: 48px; font-size: 16px; }
+.pg-head h1 { font-size: 20px; }
+.pg-sum { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
+.pg-chips { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; flex: 1; min-width: 0; }
+.pg-chips .pc { display: flex; flex-direction: column; align-items: center; gap: 1px; background: var(--surface-2); border-radius: 10px; padding: 6px 4px; min-width: 0; }
+.pg-chips .pc b { font-size: 17px; }
+.pg-chips .pc small { font-size: 10.5px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pg-chips .pc.good b { color: var(--good); } .pg-chips .pc.warn b { color: var(--warn); } .pg-chips .pc.bad b { color: var(--bad); } .pg-chips .pc.accent b { color: var(--accent); }
+@media (max-width: 560px) { .pg-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pg-sum { gap: 10px; padding: 10px; } }
+.pg-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; }
+.pg-tile { display: flex; flex-direction: column; gap: 8px; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; color: var(--fg); }
+.pg-tile:hover { border-color: var(--accent); }
+.pg-tile-t { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pg-roles { display: flex; flex-wrap: wrap; gap: 6px; }
+.pg-role { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-2); border-radius: 999px; padding: 2px 8px 2px 2px; font-size: 12px; }
+.pg-role i { font-style: normal; }
+.pg-days { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 4px; }
+.pg-days button { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 10px; padding: 5px 10px; font-size: 12px; }
+.pg-days button b { font-size: 13px; }
+.pg-days button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+/* v15: aane wali videos */
+.vb-tabs { flex-wrap: wrap; }
+.vb-day { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.vb-day-h { font-size: 12.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .03em; }
+
+/* ================= v15: din chunein (Aaj / My Card) ================= */
+.daystrip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "l days r tools" "lab lab lab lab"; align-items: center; gap: 6px 6px; margin-bottom: 10px; position: relative; }
+.ds-arrow { grid-area: l; width: 32px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font-size: 20px; line-height: 1; }
+.ds-arrow.r { grid-area: r; }
+.ds-days { grid-area: days; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ds-day { display: flex; flex-direction: column; align-items: center; gap: 1px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 10px; padding: 4px 0; min-width: 0; }
+.ds-day small { font-size: 10.5px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ds-day b { font-size: 15px; }
+.ds-day.past { opacity: .78; }
+.ds-day.today { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.ds-day.today small { color: var(--accent); }
+.ds-day.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); opacity: 1; }
+.ds-day.on small { color: color-mix(in srgb, var(--accent-fg) 80%, transparent); }
+.ds-tools { grid-area: tools; display: inline-flex; gap: 4px; align-items: center; }
+.ds-tools .btn.sm { height: 44px; }
+.ds-native { position: absolute; right: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.ds-label { grid-area: lab; display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding-left: 2px; }
+@media (max-width: 520px) {
+  .daystrip { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "l days r" "lab lab tools"; }
+  .ds-tools .btn.sm { height: 32px; }
+  .ds-day b { font-size: 14px; }
+}
+.plan { display: flex; flex-direction: column; gap: 8px; }
+.plan-ch { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.plan-ch-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border: 0; background: none; color: var(--fg); padding: 0; text-align: left; font-size: 15px; }
+.plan-dot { width: 10px; height: 10px; border-radius: 50%; background: hsl(var(--hue, 0) 70% 55%); flex: none; }
+.plan-rows { display: flex; flex-direction: column; gap: 4px; }
+.plan-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 10px; background: var(--surface-2); }
+.plan-who { font-weight: 600; font-size: 13px; }
+.chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.day-sec { margin-bottom: 14px; }
+
+/* ================= v15: tez aur smooth (60 / 90 / 120 / 144 Hz) — har card par blur hataya ================= */
+/* Har card / panel ke peeche blur har scroll frame par dobara banta tha → mobile 30fps par atak jata tha.
+   Ab sirf thora zyada pakka rang; blur sirf background tasveer par (ek dafa bana hua). */
+body.custom-bg .panel, body.custom-bg .stat, body.custom-bg .bsec, body.custom-bg .empty, body.custom-bg .mini-scores .mini,
+body.tinted-ui .card, body.tinted-ui .card.tinted, body.tinted-ui .panel, body.tinted-ui .stat, body.tinted-ui .bsec, body.tinted-ui .sheet,
+body.custom-bg .chat-head, body.custom-bg .chat-pane .composer {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+body.custom-bg .panel, body.custom-bg .stat, body.custom-bg .bsec, body.custom-bg .empty { background-color: color-mix(in srgb, var(--surface) 94%, transparent); }
+body.custom-bg .chat-head, body.custom-bg .chat-pane .composer { background-color: color-mix(in srgb, var(--pane-chat) 92%, transparent); }
+body.tinted-ui .chat-head, body.tinted-ui .chat-pane .composer { background-color: color-mix(in srgb, var(--tint-head) 94%, transparent); }
+/* phone / tablet: koi bhi live blur nahi (header, neeche ki patti, player bhi) */
+@media (pointer: coarse) {
+  *, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  body.tinted-ui .top { background: color-mix(in srgb, var(--tint-head) 97%, transparent); }
+  body.tinted-ui nav.tabs { background: color-mix(in srgb, var(--tint-nav) 97%, transparent); }
+  .mplayer2 { background: var(--surface); }
+}
+/* background apni alag GPU layer par — scroll mein dobara paint nahi hota */
+#khr-bg { transform: translateZ(0); will-change: transform; contain: strict; backface-visibility: hidden; }
+html, body { -webkit-tap-highlight-color: transparent; }
+.who-note { margin: -2px 0 10px; }
+.fmsg-actions { overflow-y: auto; overscroll-behavior: contain; }
+.fmsg-actions.up, .fmsg.sel .fmsg-actions.up { top: auto; bottom: calc(100% - 30px); }
+/* menu hamesha pakka (peeche ka text na jhalke) */
+.fmsg-actions, .mention-pop { background: var(--tint-surface, var(--surface)) !important; }
+.fmsg-actions.up, .fmsg.sel .fmsg-actions.up { bottom: calc(100% - 6px); }
+.bsec-h .bt-short { display: none; }
+@media (max-width: 560px) { .board .bsec.closed .bt-full { display: none; } .board .bsec.closed .bt-short { display: inline; } }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type React from 'react';
 import { useData } from '../lib/data';
 import type { Task, TaskState } from '../lib/types';
-import { REJECT_PENALTY, errorText, fmtClock, fmtDate, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score, fmtWhen } from '../lib/utils';
+import { REJECT_PENALTY, errorText, fmtClock, fmtDate, graceEnd, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score, fmtWhen } from '../lib/utils';
 import { Chevron, Seg, Sheet, useFold, useToast } from './ui';
 import { TaskSheet } from './TaskSheet';
 import { TaskTimer } from './Timer';
@@ -30,8 +30,10 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   const work = needsWork(task) ? ROLE_WORK[task.role] : null;
   const [workOpen, setWorkOpen] = useState(false);
   // v13: in roles mein tick nahi — kaam lagao to khud mukammal
-  const canToggle = !work && mine && st !== 'rejected' && !(early && st !== 'done');
-  const canWork = !!work && mine && st !== 'rejected' && !early;
+  // v15: extra 24 ghante bhi guzar gaye to member complete nahi kar sakta (owner kar sakta hai)
+  const closed = st === 'ended' && !d.isOwner;
+  const canToggle = !work && mine && st !== 'rejected' && !closed && !(early && st !== 'done');
+  const canWork = !!work && (mine || d.isOwner) && st !== 'rejected' && !closed && !early;
   const ep = task.video_id ? d.videos.find((v) => v.id === task.video_id) : undefined;
   const canReview = d.isOwner;
   const today = todayKey();
@@ -63,14 +65,14 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
         onClick={work ? () => canWork && setWorkOpen(true) : toggle}
         aria-pressed={st === 'done'}
         aria-label={st === 'done' ? 'Complete hata dein' : 'Complete mark karein'}
-        title={work ? (canWork ? work.action : early ? 'Waqt shuru hone ke baad' : '') : canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : early ? 'Waqt shuru hone ke baad tick kar sakenge' : ''}
+        title={closed ? 'Extra deadline bhi khatam' : work ? (canWork ? work.action : early ? 'Waqt shuru hone ke baad' : '') : canToggle ? (st === 'done' ? 'Untick: wapas pending' : 'Tick: complete') : st === 'rejected' ? 'Owner ne reject kiya' : early ? 'Waqt shuru hone ke baad tick kar sakenge' : ''}
       >
         {st === 'done' && (
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M5 12.5 10 17 19 7.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-        {st === 'rejected' && <span aria-hidden="true">✕</span>}
+        {(st === 'rejected' || st === 'ended') && <span aria-hidden="true">✕</span>}
         {early && st === 'pending' && (
           <svg viewBox="0 0 24 24" className="lock" aria-hidden="true"><rect x="6" y="11" width="12" height="9" rx="2" fill="currentColor" /><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" fill="none" stroke="currentColor" strokeWidth="2.2" /></svg>
         )}
@@ -87,6 +89,7 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
           {(showName || showChannel) && <span className={'role sm ' + roleClass(task.role)}>{task.role}</span>}
           {task.day !== today && <span className="muted">{fmtDate(task.day)}</span>}
         </span>
+        {st === 'expired' && <span className="grace-tag">⏳ Extra deadline: {fmtWhen(new Date(graceEnd(task)).toISOString())} tak</span>}
         <TaskTimer task={task} />
         {ep && (
           <span className="att-ind">
@@ -116,7 +119,7 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
       {req && mine && <span className="ext-wait" title={req.reason}>⏳ +{req.minutes} min · owner ke paas</span>}
       {req && d.isOwner && <ExtensionReview reqId={req.id} />}
       {extOpen && <ExtensionSheet task={task} onClose={() => setExtOpen(false)} />}
-      {canReview && (st === 'done' || st === 'expired') && onReject && (
+      {canReview && (st === 'done' || st === 'expired' || st === 'ended') && onReject && (
         <button className="btn sm danger" onClick={() => onReject(task)}>
           Reject
         </button>
@@ -144,14 +147,15 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   );
 }
 
-/* ================= Pending / Expired / Completed board ================= */
-const SECTIONS: { key: 'pending' | 'expired' | 'completed'; title: string; empty: string }[] = [
-  { key: 'pending', title: 'Pending', empty: 'Koi pending task nahi.' },
-  { key: 'expired', title: 'Deadline expired', empty: 'Koi task late nahi. Shabaash!' },
-  { key: 'completed', title: 'Completed', empty: 'Abhi koi task complete nahi hua.' }
+/* ================= Pending / Expired / Ended / Completed board ================= */
+type SecKey = 'pending' | 'expired' | 'ended' | 'completed';
+const SECTIONS: { key: SecKey; title: string; short: string; hint?: string; empty: string }[] = [
+  { key: 'pending', title: 'Pending', short: 'Pending', empty: 'Koi pending task nahi.' },
+  { key: 'expired', title: 'Deadline expired', short: 'Expired', hint: 'extra 24 ghante chal rahe hain', empty: 'Koi task late nahi. Shabaash!' },
+  { key: 'ended', title: 'Deadline ended', short: 'Ended', hint: 'extra deadline bhi khatam', empty: 'Koi task reh nahi gaya.' },
+  { key: 'completed', title: 'Completed', short: 'Done', empty: 'Abhi koi task complete nahi hua.' }
 ];
 
-/** Har section ke andar pehle channel ka card, phir us channel ke tasks (tick ke saath) */
 /** Board mein ek channel ka group: naam (channel kholta hai) + dropdown */
 function ChannelGroup({ foldKey, name, count, onOpen, children }: { foldKey: string; name: string; count: number; onOpen?: () => void; children: React.ReactNode }) {
   const [open, toggle] = useFold(foldKey, true);
@@ -169,36 +173,40 @@ function ChannelGroup({ foldKey, name, count, onOpen, children }: { foldKey: str
   );
 }
 
-/** Board ka ek hissa: header par tap = dropdown khule / band (Completed shuru mein band) */
-function BoardSection({ k, title, count, foldId, children }: { k: string; title: string; count: number; foldId: string; children: React.ReactNode }) {
-  const [open, toggle] = useFold(foldId + '-' + k, k !== 'completed');
+/** v15: board ka ek hissa — shuru mein band, sirf ginti; arrow dabane par list (dropdown) */
+function BoardSection({ k, title, short, hint, count, foldId, children }: { k: string; title: string; short?: string; hint?: string; count: number; foldId: string; children: React.ReactNode }) {
+  // har dafa band se shuru (sirf ginti); arrow / naam dabane par khule
+  const [open, toggle] = useFold(undefined, false);
+  void foldId;
   return (
     <section className={'bsec ' + k + (open ? ' open' : ' closed')}>
       <button type="button" className="bsec-h" onClick={toggle} aria-expanded={open}>
         <span className="dot" aria-hidden="true" />
-        <h3>{title}</h3>
+        <h3><span className="bt-full">{title}</span>{short && <span className="bt-short">{short}</span>}</h3>
+        {hint && count > 0 && <small className="muted bsec-hint">{hint}</small>}
         <span className="count num">{count}</span>
         <Chevron open={open} />
       </button>
-      {open ? children : count > 0 ? <p className="muted tiny m0 bsec-empty">{count} task — dekhne ke liye upar tap karein</p> : null}
+      {open && <div className="bsec-body">{children}</div>}
     </section>
   );
 }
 
-export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, groupByChannel = true, foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; groupByChannel?: boolean; foldId?: string }) {
+export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, emptyTitle = 'Aaj koi task nahi', groupByChannel = true, foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; emptyTitle?: string; groupByChannel?: boolean; foldId?: string }) {
   const d = useData();
   const [rejecting, setRejecting] = useState<Task | null>(null);
-  const groups: Record<string, Task[]> = { pending: [], expired: [], completed: [] };
+  const groups: Record<SecKey, Task[]> = { pending: [], expired: [], ended: [], completed: [] };
   tasks.forEach((t) => {
     const st: TaskState = taskState(t, now);
     groups[st === 'done' || st === 'rejected' ? 'completed' : st].push(t);
   });
+  groups.ended.sort((a, b) => b.due_at.localeCompare(a.due_at));
   const byStart = (a: Task, b: Task) => (a.start_at || a.due_at).localeCompare(b.start_at || b.due_at) || a.due_at.localeCompare(b.due_at);
   groups.pending.sort(byStart);
   groups.expired.sort((a, b) => a.due_at.localeCompare(b.due_at));
   groups.completed.sort((a, b) => (b.completed_at || b.rejected_at || '').localeCompare(a.completed_at || a.rejected_at || ''));
 
-  if (!tasks.length) return <div className="empty"><b>Aaj koi task nahi</b>{emptyAll}</div>;
+  if (!tasks.length) return <div className="empty"><b>{emptyTitle}</b>{emptyAll}</div>;
 
   const chName = (id: string) => d.channels.find((c) => c.id === id)?.name || 'Channel';
 
@@ -210,7 +218,7 @@ export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, group
         const order: string[] = [];
         list.forEach((t) => !order.includes(t.channel_id) && order.push(t.channel_id));
         return (
-          <BoardSection key={s.key} k={s.key} title={s.title} count={list.length} foldId={foldId}>
+          <BoardSection key={s.key} k={s.key} title={s.title} short={s.short} hint={s.hint} count={list.length} foldId={foldId}>
             {!list.length && <p className="muted small m0 bsec-empty">{s.empty}</p>}
             {list.length > 0 && !groupByChannel && (
               <div className="tasks">
@@ -261,7 +269,7 @@ export function RejectSheet({ task, onClose }: { task: Task; onClose: () => void
         </span>
       </div>
       <div className="note">
-        Reject hone par ye task complete mein count nahi hoga, aur is bande ki us din, hafte aur mahine ki progress se <b>{REJECT_PENALTY}% mazeed</b> kat jayega. Leaderboard par bhi rejected count nazar aayega. Baad mein "Wapas lein" se hata bhi sakte hain.
+        Reject hone par ye task complete mein count nahi hoga (0 point), aur is bande ki us din, hafte aur mahine ki kul progress se <b>{REJECT_PENALTY}%</b> kat jayega — jhoot bol kar complete karne ki saza. Leaderboard par bhi rejected count nazar aayega. Baad mein "Wapas lein" se hata bhi sakte hain.
       </div>
       <div className="f">
         Wajah
@@ -348,9 +356,9 @@ export function ScoreStats({ s }: { s: Score }) {
     <div className="sstats">
       <div><span className="num">{s.done}</span><small>Complete</small></div>
       <div><span className="num warn">{s.late}</span><small>Late</small></div>
+      <div><span className="num bad">{s.missed}</span><small>Ended</small></div>
       <div><span className="num bad">{s.rejected}</span><small>Rejected</small></div>
-      <div><span className="num bad">{s.missed}</span><small>Missed</small></div>
-      <div><span className="num muted">{s.pending}</span><small>Pending</small></div>
+      <div><span className="num">{s.points}</span><small>Points</small></div>
     </div>
   );
 }
@@ -389,7 +397,7 @@ export function ExtensionSheet({ task, onClose }: { task: Task; onClose: () => v
         Wajah <span className="h">Owner ko batayein kyun waqt chahiye</span>
         <textarea rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Render slow hai, bijli chali gayi, script der se mili" />
       </label>
-      <p className="muted tiny m0">{expired ? 'Deadline guzar chuki hai: owner approve kare to waqt aap ki request ke waqt se gina jayega.' : 'Owner approve kare to deadline itni barh jayegi. Reject kare to wahi rahegi.'}</p>
+      <p className="muted tiny m0">{expired ? 'Deadline guzar chuki hai: owner approve kare to waqt aap ki request ke waqt se gina jayega.' : 'Owner approve kare to deadline itni barh jayegi. Reject kare to wahi rahegi.'} Waqt par complete = poore points. Barhayi hui deadline ranking mein barabari ke waqt thora peeche karti hai.</p>
       <button
         className="btn primary block"
         disabled={busy || reason.trim().length < 2}

@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type React from 'react';
 import { useData } from '../lib/data';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
@@ -119,8 +120,55 @@ export function SendState({ pending, failed }: { pending?: boolean; failed?: str
   return null;
 }
 
+/* ---------- v15: likha hua message (draft) yaad rahe — tab badlein, app band karein, wapas wahin ---------- */
+export const MSG_MAX = 2000;
+const DRAFT_PREFIX = 'khr-draft-';
+const draftMem = new Map<string, string>();
+function readDraft(key?: string): string {
+  if (!key) return '';
+  if (draftMem.has(key)) return draftMem.get(key)!;
+  try { return localStorage.getItem(DRAFT_PREFIX + key) || ''; } catch { return ''; }
+}
+function writeDraft(key: string | undefined, v: string) {
+  if (!key) return;
+  draftMem.set(key, v);
+  try { if (v) localStorage.setItem(DRAFT_PREFIX + key, v); else localStorage.removeItem(DRAFT_PREFIX + key); } catch { /* storage band */ }
+}
+/** text + draft: har tabdeeli foran yaad (memory), storage mein thori der baad */
+export function useDraft(key?: string): [string, (v: string) => void] {
+  const [text, setTextState] = useState(() => readDraft(key));
+  const timer = useRef(0);
+  useEffect(() => { setTextState(readDraft(key)); }, [key]);
+  const setText = (v: string) => {
+    setTextState(v);
+    if (!key) return;
+    draftMem.set(key, v);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => writeDraft(key, v), 400);
+  };
+  useEffect(() => () => { window.clearTimeout(timer.current); if (key) writeDraft(key, draftMem.get(key) || ''); }, [key]);
+  return [text, setText];
+}
+/** Discord jaisa: likhte likhte box khud bara (screen ke aadhe tak), phir andar scroll */
+export function useAutoGrow(ref: React.RefObject<HTMLTextAreaElement>, value: string, maxVh = 45) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const max = Math.max(120, Math.round(window.innerHeight * (maxVh / 100)));
+    const h = Math.min(el.scrollHeight + 2, max);
+    el.style.height = h + 'px';
+    el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden';
+  }, [ref, value, maxVh]);
+}
+/** message ke ⋯ menu se composer mein kuch daalna (quote / mention) */
+const INSERT_EVENT = 'khr-compose-insert';
+export function composeInsert(key: string, text: string) {
+  window.dispatchEvent(new CustomEvent(INSERT_EVENT, { detail: { key, text } }));
+}
+
 /** Discord jaisi message list: photo, naam (role ke rang mein), waqt, text, image, reply */
-export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenUser, onImage, empty, showRead, kind, canPin, onForward }: {
+export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenUser, onImage, empty, showRead, kind, canPin, onForward, composeKey, onMarkUnread }: {
   items: FeedItem[];
   byId?: Map<string, FeedItem>;
   onReply?: (m: FeedItem) => void;
@@ -134,10 +182,48 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
   kind?: 'srv' | 'dm';
   canPin?: boolean;
   onForward?: (m: FeedItem) => void;
+  /** v15: is chat ka composer (quote / mention wahan jata hai) */
+  composeKey?: string;
+  onMarkUnread?: (m: FeedItem) => void;
 }) {
   const d = useData();
   const toast = useToast();
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSelState] = useState<string | null>(null);
+  const [menuUp, setMenuUp] = useState(false);
+  const [menuMax, setMenuMax] = useState(480);
+  const [info, setInfo] = useState<string | null>(null);
+  /** ⋯ menu kholo — neeche jagah na ho to upar ki taraf */
+  const setSel = (v: string | null | ((x: string | null) => string | null), anchor?: HTMLElement | null) => {
+    if (anchor) {
+      // v15: chat ki dikhne wali jagah (composer se upar) ke hisaab se — neeche jagah kam ho to menu upar khule
+      const r = anchor.getBoundingClientRect();
+      let box: HTMLElement | null = anchor.parentElement;
+      while (box && box !== document.body) {
+        const oy = getComputedStyle(box).overflowY;
+        if (oy === 'auto' || oy === 'scroll') break;
+        box = box.parentElement;
+      }
+      const b = box && box !== document.body ? box.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+      const below = b.bottom - r.bottom - 8;
+      const above = r.top - b.top - 8;
+      const up = below < 460 && above > below;
+      setMenuUp(up);
+      setMenuMax(Math.max(160, Math.floor(up ? above + r.height : below)));
+    }
+    setSelState(v);
+  };
+  useEffect(() => {
+    if (!sel) return;
+    const close = (e: Event) => {
+      const el = e.target as HTMLElement;
+      if (el.closest?.('.fmsg-actions') || el.closest?.('.fmsg-more')) return;
+      setSelState(null);
+    };
+    const esc = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setSelState(null);
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', esc); };
+  }, [sel]);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const copy = (m: FeedItem) =>
     navigator.clipboard?.writeText(m.body || m.image_url || '').then(() => toast('Text copy ho gaya'), () => toast('Copy nahi hua'));
@@ -196,9 +282,10 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
         key={m.id}
         id={'m-' + m.id}
         className={'fmsg' + (grouped ? ' grouped' : '') + (sel === m.id ? ' sel' : '') + (m.pinned_at ? ' pinned' : '') + (mentionsMe(m) ? ' mention-me' : '')}
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest('a,button,textarea,input,img')) return;
-          setSel((x) => (x === m.id ? null : m.id));
+        onContextMenu={(e) => {
+          if ((e.target as HTMLElement).closest('a,textarea,input,img') || isEditing) return;
+          e.preventDefault();
+          setSel(m.id, e.currentTarget.querySelector('.fmsg-more') as HTMLElement);
         }}
       >
         <div className="fmsg-av">
@@ -231,7 +318,7 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
                 autoFocus
                 rows={Math.min(6, Math.max(2, editing.text.split('\n').length))}
                 value={editing.text}
-                maxLength={4000}
+                maxLength={MSG_MAX}
                 onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setEditing(null);
@@ -259,27 +346,56 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
           )}
           {m.pinned_at && <span className="fmsg-pin">📌 Pinned</span>}
           {local && <SendState pending={m.pending} failed={m.failed} />}
-          <button type="button" className="fmsg-more" onClick={() => setSel((x) => (x === m.id ? null : m.id))} aria-label="Message options" title="Options">⋯</button>
-          <div className="fmsg-actions" role="toolbar" aria-label="Message options">
-            {onReply && !local && <button className="act" onClick={() => { onReply(m); setSel(null); }} title="Reply">↩ Reply</button>}
-            {m.body && <button className="act" onClick={() => { copy(m); setSel(null); }} title="Copy text">⧉ Copy</button>}
-            {kind && !local && m.user_id === d.uid && m.body !== undefined && (
-              <button className="act" onClick={() => { setEditing({ id: m.id, text: m.body }); setSel(null); }} title="Edit">✎ Edit</button>
-            )}
-            {onForward && !local && <button className="act" onClick={() => { onForward(m); setSel(null); }} title="Forward">↪ Forward</button>}
-            {kind && canPin && !local && (
-              <button
-                className="act"
-                title={m.pinned_at ? 'Unpin' : 'Pin'}
-                onClick={() => { d.pinChat(kind, m.id, !m.pinned_at).then(() => toast(m.pinned_at ? 'Unpin ho gaya' : '📌 Pin ho gaya'), (e) => toast(errorText(e))); setSel(null); }}
-              >
-                📌 {m.pinned_at ? 'Unpin' : 'Pin'}
-              </button>
-            )}
-            {canDelete?.(m) && onDelete && (
-              <ConfirmButton className="act danger" label="🗑 Delete" confirmLabel="Pakka?" onConfirm={() => onDelete(m).catch((e) => toast(errorText(e)))} />
-            )}
-          </div>
+          <button type="button" className="fmsg-more" onClick={(e) => setSel((x) => (x === m.id ? null : m.id), e.currentTarget)} aria-label="Message options" aria-expanded={sel === m.id} title="Options">⋯</button>
+          {sel === m.id && (
+            <div className={'fmsg-actions' + (menuUp ? ' up' : '')} style={{ maxHeight: menuMax }} role="menu" aria-label="Message options">
+              {onReply && !local && <button role="menuitem" className="act" onClick={() => { onReply(m); setSel(null); }}><i>↩</i>Reply</button>}
+              {composeKey && !local && m.body && (
+                <button role="menuitem" className="act" onClick={() => { composeInsert(composeKey, m.body.split('\n').map((l) => '> ' + l).join('\n') + '\n'); setSel(null); }}><i>❝</i>Quote</button>
+              )}
+              {composeKey && m.user_id && m.user_id !== d.uid && p?.full_name && (
+                <button role="menuitem" className="act" onClick={() => { composeInsert(composeKey, '@' + p.full_name + ' '); setSel(null); }}><i>@</i>Mention</button>
+              )}
+              <div className="act-sep" />
+              {m.body && <button role="menuitem" className="act" onClick={() => { copy(m); setSel(null); }}><i>⧉</i>Copy text</button>}
+              {(() => {
+                const ls = (m.body || '').match(/https?:\/\/[^\s<>"']+/g) || (m.image_url ? [m.image_url] : [] as string[]);
+                return ls.length ? (
+                  <button role="menuitem" className="act" onClick={() => { navigator.clipboard?.writeText(ls[0] || "").then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua')); setSel(null); }}><i>🔗</i>Copy link</button>
+                ) : null;
+              })()}
+              {kind && !local && m.user_id === d.uid && m.body !== undefined && (
+                <button role="menuitem" className="act" onClick={() => { setEditing({ id: m.id, text: m.body }); setSel(null); }}><i>✎</i>Edit</button>
+              )}
+              {onForward && !local && <button role="menuitem" className="act" onClick={() => { onForward(m); setSel(null); }}><i>↪</i>Forward</button>}
+              {kind && canPin && !local && (
+                <button
+                  role="menuitem"
+                  className="act"
+                  onClick={() => { d.pinChat(kind, m.id, !m.pinned_at).then(() => toast(m.pinned_at ? 'Unpin ho gaya' : '📌 Pin ho gaya'), (e) => toast(errorText(e))); setSel(null); }}
+                >
+                  <i>📌</i>{m.pinned_at ? 'Unpin' : 'Pin'}
+                </button>
+              )}
+              {onMarkUnread && !local && m.user_id !== d.uid && <button role="menuitem" className="act" onClick={() => { onMarkUnread(m); setSel(null); }}><i>●</i>Mark unread</button>}
+              <button role="menuitem" className="act" onClick={() => { setInfo((x) => (x === m.id ? null : m.id)); setSel(null); }}><i>ℹ</i>Message info</button>
+              {canDelete?.(m) && onDelete && (
+                <>
+                  <div className="act-sep" />
+                  <ConfirmButton className="act danger" label="🗑 Delete" confirmLabel="Pakka delete?" onConfirm={() => onDelete(m).then(() => setSel(null)).catch((e) => toast(errorText(e)))} />
+                </>
+              )}
+            </div>
+          )}
+          {info === m.id && (
+            <div className="fmsg-info" data-notr>
+              <span>Bheja: {new Date(m.created_at).toLocaleString('en-GB', { timeZone: APP_TZ, dateStyle: 'medium', timeStyle: 'short' })}</span>
+              {m.edited_at && <span>Edit: {new Date(m.edited_at).toLocaleString('en-GB', { timeZone: APP_TZ, dateStyle: 'medium', timeStyle: 'short' })}</span>}
+              {m.read_at && <span>Parha: {new Date(m.read_at).toLocaleString('en-GB', { timeZone: APP_TZ, dateStyle: 'medium', timeStyle: 'short' })}</span>}
+              <span>{(m.body || '').length} characters</span>
+              <button className="linkbtn" onClick={() => setInfo(null)}>Band</button>
+            </div>
+          )}
           {showRead && !local && m.user_id === d.uid && <span className="fmsg-read muted">{m.read_at ? 'Parh liya' : 'Bheja'}</span>}
         </div>
       </div>
@@ -303,9 +419,11 @@ function videoTitle(body: string, url: string): string | undefined {
 
 /** Message likhne ki jagah: text + image (ImgBB) + video (Gofile) + reply */
 export interface Mentionable { id: string; name: string; url?: string; sub?: string }
-export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend, mentions }: {
+export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend, mentions, draftKey }: {
   /** v14: @ likhne par in logon ki list (+ @everyone) */
   mentions?: Mentionable[];
+  /** v15: likha hua text yaad rakhne ki chaabi (har chat ki alag) */
+  draftKey?: string;
   placeholder: string;
   disabledNote?: string;
   replyTo?: FeedItem | null;
@@ -314,7 +432,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
 }) {
   const d = useData();
   const toast = useToast();
-  const [text, setText] = useState('');
+  const [text, setText] = useDraft(draftKey);
   const [img, setImg] = useState<{ url: string; name: string } | null>(null);
   const [busy, setBusy] = useState<'' | 'img' | 'send'>('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -372,6 +490,23 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
   useEffect(() => {
     if (replyTo) inputRef.current?.focus();
   }, [replyTo]);
+  useAutoGrow(inputRef, text);
+  // ⋯ menu se quote / mention
+  const textRef = useRef(text);
+  textRef.current = text;
+  useEffect(() => {
+    if (!draftKey) return;
+    const on = (e: Event) => {
+      const det = (e as CustomEvent<{ key: string; text: string }>).detail;
+      if (!det || det.key !== draftKey) return;
+      const cur = textRef.current;
+      const nt = det.text.startsWith('>') ? det.text + cur : (cur && !/\s$/.test(cur) ? cur + ' ' : cur) + det.text;
+      setText(nt.slice(0, MSG_MAX));
+      requestAnimationFrame(() => { const el = inputRef.current; el?.focus(); el?.setSelectionRange(nt.length, nt.length); });
+    };
+    window.addEventListener(INSERT_EVENT, on);
+    return () => window.removeEventListener(INSERT_EVENT, on);
+  }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (disabledNote) return <div className="composer locked-note">🔒 {disabledNote}</div>;
 
@@ -464,8 +599,8 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
         </button>
         <textarea
           ref={inputRef}
-          rows={Math.min(5, Math.max(1, text.split('\n').length))}
-          maxLength={4000}
+          rows={1}
+          maxLength={MSG_MAX}
           value={text}
           onChange={(e) => { setText(e.target.value); checkMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
           onClick={(e) => checkMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)}
@@ -477,6 +612,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
           Bhejein
         </button>
       </div>
+      {text.length > MSG_MAX - 400 && <div className={'char-count num' + (text.length >= MSG_MAX ? ' bad' : '')}>{text.length}/{MSG_MAX}</div>}
     </div>
   );
 }

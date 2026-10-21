@@ -121,8 +121,59 @@ async function applyTint(p?: Prefs | null) {
   syncSystemBars(dark, head);
 }
 
+/* v15: blur wali tasveer ek dafa chhoti canvas par bana lo — warna har frame poori screen ka blur (mobile 30fps / flicker) */
+const blurCache = new Map<string, string>();
+const BLUR_KEY = 'khr-bg-blurred';
+try {
+  const saved = JSON.parse(localStorage.getItem(BLUR_KEY) || 'null') as { k: string; u: string } | null;
+  if (saved?.k && saved.u) blurCache.set(saved.k, saved.u); // agli dafa app khulte hi seedha yahi (koi badlaao / flicker nahi)
+} catch { /* koi baat nahi */ }
+function preBlur(url: string, blur: number): Promise<string | null> {
+  const key = blur + '|' + url;
+  const hit = blurCache.get(key);
+  if (hit) return Promise.resolve(hit);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const W = 640;
+        const scale = Math.min(1, W / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const g = c.getContext('2d')!;
+        if (!('filter' in g)) return resolve(null);
+        // screen par jitna blur dikhta tha, chhoti tasveer par usi hisaab se (kinare kaale na hon is liye thora bara draw)
+        const r = Math.max(1, blur * scale * (Math.max(img.naturalWidth, img.naturalHeight) / Math.max(window.innerWidth, window.innerHeight, 1)));
+        g.filter = `blur(${r.toFixed(1)}px)`;
+        const pad = r * 2;
+        g.drawImage(img, -pad, -pad, w + pad * 2, h + pad * 2);
+        const out = c.toDataURL('image/jpeg', 0.86);
+        blurCache.set(key, out);
+        try { localStorage.setItem(BLUR_KEY, JSON.stringify({ k: key, u: out })); } catch { /* jagah nahi — sirf is dafa */ }
+        resolve(out);
+      } catch {
+        resolve(null); // CORS — purana CSS blur hi chalega
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+let appliedKey = '';
+let blurRun = 0;
+
 export function applyPrefs(p?: Prefs | null, save = true) {
   lastPrefs = p;
+  const key = JSON.stringify(p || {});
+  // v15: wahi pasand dobara aaye (profile refresh) to kuch na chhuo — background dobara lagne se flicker hota tha
+  if (key === appliedKey && (document.getElementById('khr-bg') !== null) === !!bgCss(p?.bg)) {
+    if (save) try { localStorage.setItem(KEY, key); } catch { /* storage band */ }
+    return;
+  }
+  appliedKey = key;
   const root = document.documentElement;
   const body = document.body;
   const css = bgCss(p?.bg);
@@ -134,9 +185,24 @@ export function applyPrefs(p?: Prefs | null, save = true) {
       layer.setAttribute('aria-hidden', 'true');
       body.prepend(layer);
     }
-    layer.style.background = css;
     const blur = p?.bg?.type === 'image' ? Math.max(0, Math.min(30, p?.bg?.blur ?? 8)) : 0;
-    root.style.setProperty('--bg-blur', blur + 'px');
+    const img = p?.bg?.type === 'image' ? p.bg.image || '' : '';
+    const ready = img && blur ? blurCache.get(blur + '|' + img) : undefined;
+    if (ready) {
+      layer.style.background = `center / cover no-repeat url("${ready}")`;
+      root.style.setProperty('--bg-blur', '0px');
+    } else {
+      layer.style.background = css;
+      root.style.setProperty('--bg-blur', blur + 'px');
+      if (img && blur) {
+        const run = ++blurRun;
+        preBlur(img, blur).then((u) => {
+          if (!u || run !== blurRun || !layer) return;
+          layer.style.background = `center / cover no-repeat url("${u}")`;
+          root.style.setProperty('--bg-blur', '0px');
+        });
+      }
+    }
     root.style.setProperty('--bg-dim', String(Math.max(0, Math.min(0.85, p?.bg?.dim ?? (p?.bg?.type === 'image' ? 0.35 : 0)))));
     body.classList.add('custom-bg');
   } else {

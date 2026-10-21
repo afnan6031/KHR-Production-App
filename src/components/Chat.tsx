@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { SendState } from './Messaging';
+import { MSG_MAX, SendState, useAutoGrow, useDraft } from './Messaging';
 import { VideoCard, videoLinksIn } from './VideoUpload';
 import { UserAvatar } from './Messaging';
 import { useData } from '../lib/data';
@@ -63,13 +63,14 @@ function Linkify({ text }: { text: string }) {
 export function ChatSheet({ channelId, onClose }: { channelId: string; onClose: () => void }) {
   const d = useData();
   const toast = useToast();
-  const [text, setText] = useState('');
+  const [text, setText] = useDraft('card-' + channelId);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const ch = d.channels.find((c) => c.id === channelId);
   const canWrite = d.isOwner || d.rolesOf(channelId).length > 0;
+  useAutoGrow(inputRef, text, 35);
 
   const msgs = useMemo(
     () => d.messages.filter((m) => m.channel_id === channelId).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-300),
@@ -173,8 +174,8 @@ export function ChatSheet({ channelId, onClose }: { channelId: string; onClose: 
             <textarea
               ref={inputRef}
               id="chat-input"
-              rows={Math.min(5, Math.max(1, text.split('\n').length))}
-              maxLength={4000}
+              rows={1}
+              maxLength={MSG_MAX}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKey}

@@ -1,7 +1,7 @@
 // KHR Production — Windows / PC desktop app (Electron wrapper around the same app)
 // v8: upar ki patti app ke rang mein (Discord jaisi), aur window band karne par app tray mein
 //     chalti rehti hai taake messages / deadlines ke notifications aate rahein.
-const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain, session } = require('electron');
+const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain, session, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -100,6 +100,7 @@ function applyAutostart() {
 
 // app ke andar se: theme badla -> upar ki patti ka rang; notification -> taskbar par chamak; tap -> window kholo
 ipcMain.on('khr-theme', (_e, dark) => {
+  lastBar = '';
   settings.dark = !!dark;
   writeSettings(settings);
   const t = dark ? BAR.dark : BAR.light;
@@ -107,8 +108,13 @@ ipcMain.on('khr-theme', (_e, dark) => {
   try { win.setTitleBarOverlay({ color: t.color, symbolColor: t.symbolColor, height: 32 }); } catch { /* purana Windows */ }
   win.setBackgroundColor(t.bg);
 });
+let lastBar = '';
 ipcMain.on('khr-bar', (_e, o) => {
   if (!win || !o || !/^#[0-9a-f]{6}$/i.test(o.color)) return;
+  // v15: wahi rang dobara aaye to patti ko na chhuo (Windows par chamak / flicker)
+  const key = o.color + (o.dark ? 'd' : 'l');
+  if (key === lastBar) return;
+  lastBar = key;
   try { win.setTitleBarOverlay({ color: o.color, symbolColor: o.dark ? '#E8EBF4' : '#121A2E', height: 32 }); } catch { /* purana Windows */ }
 });
 // v13: Catbox par audio upload (Node ke zariye, file:// wali "Origin: null" ke baghair)
@@ -164,6 +170,9 @@ if (!app.requestSingleInstanceLock()) {
     applyAutostart();
     buildTray();
     createWindow(process.argv.includes('--hidden'));
+    // v15: PC sleep se jaage / lock khule -> app ko batao (realtime dobara jode aur reh gaye messages le aaye)
+    const wake = () => { try { win && win.webContents.executeJavaScript("window.dispatchEvent(new Event('online'))"); } catch { /* koi baat nahi */ } };
+    try { powerMonitor.on('resume', wake); powerMonitor.on('unlock-screen', wake); } catch { /* purana Electron */ }
   });
   app.on('window-all-closed', () => { /* tray mein chalti rahe */ });
 }
