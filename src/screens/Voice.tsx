@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../lib/data';
 import { errorText } from '../lib/utils';
-import { MAX_CHARS, VOICES, deleteTake, generateSpeech, loadTakes, peaksOf, previewCached, saveTake, voicePreview, type Take, type Voice } from '../lib/gemini';
+import { MAX_CHARS, VOICES, deleteTake, generateSpeech, loadTakes, peaksOf, previewCached, saveTake, voicePreview, MODELS, DEFAULT_MODEL, modelOf, usageToday, type Take, type Voice } from '../lib/gemini';
 import { uploadAudio } from '../lib/audio';
 import { saveBlobFile } from '../lib/files';
 import { useMusic } from '../components/Music';
@@ -154,6 +154,12 @@ export function VoiceStudio() {
   const [pace, setPace] = useState('n');
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  // v16: model user khud chunta hai — ek na chale (limit / error) to doosra
+  const [model, setModelState] = useState<string>(() => { try { const m = localStorage.getItem('khr-vo-model') || ''; return MODELS.some((x) => x.id === m) ? m : DEFAULT_MODEL; } catch { return DEFAULT_MODEL; } });
+  const setModel = (m: string) => { setModelState(m); try { localStorage.setItem('khr-vo-model', m); } catch { /* koi baat nahi */ } };
+  const [usage, setUsage] = useState(usageToday);
+  const mInfo = modelOf(model);
+  const [part, setPart] = useState<{ d: number; t: number } | null>(null);
   const [take, setTake] = useState<Take | null>(null);
   const [takes, setTakes] = useState<Take[]>([]);
   const [previewing, setPreviewing] = useState('');
@@ -193,7 +199,7 @@ export function VoiceStudio() {
     pv.current?.pause();
     setPreviewing(x.name + ':load');
     try {
-      const blob = await voicePreview(x.name);
+      const blob = await voicePreview(x.name, undefined, model);
       setCached((c) => new Set(c).add(x.name));
       const el = new Audio(URL.createObjectURL(blob));
       pv.current = el;
@@ -215,8 +221,9 @@ export function VoiceStudio() {
     setElapsed(0);
     abort.current = new AbortController();
     try {
-      const { blob, model } = await generateSpeech({ text, voice, style: styleText, signal: abort.current.signal });
-      const t: Take = { id: Date.now().toString(36), at: Date.now(), voice, style: styleText, text: text.trim(), blob, model };
+      setPart(null);
+      const { blob, model: used } = await generateSpeech({ text, voice, style: styleText, signal: abort.current.signal, model, onPart: (d, t) => setPart({ d, t }) });
+      const t: Take = { id: Date.now().toString(36), at: Date.now(), voice, style: styleText, text: text.trim(), blob, model: used };
       setTake(t);
       setTakes((all) => [t, ...all.filter((x) => x.id !== t.id)].slice(0, 6));
       saveTake(t);
@@ -226,6 +233,7 @@ export function VoiceStudio() {
     } finally {
       setBusy(false);
       abort.current = null;
+      setUsage(usageToday());
     }
   }
 
@@ -300,16 +308,36 @@ export function VoiceStudio() {
             {styleK === 'custom' && (
               <input type="text" maxLength={160} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Misal: whispering, mysterious, horror story" aria-label="Apna andaaz (English mein)" />
             )}
-            <select value={pace} onChange={(e) => setPace(e.target.value)} aria-label="Raftar">
-              {PACES.map((p) => <option key={p.k} value={p.k}>{p.label}</option>)}
-            </select>
+            <div className="tone-row">
+              <select value={pace} onChange={(e) => setPace(e.target.value)} aria-label="Raftar">
+                {PACES.map((p) => <option key={p.k} value={p.k}>{p.label}</option>)}
+              </select>
+              <select className="model-pick" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
+                <optgroup label="⚡ Live — bina limit">
+                  {MODELS.filter((m) => m.kind === 'live').map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}{usage.full[m.id] ? ' · limit poori' : ''}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="🎯 TTS — har model 10 roz">
+                  {MODELS.filter((m) => m.kind === 'tts').map((m) => (
+                    <option key={m.id} value={m.id}>{m.label} · {usage.full[m.id] ? 'limit poori' : `aaj ${usage.n[m.id] || 0}/10`}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            <p className="muted tiny m0 model-note">
+              <b>{mInfo.label}</b>{` · ${mInfo.limit} · ${mInfo.note}. `}
+              {mInfo.kind === 'live'
+                ? 'Live model script ko chhote hisson mein hoo-ba-hoo parhta hai; kabhi koi lafz badle to TTS model chunein.'
+                : 'TTS model sab se hoo-ba-hoo parhta hai; limit poori ho to doosra TTS ya Live model chunein (har model ki limit alag hai).'}
+            </p>
           </div>
 
           <div className="gen-bar">
             {busy ? (
               <div className="gen-busy" role="status">
                 <Voiceprint v={v} live size="s" />
-                <span><b>{v.name}</b> awaaz bana rahi hai… <span className="num">{elapsed}s</span></span>
+                <span>{`${v.name} awaaz bana rahi hai…`} <span className="num">{part && part.t > 1 ? `${Math.min(part.d + 1, part.t)} / ${part.t} · ` : ''}{elapsed}s</span></span>
                 <button type="button" className="btn sm" onClick={() => abort.current?.abort()}>Rokein</button>
               </div>
             ) : (
@@ -374,7 +402,7 @@ export function VoiceStudio() {
               ))}
             </div>
           )}
-          <p className="muted tiny m0">Gemini ki free limit mein din bhar mein kuch hi voiceovers banti hain. Har awaaz ka namoona sirf pehli dafa banta hai, phir is device par yaad rehta hai. Urdu script se behtar Roman Urdu / Hindi / English chalti hai.</p>
+          <p className="muted tiny m0">Har awaaz ka namoona sirf pehli dafa banta hai, phir is device par yaad rehta hai. Urdu script se behtar Roman Urdu / Hindi / English chalti hai.</p>
         </section>
 
         <aside className="studio-side">
