@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('khrDesktop', {
   // chuni hui file ka PC par rasta (bari video disk se seedhi upload)
   pathOf: (file) => { try { return (webUtils && webUtils.getPathForFile(file)) || ''; } catch { return ''; } },
   pdCancel: (id) => ipcRenderer.send('khr-pd-cancel', String(id)),
+  setPdKey: (k) => ipcRenderer.send('khr-pd-key', String(k || '')),
   onPdProgress: (cb) => {
     const h = (_e, p) => cb(p);
     ipcRenderer.on('khr-pd-progress', h);

@@ -180,9 +180,14 @@ ipcMain.handle('khr-pd-upload', async (e, o) => {
   });
 });
 ipcMain.on('khr-pd-cancel', (_e, id) => { const r = pdReqs.get(id); if (r) { r.destroy(new Error('Upload cancel ho gaya')); pdReqs.delete(id); } });
+// v16: app Pixeldrain ki key yahan deti hai (videos / awaaz chalane ke liye)
+let pdKey = '';
+ipcMain.on('khr-pd-key', (_e, k) => { pdKey = String(k || '').trim(); });
 ipcMain.handle('khr-fetch-bytes', async (_e, url) => {
   if (!/^https:\/\/((files\.)?catbox\.moe|pixeldrain\.com)\//i.test(String(url))) throw new Error('not allowed');
-  const r = await fetch(url, { headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
+  const headers = { 'User-Agent': 'KHR-Production/1.0 (Windows)' };
+  if (pdKey && /pixeldrain\.com/i.test(String(url))) headers.Authorization = 'Basic ' + Buffer.from(':' + pdKey).toString('base64');
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return { type: r.headers.get('content-type') || 'audio/mpeg', bytes: Buffer.from(await r.arrayBuffer()) };
 });
@@ -207,11 +212,18 @@ if (!app.requestSingleInstanceLock()) {
       cb({ responseHeaders: h });
     });
     // v9 music: YouTube player ko "Referer" chahiye (file:// se khulne wali app ke paas nahi hota)
+    // v16: Pixeldrain — free account par "hotlinking" band hai; owner ki key saath bhejo (owner hamesha chala / download kar sakta hai)
+    //      aur Referer / Origin hata do. (Ek session mein ek hi onBeforeSendHeaders chalta hai — is liye dono yahin.)
     session.defaultSession.webRequest.onBeforeSendHeaders(
-      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*'] },
+      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*', 'https://pixeldrain.com/*', 'https://*.pixeldrain.com/*'] },
       (details, cb) => {
-        if (!details.requestHeaders.Referer) details.requestHeaders.Referer = 'https://khr-production.app/';
-        cb({ requestHeaders: details.requestHeaders });
+        const h = details.requestHeaders;
+        if (/^https:\/\/([\w-]+\.)?pixeldrain\.com\//i.test(details.url)) {
+          for (const k of Object.keys(h)) if (/^(referer|origin)$/i.test(k)) delete h[k];
+          const hasAuth = Object.keys(h).some((k) => k.toLowerCase() === 'authorization');
+          if (pdKey && !hasAuth) h.Authorization = 'Basic ' + Buffer.from(':' + pdKey).toString('base64');
+        } else if (!h.Referer) h.Referer = 'https://khr-production.app/';
+        cb({ requestHeaders: h });
       }
     );
     settings = readSettings();
