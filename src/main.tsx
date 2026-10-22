@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { applyTheme, desktop, onThemeChange } from './lib/theme';
 import { initKeyboard } from './lib/keyboard';
+import { initPixeldrainAuth } from './lib/audio';
 import { applySavedPrefs, reapplyTint } from './lib/appearance';
 import './styles.css';
 
@@ -21,6 +22,8 @@ onThemeChange(() => {
   reapplyTint();
 });
 initKeyboard();
+// v16: Pixeldrain ki files app ke andar chalein (owner ki key — free account ka hotlink rok nahi lagta)
+initPixeldrainAuth();
 applySavedPrefs();
 
 createRoot(document.getElementById('root')!).render(
