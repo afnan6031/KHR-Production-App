@@ -182,6 +182,58 @@ async function nativePost(f: File, fname: string, type: string, onProg: Prog): P
   return u;
 }
 
+/**
+ * v16: Pixeldrain free account par file ko doosri app ke andar chalana ("hotlinking") band hai — 403 hotlink_detected.
+ * Lekin file ka OWNER hamesha chala / download kar sakta hai. Is liye har Pixeldrain request ke saath owner ki key:
+ * - Windows app: app khud har request mein key lagati hai (electron/main.cjs)
+ * - Android app: key Pixeldrain ki cookie (pd_auth_key) mein (video / awaaz seedhi chalti hai)
+ * - Awaaz na chale to: key ke saath download kar ke is device par chalao (authedBlobUrl)
+ */
+export const isPixeldrain = (url: string) => /^https:\/\/([\w-]+\.)?pixeldrain\.(com|net)\//i.test(url || '');
+export const ownerAuth = (url: string): Record<string, string> => (API_KEY && isPixeldrain(url) ? { Authorization: AUTH } : {});
+
+type DeskKey = { setPdKey?: (k: string) => void };
+let authInit = false;
+export async function initPixeldrainAuth(): Promise<void> {
+  if (authInit || !API_KEY) return;
+  authInit = true;
+  try {
+    (desk() as DeskKey | undefined)?.setPdKey?.(API_KEY);
+    if (Capacitor.isNativePlatform()) {
+      const { KhrNative } = await import('./keyboard');
+      await (KhrNative as unknown as { pdCookie: (o: { key: string }) => Promise<void> }).pdCookie({ key: API_KEY });
+    }
+  } catch {
+    /* purani app — neeche wala tareeqa (download kar ke chalana) phir bhi chalega */
+  }
+}
+
+/** owner ki key ke saath file le kar is device ka local link (awaaz / chhoti video ke liye) */
+const authed = new Map<string, Promise<string>>();
+export function authedBlobUrl(url: string): Promise<string> {
+  const hit = authed.get(url);
+  if (hit) return hit;
+  const p = (async () => {
+    let blob: Blob | null = null;
+    const dk = desk();
+    if (dk?.fetchBytes) {
+      const r = await dk.fetchBytes(url);
+      blob = new Blob([r.bytes as unknown as BlobPart], { type: r.type });
+    } else if (Capacitor.isNativePlatform()) {
+      blob = await nativeChunked(url);
+    } else {
+      const r = await fetch(url, { mode: 'cors', headers: ownerAuth(url), referrerPolicy: 'no-referrer' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      blob = await r.blob();
+    }
+    if (!blob || !blob.size) throw new Error('Khaali file');
+    return URL.createObjectURL(blob);
+  })();
+  authed.set(url, p);
+  p.catch(() => authed.delete(url));
+  return p;
+}
+
 /** Pixeldrain file ka ID (api/file/ID ya u/ID) */
 export function pixeldrainId(url: string): string | null {
   const m = /^https?:\/\/(?:www\.)?pixeldrain\.(?:com|net)\/(?:u|api\/file)\/([\w-]{3,40})/i.exec((url || '').trim());
@@ -253,7 +305,7 @@ async function nativeChunked(url: string, onProgress?: (pct: number) => void): P
         res = await CapacitorHttp.get({
           url,
           responseType: 'blob',
-          headers: { Range: `bytes=${start}-${end}`, 'Accept-Encoding': 'identity', Connection: 'close' },
+          headers: { ...ownerAuth(url), Range: `bytes=${start}-${end}`, 'Accept-Encoding': 'identity', Connection: 'close' },
           connectTimeout: 20000,
           readTimeout: 60000
         });
@@ -297,7 +349,7 @@ export async function saveOffline(url: string, onProgress?: (pct: number) => voi
   } else {
     // pehle seedha (sab se tez); na chale to Android par tukron mein
     try {
-      const r = await fetch(url, { mode: 'cors' });
+      const r = await fetch(url, { mode: 'cors', headers: ownerAuth(url), referrerPolicy: 'no-referrer' });
       if (r.ok) blob = await r.blob();
     } catch {
       /* neeche dusra tareeqa */
