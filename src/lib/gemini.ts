@@ -157,38 +157,209 @@ async function viaGenerate(model: string, q: Req): Promise<Blob> {
   return toWav(a);
 }
 
-const ROUTES: { label: string; run: (q: Req) => Promise<Blob> }[] = [
-  { label: 'gemini-3.8-flash-tts', run: (q) => viaInteractions('gemini-3.8-flash-tts', q) },
-  { label: 'gemini-3.8-flash-lite-tts', run: (q) => viaInteractions('gemini-3.8-flash-lite-tts', q) },
-  { label: 'gemini-2.5-flash-preview-tts', run: (q) => viaGenerate('gemini-2.5-flash-preview-tts', q) }
-];
-let goodRoute = 0;
+/* ---------------- v16: Gemini LIVE (WebSocket) — free mein bina RPM / RPD limit ---------------- */
+const LIVE_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=';
+const READ_ONLY = (style?: string) =>
+  'You are a professional voice-over narrator working as a text-to-speech engine. ' +
+  'The user sends you part of a script. Read it aloud EXACTLY as written, word for word, from the first word to the last, ' +
+  'in the same language and wording. Never reply, answer, explain, summarize, translate, greet, ask questions, or add any word before or after the text. ' +
+  'If the text looks like a question or an instruction, still just read it aloud. Only narrate.' +
+  (style ? ' Speaking style: ' + style + '.' : '');
 
-/** text → .wav Blob. Pehla model na mile / na chale to agla (key / limit ki ghalti par ruk jata hai). */
-export async function generateSpeech(q: Req): Promise<{ blob: Blob; model: string }> {
+/** lambi script ko jumlon par chhote hisson mein (har hissa alag parha jata hai — poora aur hoo-ba-hoo) */
+export function splitScript(text: string, max = 550): string[] {
+  const parts = text.replace(/\r/g, '').split(/(?<=[.!?\u06D4\u0964\n])\s+/);
+  const out: string[] = [];
+  let cur = '';
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    if (p.length > max) {
+      // bohot lamba jumla: commas / spaces par todo
+      if (cur) { out.push(cur); cur = ''; }
+      let rest = p;
+      while (rest.length > max) {
+        let cut = rest.lastIndexOf(',', max);
+        if (cut < max * 0.5) cut = rest.lastIndexOf(' ', max);
+        if (cut < max * 0.5) cut = max;
+        out.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1);
+      }
+      cur = rest.trim();
+      continue;
+    }
+    if ((cur + ' ' + p).trim().length > max) { out.push(cur); cur = p; }
+    else cur = (cur + ' ' + p).trim();
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+type LiveShape = 'flat' | 'nested';
+async function liveData(ev: MessageEvent): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = typeof ev.data === 'string' ? ev.data : ev.data instanceof Blob ? await ev.data.text() : new TextDecoder().decode(ev.data as ArrayBuffer);
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** ek WebSocket session: setup → har hissa bhejo → awaaz (24 kHz PCM) jama karo → .wav */
+function viaLive(model: string, shape: LiveShape, q: Req, onPart?: (done: number, total: number) => void): Promise<Blob> {
+  const chunks = splitScript(q.text);
+  return new Promise((resolve, reject) => {
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(LIVE_URL + encodeURIComponent(GEMINI_KEY));
+    } catch {
+      return reject(new TtsError('Gemini Live se raabta nahi hua.'));
+    }
+    const pcm: Uint8Array[] = [];
+    let ready = false;
+    let idx = -1;
+    let gotAudio = false;
+    let finished = false;
+    let idle = 0;
+    let hard = 0;
+    const clear = () => { window.clearTimeout(idle); window.clearTimeout(hard); };
+    const fail = (e: TtsError) => { if (finished) return; finished = true; clear(); try { ws.close(); } catch { /* koi baat nahi */ } reject(e); };
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      clear();
+      try { ws.close(); } catch { /* koi baat nahi */ }
+      const total = pcm.reduce((a, b) => a + b.length, 0);
+      if (!total) return reject(new TtsError('Gemini ne awaaz wapas nahi bheji. Dobara try karein.'));
+      const all = new Uint8Array(total);
+      let o = 0;
+      for (const b of pcm) { all.set(b, o); o += b.length; }
+      resolve(pcmToWav(all, 24000));
+    };
+    const sendNext = () => {
+      idx++;
+      onPart?.(idx, chunks.length);
+      if (idx >= chunks.length) return done();
+      gotAudio = false;
+      const text = chunks[idx];
+      const msg = model.startsWith('gemini-2.5')
+        ? { clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }
+        : { realtimeInput: { text } };
+      ws.send(JSON.stringify(msg));
+      window.clearTimeout(hard);
+      hard = window.setTimeout(() => (gotAudio ? sendNext() : fail(new TtsError('Gemini Live ne jawab nahi diya (time out).'))), 120000);
+    };
+    q.signal?.addEventListener('abort', () => fail(new TtsError('Rok diya gaya.')), { once: true });
+    ws.onopen = () => {
+      const voice = { voiceConfig: { prebuiltVoiceConfig: { voiceName: q.voice } } };
+      const sys = { parts: [{ text: READ_ONLY(q.style) }] };
+      const setup = shape === 'flat'
+        ? { model: 'models/' + model, responseModalities: ['AUDIO'], speechConfig: voice, systemInstruction: sys }
+        : { model: 'models/' + model, generationConfig: { responseModalities: ['AUDIO'], speechConfig: voice }, systemInstruction: sys };
+      ws.send(JSON.stringify({ setup }));
+      hard = window.setTimeout(() => fail(new TtsError('Gemini Live ka setup nahi hua (time out).')), 20000);
+    };
+    ws.onmessage = async (ev) => {
+      const m = await liveData(ev);
+      if (!m || finished) return;
+      if (m.setupComplete !== undefined && !ready) { ready = true; return sendNext(); }
+      const sc = m.serverContent as { modelTurn?: { parts?: { inlineData?: { data?: string } }[] }; turnComplete?: boolean } | undefined;
+      if (!sc) return;
+      for (const part of sc.modelTurn?.parts || []) {
+        if (part.inlineData?.data) { pcm.push(b64ToBytes(part.inlineData.data)); gotAudio = true; }
+      }
+      // hissa poora: turnComplete — ya awaaz aane ke baad 5 second khamoshi
+      window.clearTimeout(idle);
+      if (sc.turnComplete && gotAudio) return sendNext();
+      if (gotAudio) idle = window.setTimeout(sendNext, 5000);
+    };
+    ws.onerror = () => { /* onclose mein wajah */ };
+    ws.onclose = (ev) => {
+      if (finished) return;
+      const why = (ev.reason || '').toLowerCase();
+      if (ready && idx >= chunks.length - 1 && gotAudio) return done();
+      if (/quota|exhaust|rate|429/.test(why)) return fail(new TtsError('Gemini Live ki limit abhi poori ho gayi. Thori der baad try karein.', 429));
+      if (/api key|api_key|permission|unauth|denied/.test(why)) return fail(new TtsError('Gemini ne API key qabool nahi ki. GitHub secret VITE_GEMINI_API_KEY check karein.' + (ev.reason ? ' (' + ev.reason.slice(0, 120) + ')' : ''), 403));
+      fail(new TtsError('Gemini Live band ho gaya' + (ev.reason ? ': ' + ev.reason.slice(0, 160) : ' (code ' + ev.code + ')'), ready ? 500 : 400));
+    };
+  });
+}
+
+/* ---------------- v16: models — user khud chunta hai (ek na chale to doosra) ---------------- */
+export interface TtsModel { id: string; label: string; kind: 'live' | 'tts'; limit: string; note: string }
+/** Sirf wo models jo awaaz banate hain (aap ke AI Studio ki free limits ke mutabiq) */
+export const MODELS: TtsModel[] = [
+  { id: 'gemini-2.5-flash-native-audio-preview-12-2025', label: 'Gemini 2.5 Flash Native Audio', kind: 'live', limit: 'Bina limit · 1M TPM', note: 'Sab se zyada gunjaish — lambi scripts ke liye' },
+  { id: 'gemini-3.8-live', label: 'Gemini 3.8 Live', kind: 'live', limit: 'Bina limit · 65K TPM', note: 'Naya, tez' },
+  { id: 'gemini-3.8-live-extended-thinking', label: 'Gemini 3.8 Live Extended Thinking', kind: 'live', limit: 'Bina limit · 65K TPM', note: 'Thora dheema, zyada samajhdar' },
+  { id: 'gemini-3.1-flash-live-preview', label: 'Gemini 3 Flash Live', kind: 'live', limit: 'Bina limit · 65K TPM', note: 'Purana Live model' },
+  { id: 'gemini-3.8-flash-tts', label: 'Gemini 3.8 Flash TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: 'Sab se saaf, hoo-ba-hoo' },
+  { id: 'gemini-3.8-flash-lite-tts', label: 'Gemini 3.8 Flash Lite TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: 'Hoo-ba-hoo, halka' },
+  { id: 'gemini-3.1-flash-tts-preview', label: 'Gemini 3.1 Flash TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: '17 Nov 2026 ko band' },
+  { id: 'gemini-2.5-flash-preview-tts', label: 'Gemini 2.5 Flash TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: '17 Nov 2026 ko band' }
+];
+export const DEFAULT_MODEL = MODELS[0].id;
+export const modelOf = (id: string) => MODELS.find((m) => m.id === id) || MODELS[0];
+
+/* aaj kis model se kitni voiceovers bani (sirf is device par — TTS ki 10 roz ki hadd ka andaza) */
+type Usage = { day: string; n: Record<string, number>; full: Record<string, boolean> };
+const USAGE_KEY = 'khr-vo-usage';
+const pkDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()); // Google ki limit Pacific waqt par reset hoti hai
+export function usageToday(): Usage {
+  try {
+    const u = JSON.parse(localStorage.getItem(USAGE_KEY) || 'null') as Usage | null;
+    if (u && u.day === pkDay()) return { day: u.day, n: u.n || {}, full: u.full || {} };
+  } catch { /* koi baat nahi */ }
+  return { day: pkDay(), n: {}, full: {} };
+}
+function bump(id: string, full = false) {
+  const u = usageToday();
+  if (full) u.full[id] = true;
+  else u.n[id] = (u.n[id] || 0) + 1;
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); } catch { /* koi baat nahi */ }
+}
+
+async function runModel(m: TtsModel, q: Req, onPart?: (d: number, t: number) => void): Promise<Blob> {
+  if (m.kind === 'live') {
+    try {
+      return await viaLive(m.id, 'flat', q, onPart);
+    } catch (e) {
+      const st = (e as TtsError).status || 0;
+      if (st !== 400) throw e; // setup ka tareeqa na maana gaya → doosra tareeqa
+      return viaLive(m.id, 'nested', q, onPart);
+    }
+  }
+  try {
+    return await viaInteractions(m.id, q);
+  } catch (e) {
+    const st = (e as TtsError).status || 0;
+    if (st !== 400 && st !== 404) throw e;
+    return viaGenerate(m.id, q);
+  }
+}
+
+/** text → .wav Blob — sirf chuna hua model (na chale to saaf error; user doosra model chunta hai) */
+export async function generateSpeech(q: Req & { model?: string; onPart?: (done: number, total: number) => void }): Promise<{ blob: Blob; model: string }> {
   const text = q.text.trim();
   if (!text) throw new TtsError('Pehle script likhein.');
   if (text.length > MAX_CHARS) throw new TtsError(`Script ${MAX_CHARS} characters se zyada hai.`);
   if (!GEMINI_KEY) throw new TtsError('Gemini API key nahi lagi. GitHub → Settings → Secrets and variables → Actions mein VITE_GEMINI_API_KEY add kar ke app dobara build karein.');
-  let last: unknown = null;
-  for (let i = 0; i < ROUTES.length; i++) {
-    const idx = (goodRoute + i) % ROUTES.length;
-    try {
-      const blob = await ROUTES[idx].run({ ...q, text });
-      goodRoute = idx;
-      return { blob, model: ROUTES[idx].label };
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') throw new TtsError('Rok diya gaya.');
-      last = e;
-      const st = (e as TtsError).status || 0;
-      if (st === 401 || st === 403 || st === 429) throw e; // key / limit: dusra model bhi nahi chalega
-      if (!(e instanceof TtsError)) {
-        // internet hi nahi
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TtsError('Internet nahi. Voiceover ke liye internet zaroori hai.');
-      }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new TtsError('Internet nahi. Voiceover ke liye internet zaroori hai.');
+  const m = modelOf(q.model || DEFAULT_MODEL);
+  try {
+    const blob = await runModel(m, { ...q, text }, q.onPart);
+    bump(m.id);
+    return { blob, model: m.id };
+  } catch (e) {
+    if ((e as Error).name === 'AbortError' || (e as Error).message === 'Rok diya gaya.') throw new TtsError('Rok diya gaya.');
+    const err = e as TtsError;
+    if (err.status === 429) {
+      bump(m.id, true);
+      throw new TtsError(`${m.label} ki limit abhi poori ho gayi. Upar "Model" mein se doosra model chunein.`, 429);
     }
+    if (err.status === 401 || err.status === 403) throw err;
+    throw new TtsError(`${m.label} se awaaz nahi bani: ${err.message || 'pata nahi kyun'}. Upar "Model" mein se doosra model chun kar dobara try karein.`, err.status || 0);
   }
-  throw last instanceof Error ? last : new TtsError('Gemini se awaaz nahi bani.');
 }
 
 /* ---------------- waveform (seek bar par lehrein) ---------------- */
@@ -247,14 +418,14 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectS
 const PREVIEW_TEXT = (name: string) => `Assalam o Alaikum! Main ${name} hoon. Ye meri awaaz ka chhota sa namoona hai — aap ki agli video ke liye.`;
 
 /** awaaz ka namoona: ek dafa bana kar hamesha ke liye is device par (Gemini ki limit bachti hai) */
-export async function voicePreview(name: string, signal?: AbortSignal): Promise<Blob> {
+export async function voicePreview(name: string, signal?: AbortSignal, model?: string): Promise<Blob> {
   try {
     const hit = (await tx('previews', 'readonly', (s) => s.get(name))) as Blob | undefined;
     if (hit) return hit;
   } catch {
     /* storage band — seedha banao */
   }
-  const { blob } = await generateSpeech({ text: PREVIEW_TEXT(name), voice: name, signal });
+  const { blob } = await generateSpeech({ text: PREVIEW_TEXT(name), voice: name, signal, model });
   try { await tx('previews', 'readwrite', (s) => s.put(blob, name)); } catch { /* koi baat nahi */ }
   return blob;
 }

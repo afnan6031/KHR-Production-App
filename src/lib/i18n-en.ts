@@ -800,6 +800,21 @@ export const EN: Record<string, string> = {
   'Script Writer "+ Nai video" se title aur script ka link lagaye; baad mein Graphic Designer usi video mein thumbnail laga de.':
     'The Script Writer adds the title and script link with "+ New video"; later the Graphic Designer adds the thumbnail to the same video.',
   // v15
+  'Har awaaz ka namoona sirf pehli dafa banta hai, phir is device par yaad rehta hai. Urdu script se behtar Roman Urdu / Hindi / English chalti hai.': 'Each voice sample is generated once, then remembered on this device. Roman Urdu / Hindi / English work better than Urdu script.',
+  'Model': 'Model',
+  '⚡ Live — bina limit': '⚡ Live — no limit',
+  '🎯 TTS — har model 10 roz': '🎯 TTS — 10 a day per model',
+  'Live model script ko chhote hisson mein hoo-ba-hoo parhta hai; kabhi koi lafz badle to TTS model chunein.': 'Live models read the script word for word in small parts; if a word ever changes, choose a TTS model.',
+  'TTS model sab se hoo-ba-hoo parhta hai; limit poori ho to doosra TTS ya Live model chunein (har model ki limit alag hai).': 'TTS models read most exactly; when one hits its limit, choose another TTS or a Live model (each model has its own limit).',
+  '⚡ Live · bina limit': '⚡ Live · no limit',
+  '🎯 TTS · din mein ~10': '🎯 TTS · ~10 a day',
+  'Engine': 'Engine',
+  'Live: Gemini Live models — free mein bina roz ki limit. Script chhote hisson mein hoo-ba-hoo parhi jati hai; kabhi koi lafz badle to TTS chunein.': 'Live: Gemini Live models — no daily limit on the free plan. The script is read word for word in small parts; if a word ever changes, choose TTS.',
+  'TTS: sab se saaf aur hoo-ba-hoo, magar free mein ~10 voiceovers roz (3 per minute). Limit par khud Live par chala jata hai.': 'TTS: the cleanest and most exact, but only ~10 voiceovers a day on the free plan (3 per minute). When the limit is hit it switches to Live automatically.',
+  'Gemini Live ki limit abhi poori ho gayi. Thori der baad try karein.': "Gemini Live's limit is used up for now. Try again a bit later.",
+  'Gemini Live ne jawab nahi diya (time out).': "Gemini Live didn't respond (time out).",
+  'Gemini Live ka setup nahi hua (time out).': "Gemini Live setup didn't finish (time out).",
+  'Gemini Live se raabta nahi hua.': "Couldn't connect to Gemini Live.",
   'Final / draft video (Pixeldrain par jati hai, na chale to Gofile) ya Drive / Pixeldrain link': 'Final / draft video (goes to Pixeldrain, or Gofile if that fails) or a Drive / Pixeldrain link',
   'Editor final / draft video yahan upload kare (Pixeldrain, ya Drive / Gofile link)': 'The editor uploads the final / draft video here (Pixeldrain, or a Drive / Gofile link)',
   '🎬 Video chunein (phone / PC se, 10 GB tak)': '🎬 Choose a video (from phone / PC, up to 10 GB)',
@@ -961,6 +976,11 @@ const tr = (s: string) => EN[s.trim()] ?? s;
 
 /** jin jumlon mein naam / number / date hon */
 export const EN_PATTERNS: [RegExp, (m: RegExpMatchArray) => string | null][] = [
+  [/^(.+) ki limit abhi poori ho gayi\. Upar "Model" mein se doosra model chunein\.$/, (m) => `${m[1]} has hit its limit for now. Choose another model under "Model" above.`],
+  [/^(.+) se awaaz nahi bani: (.*)\. Upar "Model" mein se doosra model chun kar dobara try karein\.$/, (m) => `${m[1]} couldn't generate the audio: ${m[2]}. Choose another model under "Model" above and try again.`],
+  [/^(.+) · aaj (\d+)\/10$/, (m) => `${m[1]} · today ${m[2]}/10`],
+  [/^(.+) · limit poori$/, (m) => `${m[1]} · limit reached`],
+  [/^· (.+) · (.+)\. $/, (m) => ` · ${m[1].replace('Bina limit', 'No limit').replace('10 roz', '10 a day')} · ${m[2]}. `],
   [/^⚠️ Characters 4000 se ziada hain! Voice generate karne ke liye script ko 4000 characters ya us se kam rakhein \(Current: (\d+) \/ 4000\)\.$/, (m) => `⚠️ More than 4000 characters! Keep the script at 4000 characters or fewer to generate a voice (Current: ${m[1]} / 4000).`],
   [/^~(\d+:\d+) minute ki awaaz$/, (m) => `~${m[1]} min of audio`],
   [/^Namoona sunein: (.+)$/, (m) => 'Play sample: ' + m[1]],
@@ -970,6 +990,7 @@ export const EN_PATTERNS: [RegExp, (m: RegExpMatchArray) => string | null][] = [
   [/^−(\d+) din ·$/, (m) => `−${m[1]} day${m[1] === '1' ? '' : 's'} ·`],
   [/^Production (.+)$/, (m) => 'Production ' + m[1]],
   [/^(.+) awaaz bana rahi hai…$/, (m) => `${m[1]} is generating…`],
+  [/^Gemini Live band ho gaya(.*)$/, (m) => 'Gemini Live closed' + m[1]],
   [/^Save ho raha hai… (\d+)%$/, (m) => `Saving… ${m[1]}%`],
   [/^Voiceover · (.+)$/, (m) => 'Voiceover · ' + m[1]],
   [/^Aane wala kal · (.+)$/, (m) => 'Tomorrow · ' + m[1]],
