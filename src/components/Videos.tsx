@@ -4,11 +4,12 @@ import { STAGES, type Stage, type Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { DAYS_LONG, addDays, dayLabel, errorText, fmtClock, fmtDate, isToday, stageLabel, todayKey, weekdayOf } from '../lib/utils';
 import type { Channel } from '../lib/types';
-import { checkAudioFile, uploadAudio } from '../lib/audio';
+import { checkAudioFile, normalizeAudioUrl, uploadAudio } from '../lib/audio';
 import { ConfirmButton, DateFilter, Fold, Sheet, Stop, useToast } from './ui';
 import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
 import { VideoCard, VideoField } from './VideoUpload';
+import { AudioLink } from './AudioLink';
 
 /* =========================================================================
    v9: VIDEOS — har video mein title, script (Google Doc link ya likhi hui),
@@ -323,11 +324,7 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
         <div className="vv-empty muted small">🎬 Abhi video file nahi lagi{canEdit ? ' — Edit dabayein aur upload karein' : ''}</div>
       )}
       {video.voiceover_url ? (
-        <div className="vo-box">
-          <b>🎙 Voiceover</b>
-          <audio controls src={video.voiceover_url} className="vo-audio" />
-          <a className="btn sm" href={video.voiceover_url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
-        </div>
+        <AudioLink url={video.voiceover_url} />
       ) : null}
       {video.youtube_url ? (
         <div className="script-link">
@@ -468,7 +465,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     try {
       const id = await d.saveVideo({
         id: video?.id, channel_id: channelId, title: t, stage, due: due || null, script, notes,
-        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, voiceover_url: vo.trim(), youtube_url: yt.trim(), task_id: myTask,
+        script_url: su, thumbnail_url: thumb.url, thumbnail_delete_url: thumb.del, video_url: videoUrl, voiceover_url: normalizeAudioUrl(vo), youtube_url: yt.trim(), task_id: myTask,
         day: day || undefined
       });
       toast(video ? 'Video update ho gayi' : 'Video add ho gayi');
@@ -538,7 +535,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
           <span className="h">Baad mein Graphic Designer is video ko Edit kar ke bhi thumbnail laga sakta hai.</span>
         </div>
         <div className="f">
-          Video <span className="h">Editor final / draft video yahan upload kare (ya Drive / Gofile link)</span>
+          Video <span className="h">Editor final / draft video yahan upload kare (Pixeldrain, ya Drive / Gofile link)</span>
           <VideoField value={videoUrl} onChange={setVideoUrl} onBusy={setVidBusy} />
         </div>
         <div className="f">
@@ -554,7 +551,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
             <div className="upbar"><div className="upbar-track"><i style={{ width: (voPct < 0 ? 100 : voPct) + '%' }} className={voPct < 0 || voPct >= 100 ? 'done' : ''} /></div></div>
           )}
           <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="ya link: https://pixeldrain.com/u/…" aria-label="Voiceover ka link" />
-          {vo && /^https:\/\//i.test(vo) && <audio controls src={vo} className="vo-audio" />}
+          {vo && /^https:\/\//i.test(vo) && <AudioLink url={vo} label="Sunein" />}
         </div>
         <label className="f">
           YouTube link <span className="h">Publish hone ke baad video ka link</span>

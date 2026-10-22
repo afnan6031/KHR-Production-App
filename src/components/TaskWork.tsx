@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { AudioLink } from './AudioLink';
 import { useData } from '../lib/data';
 import type { Stage, Task, Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
-import { checkAudioFile, uploadAudio } from '../lib/audio';
+import { checkAudioFile, normalizeAudioUrl, uploadAudio } from '../lib/audio';
 import { dayLabel, errorText, todayKey } from '../lib/utils';
 import { Sheet, useToast } from './ui';
 import { VideoField } from './VideoUpload';
@@ -176,7 +177,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
           patch.thumbnail_delete_url = thumb.del;
         }
         if (cfg.kind === 'voiceover') {
-          const u = vo.trim();
+          const u = normalizeAudioUrl(vo);
           if (!/^https:\/\//i.test(u)) throw new Error('Voiceover upload karein ya https:// link lagayein');
           patch.voiceover_url = u;
         }
@@ -250,7 +251,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
         )}
         {cfg.kind === 'video' && (
           <div className="f">
-            Video <span className="h">Final / draft video (Gofile par jati hai) ya Drive / Gofile link</span>
+            Video <span className="h">Final / draft video (Pixeldrain par jati hai, na chale to Gofile) ya Drive / Pixeldrain link</span>
             <VideoField value={videoUrl} onChange={setVideoUrl} onBusy={setVidBusy} />
           </div>
         )}
@@ -281,7 +282,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
               <div className="upbar"><div className="upbar-track"><i style={{ width: (upPct < 0 ? 100 : upPct) + '%' }} className={upPct < 0 || upPct >= 100 ? 'done' : ''} /></div></div>
             )}
             <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="https://… (voiceover ka link)" aria-label="Voiceover ka link" />
-            {vo && /^https:\/\//i.test(vo) && <audio controls src={vo} className="vo-audio" />}
+            {vo && /^https:\/\//i.test(vo) && <AudioLink url={vo} label="Sunein" />}
           </div>
         )}
         {cfg.kind === 'youtube' && (

@@ -417,7 +417,7 @@ function videoTitle(body: string, url: string): string | undefined {
   return prev.startsWith('🎬') ? prev.replace(/^🎬\s*/, '') : undefined;
 }
 
-/** Message likhne ki jagah: text + image (ImgBB) + video (Gofile) + reply */
+/** Message likhne ki jagah: text + image (ImgBB) + video (Pixeldrain / Gofile) + reply */
 export interface Mentionable { id: string; name: string; url?: string; sub?: string }
 export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend, mentions, draftKey }: {
   /** v14: @ likhne par in logon ki list (+ @everyone) */
@@ -570,7 +570,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
           <button className="x" onClick={() => setImg(null)} aria-label="Image hatayein">×</button>
         </div>
       )}
-      {vid.uploading && vid.file && vid.prog && <UploadBar file={vid.file} prog={vid.prog} onCancel={vid.cancel} />}
+      {vid.uploading && vid.file && vid.prog && <UploadBar file={vid.file} prog={vid.prog} onCancel={vid.cancel} host={vid.host} />}
       {mq && mList.length > 0 && (
         <div className="mention-pop" role="listbox" aria-label="Mention karein">
           {mList.map((x, i) => (
