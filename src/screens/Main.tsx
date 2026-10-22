@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
-import type { Channel } from '../lib/types';
-import { CHANNEL_PERF_RULES, channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
+import { FB_ROLE, type Channel } from '../lib/types';
+import { visibleTask, CHANNEL_PERF_RULES, channelTimeline, fmtDate, fmtTime, toMin, inPeriod, periodOf, perfClass, roleClass, roleTime, scheduleText, scoreOf, timeLine, todayKey, type PeriodKind } from '../lib/utils';
 import { CardSizePicker, MemberCard, OwnerCard, useCardSize, useChannelPerf, useMyCards } from '../components/Cards';
 import { Bar, Fold, Logo, Seg, Week, useNow } from '../components/ui';
 import { TaskBoard } from '../components/Tasks';
@@ -183,14 +183,16 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
   const [pk, setPk] = useState<PeriodKind>('week');
   const period = periodOf(pk);
   const chTasks = d.tasks.filter((t) => t.channel_id === channel.id);
-  const todayTasks = boardTasks(chTasks, todayKey());
+  // v16: "din pehle" wale kisi aur ke task production ke din se pehle nazar nahi aate (confusion na ho)
+  const todayTasks = boardTasks(chTasks.filter((t) => visibleTask(t, d.uid, d.isOwner || d.realOwner)), todayKey());
   const [vTab, setVTab] = useState<'today' | 'upcoming' | 'history'>('today');
   const [chat, setChat] = useState(false);
   const [vOpen, setVOpen] = useState<{ focus?: string; create?: boolean } | null>(null);
   const mine = d.rolesOf(channel.id);
   const members = d.channel_members.filter((m) => m.channel_id === channel.id && m.roles.length);
   const vids = d.videos.filter((v) => v.channel_id === channel.id);
-  const canWork = d.isOwner || d.realOwner || mine.length > 0;
+  const canWork = d.isOwner || d.realOwner || d.canEditVideos(channel.id);
+  const fbPeople = members.filter((m) => m.roles.includes(FB_ROLE)).map((m) => d.nameOf(m.user_id));
   const cperf = useChannelPerf(channel, pk === 'day' ? 'week' : pk);
 
   return (
@@ -283,6 +285,7 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
               const a = toMin(r.start), b0 = toMin(r.end), b = b0 <= a ? b0 + 1440 : b0;
               const who = members.filter((m) => m.roles.includes(r.role)).map((m) => d.nameOf(m.user_id)).join(', ');
               const extra = roleTime(channel, r.role).days || 0;
+              const pre = roleTime(channel, r.role).before || 0;
               return (
                 <div className="tl-row" key={r.role}>
                   <div className="tl-label">
@@ -294,12 +297,15 @@ export function ChannelScreen({ channel, onBack, onEdit, onPerf, openProgress }:
                     {b > 1440 && <i className={roleClass(r.role)} style={{ left: 0, width: (b - 1440) / 14.4 + '%' }} />}
                   </div>
                   <span className="tl-time num">
-                    {fmtTime(r.start)} – {fmtTime(r.end)}{extra ? ` +${extra} din` : b0 <= a ? ' +1' : ''}
+                    {pre ? `−${pre} din · ` : ''}{fmtTime(r.start)} – {fmtTime(r.end)}{extra ? ` +${extra} din` : b0 <= a ? ' +1' : ''}
                   </span>
                 </div>
               );
             })}
           </div>
+          {fbPeople.length > 0 && (
+            <p className="muted small m0 tl-fb"><span className={'role sm ' + roleClass(FB_ROLE)}>{FB_ROLE}</span> <span data-notr>{fbPeople.join(', ')}</span> — baqi sab ka kaam mukammal hote hi 24 ghante ka task (video Facebook par, phir link).</p>
+          )}
         </Fold>
       )}
 

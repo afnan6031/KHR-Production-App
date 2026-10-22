@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { useData } from '../lib/data';
-import type { Channel } from '../lib/types';
-import { CHANNEL_PERF_RULES, channelPerf, fmtDate, inPeriod, isToday, periodOf, perfClass, roleClass, roleTimeText, scheduleText, scoreOf, taskState, timeLine, todayKey } from '../lib/utils';
+import { FB_ROLE, type Channel } from '../lib/types';
+import { CHANNEL_PERF_RULES, addDays, channelPerf, fmtDate, inPeriod, isToday, periodOf, perfClass, roleClass, roleTimeText, scheduleText, scoreOf, taskState, timeLine, todayKey } from '../lib/utils';
 import { Bar, Week } from './ui';
 import { ChannelTools } from './Videos';
 
@@ -122,7 +122,7 @@ export function MemberCard({ ch, roles, onOpen, userId, size = 'l' }: { ch: Chan
   return (
     <div {...cardProps(onOpen, ch.id, size)}>
       <div className="card-top">
-        <span className="eyebrow">{roles.length} role{roles.length > 1 ? 's' : ''}</span>
+        <span className="eyebrow">{roles.length ? `${roles.length} role${roles.length > 1 ? 's' : ''}` : '👁 Sirf dekhne ke liye'}</span>
         {isToday(ch) && <span className="live">Aaj kaam</span>}
       </div>
       <div>
@@ -236,13 +236,27 @@ export function OwnerCard({ ch, onOpen, size = 'l' }: { ch: Channel; onOpen: () 
 export function useMyCards(onlyToday: boolean, userId?: string) {
   const d = useData();
   const uid = userId || d.uid;
+  const today = todayKey();
+  const weekAgo = addDays(today, -7);
+  // v16: Facebook Manager ko saare channels (team ke chalaye hue) nazar aate hain — dobara use karne ke liye
+  const fbAll = d.channel_members.some((m) => m.user_id === uid && m.roles.includes(FB_ROLE));
+  // aaj: channel ka din ho, YA is user ka koi kaam aaj chal raha ho (role "din pehle" / Facebook ka 24 ghante wala task)
+  const busy = new Set(
+    d.tasks.filter((t) => t.user_id === uid && (t.day === today || (t.status === 'pending' && t.day >= weekAgo && t.day < today))).map((t) => t.channel_id)
+  );
   const out: { ch: Channel; roles: string[] }[] = [];
   [...d.channels]
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((ch) => {
-      if (onlyToday && !isToday(ch)) return;
       const roles = d.rolesOf(ch.id, uid);
-      if (roles.length) out.push({ ch, roles });
+      if (onlyToday) {
+        const onlyFb = roles.length > 0 && roles.every((r) => r === FB_ROLE);
+        // Facebook Manager: sirf wo channel jahan us ka task pending hai
+        if (onlyFb ? !busy.has(ch.id) : !(isToday(ch) || busy.has(ch.id))) return;
+        if (roles.length) out.push({ ch, roles });
+        return;
+      }
+      if (roles.length || fbAll) out.push({ ch, roles });
     });
   return out;
 }

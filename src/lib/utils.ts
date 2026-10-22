@@ -1,4 +1,4 @@
-import { ROLES, STAGES, type Channel, type Perf, type RoleTime, type Task, type TaskState, type ViewRow } from './types';
+import { FB_ROLE, ROLES, STAGES, type Channel, type Perf, type RoleTime, type Task, type TaskState, type ViewRow } from './types';
 
 export const DAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -281,8 +281,15 @@ export function roleTime(ch: Channel, role: string): RoleTime {
   return {
     start: hhmm(r?.start) || hhmm(ch.time_from) || '10:00',
     end: hhmm(r?.end) || hhmm(ch.time_to) || '18:00',
-    days: Math.max(0, Number(r?.days) || 0)
+    days: Math.max(0, Number(r?.days) || 0),
+    before: Math.max(0, Math.min(14, Number(r?.before) || 0))
   };
+}
+
+/** v16: "din pehle" wala task (misal Script Writer kal ke EP ka kaam aaj) — production ke din se pehle doosron ko nazar nahi aata */
+export const isEarly = (t: Task) => !!t.for_day && t.for_day > t.day && t.role !== FB_ROLE;
+export function visibleTask(t: Task, viewer: string, owner: boolean, today = todayKey()): boolean {
+  return owner || t.user_id === viewer || !(isEarly(t) && today < t.for_day!);
 }
 
 export function toMin(t: string): number {
@@ -292,15 +299,18 @@ export function toMin(t: string): number {
 
 /** "9:00 AM – 12:00 PM" (+ "agle din" jab deadline raat 12 ke baad ho) */
 export function roleTimeText(ch: Channel, role: string): string {
+  if (role === FB_ROLE) return 'Baqi sab ka kaam mukammal hote hi · 24 ghante';
   const t = roleTime(ch, role);
-  return `${fmtTime(t.start)} – ${fmtTime(t.end)}${t.days ? ` (${t.days} din baad)` : toMin(t.end) <= toMin(t.start) ? ' (agle din)' : ''}`;
+  const pre = t.before ? `${t.before} din pehle · ` : '';
+  return `${pre}${fmtTime(t.start)} – ${fmtTime(t.end)}${t.days ? ` (${t.days} din baad)` : toMin(t.end) <= toMin(t.start) ? ' (agle din)' : ''}`;
 }
 
 /** Channel ke roles, start time ke hisaab se tarteeb mein */
 export function channelTimeline(ch: Channel, roles: string[]) {
   return roles
+    .filter((role) => role !== FB_ROLE)
     .map((role) => ({ role, ...roleTime(ch, role) }))
-    .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
+    .sort((a, b) => (b.before || 0) - (a.before || 0) || toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
 }
 
 export function notStarted(t: Task, now = Date.now()): boolean {

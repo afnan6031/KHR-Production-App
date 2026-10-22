@@ -4,7 +4,7 @@ import { STAGES, type Stage, type Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { DAYS_LONG, addDays, dayLabel, errorText, fmtClock, fmtDate, isToday, stageLabel, todayKey, weekdayOf } from '../lib/utils';
 import type { Channel } from '../lib/types';
-import { checkAudioFile, uploadToCatbox } from '../lib/catbox';
+import { checkAudioFile, uploadAudio } from '../lib/audio';
 import { ConfirmButton, DateFilter, Fold, Sheet, Stop, useToast } from './ui';
 import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
@@ -137,6 +137,7 @@ export function VideoTile({ v, onOpen, showDay }: { v: Video; onOpen: () => void
           <i className={v.video_url ? 'on' : ''}>🎬 <span>Video</span></i>
           <i className={v.voiceover_url ? 'on' : ''}>🎙 <span>Voiceover</span></i>
           <i className={v.youtube_url ? 'on' : ''}>▶ <span>YouTube</span></i>
+          {v.facebook_url ? <i className="on">📘 <span>Facebook</span></i> : null}
         </span>
       </span>
     </button>
@@ -249,7 +250,8 @@ export function VideosSheet({ channelId, initialTab, focus, create, taskId, onCl
   const [view, setView] = useState<string | null>(focus || null);
   const [editing, setEditing] = useState<Video | 'new' | null>(create ? 'new' : null);
   const ch = d.channels.find((c) => c.id === channelId);
-  const canWork = d.isOwner || d.realOwner || d.rolesOf(channelId).length > 0;
+  // v16: sirf Facebook Manager ho to EP dekh sakta hai, badal nahi sakta (sirf Facebook link)
+  const canWork = d.isOwner || d.realOwner || d.canEditVideos(channelId);
   const cur = view ? d.videos.find((v) => v.id === view) : null;
 
   if (editing) return <VideoForm channelId={channelId} video={editing === 'new' ? null : editing} taskId={taskId} onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); setView(id); }} />;
@@ -334,6 +336,7 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
           <button className="btn sm" onClick={() => copy(video.youtube_url!)}>Copy</button>
         </div>
       ) : null}
+      <FacebookLink video={video} />
       {video.notes && <div className="note pre">{video.notes}</div>}
       {canEdit && (
         <button className="btn block" onClick={onEdit}>
@@ -343,6 +346,49 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
       {img && video.thumbnail_url && <ImageViewer url={video.thumbnail_url} onClose={() => setImg(false)} />}
     </article>
   );
+}
+
+/** v16: Facebook ka link — sab dekh sakte hain; Facebook Manager / owner laga ya badal sakte hain (EP ki baqi cheezein nahi) */
+function FacebookLink({ video }: { video: Video }) {
+  const d = useData();
+  const toast = useToast();
+  const can = d.isOwner || d.realOwner || d.isFbManager;
+  const [edit, setEdit] = useState(false);
+  const [val, setVal] = useState(video.facebook_url || '');
+  const [busy, setBusy] = useState(false);
+  const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua'));
+  async function save() {
+    const u = val.trim();
+    if (u && !/^https:\/\//i.test(u)) return toast('Facebook ka poora link (https://…) lagayein');
+    setBusy(true);
+    try {
+      await d.setFacebookLink(video.id, u);
+      toast(u ? '📘 Facebook link lag gaya' : 'Facebook link hata diya');
+      setEdit(false);
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (edit)
+    return (
+      <div className="fb-row">
+        <input type="url" inputMode="url" value={val} onChange={(e) => setVal(e.target.value)} placeholder="https://facebook.com/… ya https://fb.watch/…" aria-label="Facebook link" autoFocus />
+        <button type="button" className="btn primary sm" onClick={save} disabled={busy}>{busy ? 'Save…' : 'Save'}</button>
+        <button type="button" className="btn sm" onClick={() => { setEdit(false); setVal(video.facebook_url || ''); }} disabled={busy}>Rehne dein</button>
+      </div>
+    );
+  if (video.facebook_url)
+    return (
+      <div className="script-link">
+        <span className="mono-url">📘 {video.facebook_url.replace(/^https?:\/\//, '')}</span>
+        <a className="btn primary sm" href={video.facebook_url} target="_blank" rel="noopener noreferrer">Facebook par dekhein ↗</a>
+        <button className="btn sm" onClick={() => copy(video.facebook_url!)}>Copy</button>
+        {can && <button className="btn sm" onClick={() => setEdit(true)}>✎ Facebook link</button>}
+      </div>
+    );
+  return can ? <button type="button" className="btn sm fb-add" onClick={() => setEdit(true)}>📘 Facebook link lagayein</button> : null;
 }
 
 /** Nai video banana ya edit: title, stage, script link / text, thumbnail (ImgBB), notes */
@@ -384,7 +430,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
     setBusy('vo');
     setVoPct(0);
     try {
-      setVo(await uploadToCatbox(f, setVoPct));
+      setVo(await uploadAudio(f, setVoPct));
       toast('🎙 Voiceover upload ho gaya');
     } catch (e) {
       toast(errorText(e));
@@ -496,7 +542,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
           <VideoField value={videoUrl} onChange={setVideoUrl} onBusy={setVidBusy} />
         </div>
         <div className="f">
-          Voiceover <span className="h">Audio file (MP3, WAV, M4A…) Catbox par upload karein, ya link paste karein</span>
+          Voiceover <span className="h">Audio file (MP3, WAV, M4A…) Pixeldrain par upload karein, ya link paste karein</span>
           <input ref={voRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.opus,.flac" hidden onChange={(e) => pickVo(e.target.files?.[0])} />
           <div className="row">
             <button type="button" className="btn" disabled={busy !== ''} onClick={() => voRef.current?.click()}>
@@ -507,7 +553,7 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
           {voPct !== null && (
             <div className="upbar"><div className="upbar-track"><i style={{ width: (voPct < 0 ? 100 : voPct) + '%' }} className={voPct < 0 || voPct >= 100 ? 'done' : ''} /></div></div>
           )}
-          <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="ya link: https://files.catbox.moe/…" aria-label="Voiceover ka link" />
+          <input type="url" inputMode="url" value={vo} onChange={(e) => setVo(e.target.value)} placeholder="ya link: https://pixeldrain.com/u/…" aria-label="Voiceover ka link" />
           {vo && /^https:\/\//i.test(vo) && <audio controls src={vo} className="vo-audio" />}
         </div>
         <label className="f">

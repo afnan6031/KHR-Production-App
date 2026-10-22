@@ -80,6 +80,8 @@ export interface RoleTime {
   end: string;
   /** v9: deadline kitne din baad (0 = usi din) */
   days?: number;
+  /** v16: production ke din se kitne din PEHLE shuru (misal Script Writer 1 din pehle) */
+  before?: number;
 }
 
 export interface Member {
@@ -130,6 +132,8 @@ export interface Video {
   /** v13 */
   voiceover_url?: string;
   youtube_url?: string;
+  /** v16: Facebook Manager ka link */
+  facebook_url?: string;
 }
 
 export interface Task {
@@ -157,6 +161,8 @@ export interface Task {
   assigned_by: string | null;
   /** v13: kis EP mein kaam laga */
   video_id?: string | null;
+  /** v16: kis production din ka kaam (role "din pehle" ho to day se aage) */
+  for_day?: string | null;
 }
 
 /** v3.1: channel ke din ki script / thumbnail (har din kitni bhi) */
@@ -192,7 +198,9 @@ export interface Message {
 /** v15: expired = 24 ghante ki extra deadline chal rahi hai, ended = wo bhi khatam */
 export type TaskState = 'pending' | 'expired' | 'ended' | 'done' | 'rejected';
 
-export const ROLES =['Script Writer', 'Editor', 'Manager', 'Graphic Designer', 'Publisher', 'Voice Over'] as const;
+export const ROLES = ['Script Writer', 'Editor', 'Manager', 'Graphic Designer', 'Publisher', 'Voice Over', 'Facebook Manager'] as const;
+/** v16: baqi sab roles ka kaam mukammal hone par is ka 24 ghante ka task khud banta hai */
+export const FB_ROLE = 'Facebook Manager';
 
 export const STAGES: { key: Stage; label: string }[] = [
   { key: 'idea', label: 'Idea' },

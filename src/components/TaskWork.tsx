@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useData } from '../lib/data';
 import type { Stage, Task, Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
-import { checkAudioFile, uploadToCatbox } from '../lib/catbox';
+import { checkAudioFile, uploadAudio } from '../lib/audio';
 import { dayLabel, errorText, todayKey } from '../lib/utils';
 import { Sheet, useToast } from './ui';
 import { VideoField } from './VideoUpload';
@@ -14,14 +14,16 @@ import { VideoField } from './VideoUpload';
      Editor → video, Graphic Designer → thumbnail, Publisher → YouTube link.
    ========================================================================= */
 
-export type WorkKind = 'title' | 'script' | 'voiceover' | 'video' | 'thumbnail' | 'youtube';
+export type WorkKind = 'title' | 'script' | 'voiceover' | 'video' | 'thumbnail' | 'youtube' | 'facebook';
 export const ROLE_WORK: Record<string, { kind: WorkKind; icon: string; action: string; done: string; stage: Stage }> = {
   Manager: { kind: 'title', icon: '📝', action: 'Title dein', done: 'Title diya', stage: 'idea' },
   'Script Writer': { kind: 'script', icon: '📄', action: 'Script lagayein', done: 'Script lagi', stage: 'script' },
   'Voice Over': { kind: 'voiceover', icon: '🎙', action: 'Voiceover lagayein', done: 'Voiceover laga', stage: 'script' },
   Editor: { kind: 'video', icon: '🎬', action: 'Video upload karein', done: 'Video lagi', stage: 'editing' },
   'Graphic Designer': { kind: 'thumbnail', icon: '🖼', action: 'Thumbnail lagayein', done: 'Thumbnail laga', stage: 'design' },
-  Publisher: { kind: 'youtube', icon: '▶', action: 'YouTube link dein', done: 'Publish hua', stage: 'published' }
+  Publisher: { kind: 'youtube', icon: '▶', action: 'YouTube link dein', done: 'Publish hua', stage: 'published' },
+  // v16: baqi sab ka kaam mukammal hone par 24 ghante — video download kar ke Facebook par, phir link
+  'Facebook Manager': { kind: 'facebook', icon: '📘', action: 'Facebook link dein', done: 'Facebook par laga', stage: 'published' }
 };
 const STAGE_ORDER: Stage[] = ['idea', 'script', 'editing', 'design', 'review', 'published'];
 
@@ -36,6 +38,7 @@ export function hasWork(kind: WorkKind, v: Video | undefined): boolean {
   if (kind === 'voiceover') return !!v.voiceover_url;
   if (kind === 'video') return !!v.video_url;
   if (kind === 'thumbnail') return !!v.thumbnail_url;
+  if (kind === 'facebook') return !!v.facebook_url;
   return !!v.youtube_url;
 }
 
@@ -50,8 +53,10 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     () => d.videos.filter((v) => v.channel_id === task.channel_id).sort((a, b) => b.day.localeCompare(a.day) || b.created_at.localeCompare(a.created_at)).slice(0, 60),
     [d.videos, task.channel_id]
   );
-  // v15: pehle wo EP jo isi din ke liye (advance mein) banaya gaya
-  const firstOpen = eps.find((v) => v.day === task.day && !hasWork(cfg.kind, v)) || eps.find((v) => v.day === task.day) || eps.find((v) => !hasWork(cfg.kind, v));
+  // v15: pehle wo EP jo isi din ke liye (advance mein) banaya gaya. v16: "din pehle" wale role ka din = production ka din
+  const prodDay = task.for_day || task.day;
+  const firstOpen = eps.find((v) => v.day === prodDay && !hasWork(cfg.kind, v)) || eps.find((v) => v.day === prodDay) || eps.find((v) => !hasWork(cfg.kind, v));
+  const isFb = cfg.kind === 'facebook';
   const linked = task.video_id ? eps.find((v) => v.id === task.video_id) : undefined;
   const [epId, setEpId] = useState<string>(cfg.kind === 'title' ? 'new' : linked?.id || firstOpen?.id || (eps[0]?.id ?? 'new'));
   const ep = epId === 'new' ? undefined : eps.find((v) => v.id === epId);
@@ -64,6 +69,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
   const [thumb, setThumb] = useState({ url: ep?.thumbnail_url || '', del: ep?.thumbnail_delete_url || '' });
   const [vo, setVo] = useState(ep?.voiceover_url || '');
   const [yt, setYt] = useState(ep?.youtube_url || '');
+  const [fb, setFb] = useState(ep?.facebook_url || '');
   const [busy, setBusy] = useState<'' | 'up' | 'save'>('');
   const [upPct, setUpPct] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -78,6 +84,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     setThumb({ url: v?.thumbnail_url || '', del: v?.thumbnail_delete_url || '' });
     setVo(v?.voiceover_url || '');
     setYt(v?.youtube_url || '');
+    setFb(v?.facebook_url || '');
   };
 
   async function pickFile(f: File | undefined) {
@@ -93,7 +100,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
         const bad = checkAudioFile(f);
         if (bad) throw new Error(bad);
         setUpPct(0);
-        setVo(await uploadToCatbox(f, setUpPct));
+        setVo(await uploadAudio(f, setUpPct));
         toast('🎙 Voiceover upload ho gaya');
       }
     } catch (e) {
@@ -119,7 +126,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     voiceover_url: v?.voiceover_url || '',
     youtube_url: v?.youtube_url || '',
     task_id: v ? undefined : task.id,
-    day: v ? undefined : task.day
+    day: v ? undefined : prodDay
   });
   const advance = (s: Stage) => (STAGE_ORDER.indexOf(cfg.stage) > STAGE_ORDER.indexOf(s) ? cfg.stage : s);
 
@@ -129,7 +136,14 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
     setBusy('save');
     try {
       let videoId = '';
-      if (cfg.kind === 'title') {
+      if (isFb) {
+        // sirf Facebook link — EP ki baqi cheezein jis ne lagayi usi ki
+        if (!ep) throw new Error('EP chunein');
+        const u = fb.trim();
+        if (!/^https:\/\/([\w-]+\.)*(facebook\.com|fb\.watch|fb\.com)\//i.test(u)) throw new Error('Facebook video / post ka poora link paste karein (https://facebook.com/… ya https://fb.watch/…)');
+        await d.setFacebookLink(ep.id, u);
+        videoId = ep.id;
+      } else if (cfg.kind === 'title') {
         const list = titles.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 20);
         if (!list.length) throw new Error('Kam az kam ek title likhein');
         if (linked) {
@@ -192,7 +206,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
       }}
     >
       <p className="muted small m0">
-        <span data-notr>{ch?.name}</span> · {task.role} · {dayLabel(task.day)}
+        <span data-notr>{ch?.name}</span> · {task.role} · {dayLabel(task.day)}{prodDay !== task.day && !isFb ? ' · EP ' + dayLabel(prodDay) + ' ka' : ''}
       </p>
       <form className="form" onSubmit={submit}>
         {cfg.kind === 'title' ? (
@@ -210,7 +224,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
                     {(v.day === today ? 'Aaj · ' : v.day > today ? '📅 ' + v.day.slice(5) + ' · ' : v.day.slice(5) + ' · ') + v.title + (hasWork(cfg.kind, v) ? '  ✓ (pehle se laga)' : '')}
                   </option>
                 ))}
-                <option value="new">＋ Naya EP</option>
+                {!isFb && <option value="new">＋ Naya EP</option>}
               </select>
             </label>
             {epId === 'new' && (
@@ -258,7 +272,7 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
         )}
         {cfg.kind === 'voiceover' && (
           <div className="f">
-            Voiceover <span className="h">Audio file (MP3, WAV, M4A…) Catbox par jati hai, ya Drive link paste karein</span>
+            Voiceover <span className="h">Audio file (MP3, WAV, M4A…) Pixeldrain par jati hai, ya Drive link paste karein</span>
             <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
             <button type="button" className="btn" disabled={busy !== ''} onClick={() => fileRef.current?.click()}>
               {busy === 'up' ? 'Upload ho raha hai…' : '🎙 Voiceover file chunein'}
@@ -277,6 +291,25 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
           </label>
         )}
 
+        {isFb && ep && (
+          <div className="fb-ep">
+            <b data-notr>{ep.title}</b>
+            <div className="fb-links">
+              {ep.video_url ? <a className="btn primary sm" href={ep.video_url} target="_blank" rel="noopener noreferrer">🎬 Video kholein / download</a> : <span className="muted small">🎬 Video abhi nahi lagi</span>}
+              {ep.script_url && <a className="btn sm" href={ep.script_url} target="_blank" rel="noopener noreferrer">📄 Script</a>}
+              {ep.thumbnail_url && <a className="btn sm" href={ep.thumbnail_url} target="_blank" rel="noopener noreferrer">🖼 Thumbnail</a>}
+              {ep.youtube_url && <a className="btn sm" href={ep.youtube_url} target="_blank" rel="noopener noreferrer">▶ YouTube (title / SEO)</a>}
+            </div>
+            {ep.thumbnail_url && <img className="fb-thumb" src={ep.thumbnail_url} alt="" />}
+            <p className="muted tiny m0">Video download kar ke Facebook par upload karein, phir us ka link yahan lagayein. EP ki baqi cheezein badal nahi sakte.</p>
+          </div>
+        )}
+        {isFb && (
+          <label className="f">
+            Facebook video / post ka link
+            <input type="url" inputMode="url" value={fb} onChange={(e) => setFb(e.target.value)} placeholder="https://facebook.com/… ya https://fb.watch/…" required />
+          </label>
+        )}
         <button className="btn primary block" type="submit" disabled={busy !== '' || vidBusy}>
           {busy === 'save' ? 'Save ho raha hai…' : vidBusy || busy === 'up' ? 'Upload ho raha hai…' : '✓ Lagayein aur task mukammal karein'}
         </button>

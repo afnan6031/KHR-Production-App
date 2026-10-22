@@ -3,7 +3,7 @@ import { useData } from '../lib/data';
 import type { MusicTrack } from '../lib/types';
 import { errorText } from '../lib/utils';
 import { ConfirmButton, Sheet, useToast } from './ui';
-import { checkAudioFile, forgetSrc, isUploaded, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadToCatbox } from '../lib/catbox';
+import { checkAudioFile, forgetSrc, isUploaded, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadAudio, normalizeAudioUrl } from '../lib/audio';
 
 /* =========================================================================
    v9: MUSIC — har user ki apni playlist. YouTube / YouTube Music, SoundCloud,
@@ -46,6 +46,11 @@ export function parseMusic(url: string): Source {
   if (host === 'drive.google.com') {
     const m = u.pathname.match(/\/file\/d\/([\w-]+)/) || [null, u.searchParams.get('id')];
     if (m[1]) return { kind: 'embed', src: `https://drive.google.com/file/d/${m[1]}/preview`, height: 0, label: 'Google Drive' };
+  }
+  // v16: Pixeldrain (apne upload) — MP4 ho to bhi sirf awaaz (audio player)
+  if (host === 'pixeldrain.com') {
+    const m = u.pathname.match(/^\/(?:api\/file|u)\/([\w-]{3,40})/);
+    if (m) return { kind: 'audio', src: 'https://pixeldrain.com/api/file/' + m[1], video: false };
   }
   if (/\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|$)/i.test(u.pathname)) return { kind: 'audio', src: url, video: false };
   if (/\.(mp4|webm|m4v|mov)(\?|$)/i.test(u.pathname)) return { kind: 'audio', src: url, video: true };
@@ -723,7 +728,7 @@ export function MusicSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Gaana add: PC / phone se upload (Catbox) ya link paste */
+/** Gaana add: PC / phone se upload (Pixeldrain) ya link paste */
 function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link'; playlistId?: string; onBack: () => void; onClose: () => void }) {
   const d = useData();
   const toast = useToast();
@@ -750,7 +755,7 @@ function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link
     setBusy(true);
     setPct(0);
     try {
-      const u = await uploadToCatbox(file, setPct);
+      const u = await uploadAudio(file, setPct);
       await after(u, title.trim() || file.name.replace(/\.[^.]+$/, '').slice(0, 200));
       toast('🎵 Upload ho kar music mein add ho gaya');
       onBack();
@@ -763,7 +768,7 @@ function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link
   }
   async function addLink(e: FormEvent) {
     e.preventDefault();
-    const u = url.trim();
+    const u = normalizeAudioUrl(url);
     if (!/^https?:\/\//i.test(u)) return toast('Poora link paste karein (https:// se shuru)');
     setBusy(true);
     try {
@@ -793,7 +798,7 @@ function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link
       {mode === 'upload' ? (
         <form className="form" onSubmit={upload}>
           <div className="f">
-            Audio file <span className="h">MP3, M4A, WAV, OGG ya MP4 audio — 200 MB tak. File Catbox.moe par jati hai, app mein sirf link save hota hai.</span>
+            Audio file <span className="h">MP3, M4A, WAV, OGG ya MP4 — 200 MB tak. File Pixeldrain par jati hai, app mein sirf link save hota hai. MP4 ki sirf awaaz chalti hai.</span>
             <input ref={fileRef} type="file" hidden accept="audio/*,video/mp4,.mp3,.m4a,.wav,.ogg,.opus,.flac" onChange={(e) => { const f = e.target.files?.[0] || null; setFile(f); if (f && !title.trim()) setTitle(f.name.replace(/\.[^.]+$/, '').slice(0, 200)); }} disabled={busy} />
             <button type="button" className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
               🎵 {file ? <span data-notr>{file.name}</span> : 'Audio file chunein (phone / PC se)'}
@@ -806,7 +811,7 @@ function AddSong({ mode, playlistId, onBack, onClose }: { mode: 'upload' | 'link
           {pct !== null && (
             <div className="upbar" role="status">
               <div className="upbar-track" aria-hidden="true"><i style={{ width: (pct < 0 ? 100 : pct) + '%' }} className={pct < 0 || pct >= 100 ? 'done' : ''} /></div>
-              <span className="muted tiny">{pct < 0 ? 'Upload ho raha hai…' : pct >= 100 ? 'Catbox file save kar raha hai…' : pct + '%'}</span>
+              <span className="muted tiny">{pct < 0 ? 'Upload ho raha hai…' : pct >= 100 ? 'Pixeldrain file save kar raha hai…' : pct + '%'}</span>
             </div>
           )}
           <button className="btn primary block" type="submit" disabled={busy || !file}>{busy ? 'Upload ho raha hai…' : '⬆ Upload karein'}</button>

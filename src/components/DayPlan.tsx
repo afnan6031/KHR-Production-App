@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useData } from '../lib/data';
-import type { Task } from '../lib/types';
-import { DAYS_LONG, DAYS_UR, addDays, fmtDate, isToday, roleClass, roleTimeText, todayKey, weekdayOf } from '../lib/utils';
+import { FB_ROLE, type Task } from '../lib/types';
+import { DAYS_LONG, DAYS_UR, addDays, fmtDate, isToday, roleClass, roleTime, roleTimeText, todayKey, weekdayOf } from '../lib/utils';
 import { TaskBoard } from './Tasks';
 import { ROLE_WORK, hasWork } from './TaskWork';
 import { channelHue } from './Cards';
@@ -55,7 +55,7 @@ export function DayStrip({ value, onChange }: { value: string; onChange: (k: str
   );
 }
 
-interface Planned { key: string; channel_id: string; user_id: string; role: string }
+interface Planned { key: string; channel_id: string; user_id: string; role: string; prod: string }
 
 /** Aane wale din ka kaam (schedule se) — abhi task bana nahi, sirf plan */
 function usePlanned(day: string, userId?: string): Planned[] {
@@ -63,13 +63,20 @@ function usePlanned(day: string, userId?: string): Planned[] {
   return useMemo(() => {
     const out: Planned[] = [];
     d.channels.forEach((c) => {
-      if (!isToday(c, day)) return;
       d.channel_members
         .filter((m) => m.channel_id === c.id && (!userId || m.user_id === userId))
         .forEach((m) => {
           const p = d.profileOf(m.user_id);
           if (!p || (p.status !== 'approved' && !p.is_owner)) return;
-          (m.roles || []).forEach((role) => out.push({ key: c.id + m.user_id + role, channel_id: c.id, user_id: m.user_id, role }));
+          (m.roles || []).forEach((role) => {
+            // v16: "din pehle" wala role us din kaam karta hai jis ke n din baad production ho; Facebook Manager production ke din (sab ke baad)
+            const before = role === FB_ROLE ? 0 : roleTime(c, role).before || 0;
+            const prod = addDays(day, before);
+            if (!isToday(c, prod)) return;
+            // doosre ka "din pehle" wala kaam production se pehle sirf owner / khud ko
+            if (before && userId === undefined && !d.isOwner && m.user_id !== d.uid) return;
+            out.push({ key: c.id + m.user_id + role, channel_id: c.id, user_id: m.user_id, role, prod });
+          });
         });
     });
     return out;
@@ -110,19 +117,22 @@ export function DayTasks({ day, userId, showName, now, onOpenChannel, foldId }: 
       <p className="muted tiny m0">📅 Aane wala din — tasks us din khud ban jayenge. Kaam pehle se karna ho to channel kholein → "Nai video" → yahi din chunein.</p>
       {order.map((cid) => {
         const ch = d.channels.find((c) => c.id === cid)!;
-        const ep = d.videos.find((v) => v.channel_id === cid && v.day === day);
         const rows = daily.filter((p) => p.channel_id === cid);
+        const prod = rows.some((r) => r.prod === day) ? day : rows[0]?.prod || day;
+        const epOf = (k: string) => d.videos.find((v) => v.channel_id === cid && v.day === k);
+        const ep = epOf(prod);
         return (
           <div key={cid} className="plan-ch" style={{ ['--hue' as string]: channelHue(cid) }}>
             <button type="button" className="plan-ch-h" onClick={onOpenChannel ? () => onOpenChannel(cid) : undefined}>
               <span className="plan-dot" aria-hidden="true" />
               <b data-notr>{ch.name}</b>
               {ep ? <span className="chip good sm" data-notr>EP: {ep.title}</span> : <span className="chip sm muted">EP abhi nahi bana</span>}
+              {prod !== day && <span className="chip sm">{'Production ' + fmtDate(prod)}</span>}
             </button>
             <div className="plan-rows">
               {rows.map((p) => {
                 const w = ROLE_WORK[p.role];
-                const ready = w && hasWork(w.kind, ep);
+                const ready = w && hasWork(w.kind, epOf(p.prod));
                 return (
                   <div className="plan-row" key={p.key}>
                     <span className={'role ' + roleClass(p.role)}>{p.role}</span>

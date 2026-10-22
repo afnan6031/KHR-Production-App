@@ -1725,3 +1725,180 @@ begin
   delete from public.push_outbox where created_at < now() - interval '3 days';
 end $$;
 revoke execute on function public.khr_deadline_tick() from public, anon, authenticated;
+
+-- ============================================================
+-- v16: PIXELDRAIN MUSIC (user_music) · ROLE "DIN PEHLE" · FACEBOOK MANAGER
+--   Supabase mein sirf text aur links — audio Pixeldrain par, image ImgBB par, video Gofile par.
+-- ============================================================
+
+-- ---------- 1) Music: user_music (har user ki apni list) ----------
+-- Asal data public.music_tracks mein hai (playlists usi se jurti hain). user_music usi ka saaf naam wala view hai:
+-- id, user_id, title, audio_url, created_at — RLS music_tracks wala hi lagta hai (security_invoker): har user sirf apne gaane.
+create or replace view public.user_music with (security_invoker = true) as
+  select id, user_id, title, url as audio_url, created_at from public.music_tracks;
+grant select, insert, update, delete on public.user_music to authenticated;
+
+-- ---------- 2) Role ka "din pehle" (misal Script Writer production se 1 din pehle) ----------
+-- role_times mein "before": {"Script Writer": {"start":"10:00","end":"18:00","before":1}}
+-- for_day = kis production din ka kaam hai (EP isi din ka). day = jis din task chalta hai.
+alter table public.tasks add column if not exists for_day date;
+update public.tasks set for_day = day where for_day is null;
+
+create or replace function public.role_before(p_role_times jsonb, p_role text) returns int
+language sql immutable as $$
+  select greatest(0, least(14, coalesce(nullif(p_role_times -> p_role ->> 'before', '')::int, 0)))
+$$;
+
+create or replace function public.ensure_tasks_for(d date) returns void
+language plpgsql security definer set search_path = public as $$
+declare tz text := public.app_tz();
+begin
+  insert into public.tasks (channel_id, user_id, role, day, for_day, start_at, due_at)
+  select c.id, m.user_id, r.role, d, d + b.n, w.start_at, w.due_at
+  from public.channels c
+  join public.channel_members m on m.channel_id = c.id
+  join public.profiles p on p.id = m.user_id and (p.status = 'approved' or p.is_owner)
+  cross join lateral unnest(m.roles) as r(role)
+  cross join lateral (select public.role_before(c.role_times, r.role) as n) b
+  cross join lateral public.role_window(c.role_times, c.time_from, c.time_to, r.role, d) w
+  where r.role <> 'Facebook Manager'   -- Facebook Manager ka task baqi sab ke mukammal hone par khud banta hai
+    and (c.schedule_type = 'daily' or extract(dow from d + b.n)::smallint = any(c.work_days))
+    and d >= (c.created_at at time zone tz)::date
+    and d >= (m.added_at at time zone tz)::date
+  on conflict (channel_id, user_id, role, day) where kind = 'daily' do nothing;
+
+  if d = public.app_today() then
+    delete from public.tasks t
+    where t.day = d and t.kind = 'daily' and t.status = 'pending' and t.role <> 'Facebook Manager' and not exists (
+      select 1 from public.channels c
+      join public.channel_members m on m.channel_id = c.id and m.user_id = t.user_id
+      join public.profiles p on p.id = m.user_id and (p.status = 'approved' or p.is_owner)
+      where c.id = t.channel_id and t.role = any(m.roles)
+        and (c.schedule_type = 'daily' or extract(dow from d + public.role_before(c.role_times, t.role))::smallint = any(c.work_days))
+    );
+    update public.tasks t
+       set start_at = (public.role_window(c.role_times, c.time_from, c.time_to, t.role, d)).start_at,
+           due_at   = (public.role_window(c.role_times, c.time_from, c.time_to, t.role, d)).due_at + make_interval(mins => t.extended_minutes),
+           for_day  = d + public.role_before(c.role_times, t.role)
+      from public.channels c
+     where c.id = t.channel_id and t.day = d and t.kind = 'daily' and t.status = 'pending' and t.role <> 'Facebook Manager';
+  end if;
+end $$;
+
+-- ---------- 3) Facebook Manager ----------
+alter table public.videos add column if not exists facebook_url text not null default '';
+alter table public.videos drop constraint if exists videos_v16_fb_check;
+alter table public.videos add constraint videos_v16_fb_check check (facebook_url = '' or (facebook_url ~* '^https://' and char_length(facebook_url) <= 2000));
+
+create or replace function public.role_needs_work(p_role text) returns boolean
+language sql immutable as $$
+  select p_role in ('Script Writer', 'Editor', 'Graphic Designer', 'Voice Over', 'Manager', 'Publisher', 'Facebook Manager')
+$$;
+create or replace function public.role_work_done(p_role text, v public.videos) returns boolean
+language sql stable as $$
+  select case p_role
+    when 'Script Writer' then v.script_url <> '' or btrim(v.script) <> ''
+    when 'Editor' then v.video_url <> ''
+    when 'Graphic Designer' then v.thumbnail_url <> ''
+    when 'Voice Over' then v.voiceover_url <> ''
+    when 'Manager' then btrim(v.title) <> ''
+    when 'Publisher' then v.youtube_url <> ''
+    when 'Facebook Manager' then v.facebook_url <> ''
+    else true end
+$$;
+
+-- kisi bhi channel mein Facebook Manager?
+create or replace function public.is_fb_manager() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_approved() and exists (
+    select 1 from public.channel_members m where m.user_id = auth.uid() and 'Facebook Manager' = any(m.roles)
+  );
+$$;
+-- is channel mein sirf Facebook Manager (ya member hi nahi) — EP badal / bana nahi sakta
+create or replace function public.can_edit_videos(ch uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_owner() or exists (
+    select 1 from public.channel_members m
+    where m.channel_id = ch and m.user_id = auth.uid() and public.is_approved()
+      and exists (select 1 from unnest(m.roles) r where r <> 'Facebook Manager')
+  );
+$$;
+grant execute on function public.is_fb_manager() to authenticated;
+grant execute on function public.can_edit_videos(uuid) to authenticated;
+
+-- Facebook Manager saare channels, un ki team aur saari videos DEKH sakta hai (dobara use karne ke liye) — badal nahi sakta
+drop policy if exists channels_select on public.channels;
+create policy channels_select on public.channels for select to authenticated
+  using (public.is_owner() or public.is_member(id) or public.is_fb_manager());
+drop policy if exists members_select on public.channel_members;
+create policy members_select on public.channel_members for select to authenticated
+  using (public.is_owner() or public.is_member(channel_id) or public.is_fb_manager());
+drop policy if exists videos_select on public.videos;
+create policy videos_select on public.videos for select to authenticated
+  using (public.is_owner() or public.is_member(channel_id) or public.is_fb_manager());
+drop policy if exists videos_insert on public.videos;
+create policy videos_insert on public.videos for insert to authenticated
+  with check (public.can_edit_videos(channel_id));
+drop policy if exists videos_update on public.videos;
+create policy videos_update on public.videos for update to authenticated
+  using (public.can_edit_videos(channel_id)) with check (public.can_edit_videos(channel_id));
+drop policy if exists videos_delete on public.videos;
+create policy videos_delete on public.videos for delete to authenticated
+  using (public.is_owner() or (created_by = auth.uid() and public.can_edit_videos(channel_id)));
+
+-- Sirf Facebook link lagana / badalna (EP ki baqi cheezein jis ne banayi usi ki rehti hain, "kis ne badla" bhi wahi)
+create or replace function public.set_facebook_link(p_video uuid, p_url text) returns public.videos
+language plpgsql security definer set search_path = public as $$
+declare v public.videos; u text := btrim(coalesce(p_url, ''));
+begin
+  select * into v from public.videos where id = p_video;
+  if v.id is null then raise exception 'EP nahi mila.'; end if;
+  if not (public.is_owner() or public.is_fb_manager() or public.is_member(v.channel_id)) then
+    raise exception 'Facebook link sirf Facebook Manager / owner laga sakta hai.';
+  end if;
+  if u <> '' and u !~* '^https://' then raise exception 'Facebook ka poora link (https://…) lagayein.'; end if;
+  perform set_config('khr.migrating', '1', true);   -- updated_by / naam waise hi rahein
+  update public.videos set facebook_url = u where id = p_video returning * into v;
+  perform set_config('khr.migrating', '', true);
+  return v;
+end $$;
+grant execute on function public.set_facebook_link(uuid, text) to authenticated;
+
+-- Baqi sab roles ka kaam mukammal → Facebook Manager ko 24 ghante ka task (EP saath)
+create or replace function public.khr_fb_after_done() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_day date := coalesce(new.for_day, new.day); v_vid uuid; r record; v_name text; v_title text;
+begin
+  if new.status <> 'done' or old.status = 'done' or new.kind <> 'daily' or new.role = 'Facebook Manager' then return null; end if;
+  if not exists (select 1 from public.channel_members where channel_id = new.channel_id and 'Facebook Manager' = any(roles)) then return null; end if;
+  if exists (
+    select 1 from public.tasks
+    where channel_id = new.channel_id and kind = 'daily' and role <> 'Facebook Manager'
+      and coalesce(for_day, day) = v_day and status <> 'done'
+  ) then return null; end if;
+  select video_id into v_vid from public.tasks
+   where channel_id = new.channel_id and coalesce(for_day, day) = v_day and video_id is not null
+   order by (role = 'Publisher') desc, (role = 'Editor') desc, completed_at desc nulls last limit 1;
+  if v_vid is null then
+    select id into v_vid from public.videos where channel_id = new.channel_id and day = v_day order by (video_url <> '') desc, created_at desc limit 1;
+  end if;
+  select name into v_name from public.channels where id = new.channel_id;
+  select title into v_title from public.videos where id = v_vid;
+  for r in
+    select m.user_id from public.channel_members m
+    join public.profiles p on p.id = m.user_id and (p.status = 'approved' or p.is_owner)
+    where m.channel_id = new.channel_id and 'Facebook Manager' = any(m.roles)
+  loop
+    insert into public.tasks (channel_id, user_id, role, day, for_day, start_at, due_at, video_id, push_sent)
+    values (new.channel_id, r.user_id, 'Facebook Manager', v_day, v_day, now(), now() + interval '24 hours', v_vid, 1)
+    on conflict (channel_id, user_id, role, day) where kind = 'daily' do nothing;
+    if found then
+      perform public.khr_notify(array[r.user_id], null, '📘 Facebook ke liye video tayyar',
+        coalesce(v_name, 'Channel') || coalesce(' · ' || nullif(v_title, ''), '') || ' — 24 ghante mein Facebook par upload kar ke link lagayein',
+        jsonb_build_object('type', 'deadline', 'channel', new.channel_id));
+    end if;
+  end loop;
+  return null;
+end $$;
+drop trigger if exists fb_after_done on public.tasks;
+create trigger fb_after_done after update of status on public.tasks for each row execute function public.khr_fb_after_done();

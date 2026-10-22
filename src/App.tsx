@@ -9,6 +9,7 @@ import { ChannelScreen, ChannelsScreen, GateScreen, MyCardsScreen } from './scre
 import { HomeScreen, TeamScreen } from './screens/Home';
 import { LeaderboardScreen, ProgressScreen } from './screens/Progress';
 import { ChatReviewSheet, ServerScreen, useServerBadge } from './screens/Server';
+import { VoiceStudio } from './screens/Voice';
 import { ChannelSheet, PerfSheet, ProfileSheet } from './components/Sheets';
 import { MusicProvider, useMusic } from './components/Music';
 import { applyPrefs } from './lib/appearance';
@@ -58,7 +59,7 @@ function Splash() {
   );
 }
 
-type Tab = 'home' | 'cards' | 'channels' | 'team' | 'rank' | 'progress' | 'server';
+type Tab = 'home' | 'cards' | 'channels' | 'team' | 'rank' | 'progress' | 'server' | 'voice';
 type SheetState = { kind: 'channel'; id: string | null } | { kind: 'perf' } | { kind: 'profile' } | null;
 type Mode = 'owner' | 'personal';
 const MODE_KEY = 'khr-mode';
@@ -146,6 +147,12 @@ const ICON = {
       <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </svg>
   ),
+  voice: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+    </svg>
+  ),
   team: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <circle cx="9" cy="8" r="3.5" />
@@ -168,6 +175,9 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
   const mem = useRef<Partial<Record<Tab, { openId: string | null; openUser: string | null; y: number }>>>({});
   const [srvVisited, setSrvVisited] = useState(false);
   useEffect(() => { if (tab === 'server') setSrvVisited(true); }, [tab]);
+  // v16: Voiceover studio bhi zinda rehta hai — awaaz ban rahi ho aur tab badlein to rukti nahi
+  const [voVisited, setVoVisited] = useState(false);
+  useEffect(() => { if (tab === 'voice') setVoVisited(true); }, [tab]);
   // mode badla to dashboard se shuru
   const firstMode = useRef(true);
   useEffect(() => {
@@ -334,14 +344,16 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
         { k: 'channels', label: 'Channels', icon: ICON.cards },
         { k: 'team', label: 'Team', icon: ICON.team, badge: pending },
         { k: 'rank', label: 'Ranking', icon: ICON.rank },
-        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge }
+        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge },
+        { k: 'voice', label: 'Voiceover', icon: ICON.voice }
       ]
     : [
         { k: 'home', label: 'Aaj', icon: ICON.home },
         { k: 'cards', label: 'Mere cards', icon: ICON.cards },
         { k: 'rank', label: 'Ranking', icon: ICON.rank },
         { k: 'progress', label: 'Progress', icon: ICON.progress },
-        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge }
+        { k: 'server', label: 'Server', icon: ICON.server, badge: serverBadge },
+        { k: 'voice', label: 'Voiceover', icon: ICON.voice }
       ];
 
   const serverOn = tab === 'server' && !channel && !openUser;
@@ -361,7 +373,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
   else if (tab === 'team' && d.isOwner) body = <TeamScreen openProgress={openProgress} />;
   else if (tab === 'cards') body = <MyCardsScreen openChannel={open} />;
   else if (tab === 'rank') body = <LeaderboardScreen openProgress={openProgress} />;
-  else if (tab === 'server') body = <></>;
+  else if (tab === 'server' || tab === 'voice') body = <></>;
   else if (tab === 'progress') body = <ProgressScreen userId={d.uid} openChannel={open} />;
   else body = <HomeScreen openChannel={open} openProgress={openProgress} goTeam={() => go('team')} newChannel={() => setSheet({ kind: 'channel', id: null })} />;
 
@@ -395,6 +407,11 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
       <main className={serverOn ? 'server-main' : ''}>
         {!serverOn && body}
         {/* v15: Server hamesha zinda rehta hai (chhupa) — tab badlein to likha hua text, khuli chat, scroll sab wahi */}
+        {(voVisited || (tab === 'voice' && !channel && !openUser)) && (
+          <div className="vo-keep" style={{ display: tab === 'voice' && !channel && !openUser ? 'block' : 'none' }}>
+            <VoiceStudio />
+          </div>
+        )}
         {(srvVisited || serverOn) && (
           <div className="srv-keep" style={{ display: serverOn ? 'contents' : 'none' }}>
             <RealScope><ServerScreen active={serverOn} /></RealScope>

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
+import { FB_ROLE } from './types';
 import type { Channel, DeadlineRequest, DirectMessage, FriendRequest, Member, Message, MusicPlaylist, MusicPlaylistItem, MusicTrack, Perf, Prefs, Profile, ServerChannel, ServerChannelMember, ServerMessage, Status, Task, Video } from './types';
 import { addDays, perfIndex, todayKey, type PerfIndex } from './utils';
 import { isLocalId, isNetErr, loadOutbox, loadSnapshot, newLocalId, saveOutbox, saveSnapshot, type OutItem, type OutKind } from './offline';
@@ -115,7 +116,7 @@ interface DataCtx extends Tables {
   editChat: (kind: 'srv' | 'dm', id: string, body: string) => Promise<void>;
   pinChat: (kind: 'srv' | 'dm', id: string, pin: boolean) => Promise<void>;
   forwardChat: (to: ChatTarget, m: { body: string; image_url?: string; user_id: string | null }) => Promise<void>;
-  addTrack: (title: string, url: string) => Promise<void>;
+  addTrack: (title: string, url: string) => Promise<string>;
   updateTrack: (id: string, patch: { title?: string; position?: number }) => Promise<void>;
   deleteTrack: (id: string) => Promise<void>;
   createPlaylist: (name: string) => Promise<string>;
@@ -123,6 +124,12 @@ interface DataCtx extends Tables {
   deletePlaylist: (id: string) => Promise<void>;
   setInPlaylist: (playlistId: string, trackId: string, on: boolean) => Promise<void>;
   submitTaskWork: (taskId: string, videoId: string) => Promise<void>;
+  /** v16: Facebook Manager — sirf EP ka Facebook link */
+  setFacebookLink: (videoId: string, url: string) => Promise<void>;
+  /** v16: kisi bhi channel mein Facebook Manager (saare channels dekh sakta hai) */
+  isFbManager: boolean;
+  /** v16: is channel mein EP bana / badal sakta hai (sirf Facebook Manager nahi) */
+  canEditVideos: (channelId: string) => boolean;
   setTaskDone: (taskId: string, done: boolean) => Promise<void>;
   reviewTask: (taskId: string, reject: boolean, reason?: string) => Promise<void>;
   sendMessage: (channelId: string, body: string, replyTo: string | null) => Promise<void>;
@@ -722,8 +729,9 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
     },
     async addTrack(title, url) {
       const pos = t.music_tracks.reduce((a, x) => Math.max(a, x.position), 0) + 1;
-      must(await supabase.from('music_tracks').insert({ title, url, position: pos }));
+      const row = must(await supabase.from('music_tracks').insert({ title, url, position: pos }).select('id').single()) as { id: string };
       await fetchTable('music_tracks');
+      return row.id;
     },
     async updateTrack(id, patch) {
       must(await supabase.from('music_tracks').update(patch).eq('id', id));
@@ -752,6 +760,12 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       }
       await fetchTable('music_playlist_items');
     },
+    async setFacebookLink(videoId, url) {
+      const row = must(await supabase.rpc('set_facebook_link', { p_video: videoId, p_url: url.trim() })) as Video;
+      setT((prev) => ({ ...prev, videos: prev.videos.map((v) => (v.id === videoId ? { ...v, ...row } : v)) }));
+    },
+    isFbManager: t.channel_members.some((m) => m.user_id === uid && m.roles.includes(FB_ROLE)),
+    canEditVideos: (channelId) => isOwner || t.channel_members.some((m) => m.channel_id === channelId && m.user_id === uid && m.roles.some((r) => r !== FB_ROLE)),
     async submitTaskWork(taskId, videoId) {
       const row = must(await supabase.rpc('submit_task_work', { p_task: taskId, p_video: videoId })) as Task;
       setT((prev) => ({ ...prev, tasks: prev.tasks.map((x) => (x.id === taskId ? { ...x, ...row } : x)) }));

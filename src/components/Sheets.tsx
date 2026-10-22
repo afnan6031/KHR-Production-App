@@ -4,7 +4,7 @@ import { CropSheet } from './Cropper';
 import { applyPrefs } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
-import { ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
+import { FB_ROLE, ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
 import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
 import { Avatar, ConfirmButton, Fold, Seg, Sheet, useTheme, useToast } from './ui';
 
@@ -52,6 +52,10 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
   };
   const setTime = (role: string, key: 'start' | 'end', v: string) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), [key]: v } }));
   const setRoleDays = (role: string, n: number) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), days: n } }));
+  // v16: production ke din se kitne din pehle shuru (misal Script Writer 1 din pehle)
+  const setRoleBefore = (role: string, n: number) => setTimes((t) => ({ ...t, [role]: { ...timeOf(role), before: n } }));
+  const timedRoles = usedRoles.filter((r) => r !== FB_ROLE);
+  const fbWho = assigned.filter(([, rs]) => rs.includes(FB_ROLE)).map(([u]) => d.nameOf(u));
 
   const toggleRole = (uid: string, role: string) =>
     setMembers((m) => {
@@ -68,10 +72,10 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
       const ordered: Record<string, string[]> = {};
       Object.entries(members).forEach(([u, rs]) => (ordered[u] = ROLES.filter((r) => rs.includes(r))));
       const role_times: Record<string, RoleTime> = {};
-      usedRoles.forEach((r) => (role_times[r] = timeOf(r)));
-      for (const r of usedRoles) if (!role_times[r].start || !role_times[r].end) throw new Error(`${r} ka start aur deadline dono likhein`);
+      timedRoles.forEach((r) => (role_times[r] = timeOf(r)));
+      for (const r of timedRoles) if (!role_times[r].start || !role_times[r].end) throw new Error(`${r} ka start aur deadline dono likhein`);
       // card par dikhane ke liye poore din ka waqt: sab se pehla start aur sab se aakhri deadline
-      const list = usedRoles.map((r) => role_times[r]);
+      const list = timedRoles.map((r) => role_times[r]);
       const from = list.length ? list.reduce((a, b) => (toMin(b.start) < toMin(a.start) ? b : a)).start : null;
       const to = list.length ? list.reduce((a, b) => (toMin(b.end) > toMin(a.end) ? b : a)).end : null;
       const id = await d.saveChannel({
@@ -173,9 +177,9 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
         <div className="f">
           Har role ka waqt (daily timeline)
           <span className="h">Har role ka task isi waqt shuru hoga aur isi deadline par khatam. Deadline start se pehle rakhein to wo agle din ki maani jayegi (raat ki shift).</span>
-          {usedRoles.length ? (
+          {timedRoles.length ? (
             <div className="rt-list">
-              {usedRoles.map((r, i) => {
+              {timedRoles.map((r, i) => {
                 const t = timeOf(r);
                 const extra = t.days || 0;
                 const overnight = !extra && toMin(t.end) <= toMin(t.start);
@@ -204,8 +208,15 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
                         {[1, 2, 3, 4, 5, 6, 7, 10, 14].map((n) => <option key={n} value={n}>{n} din baad</option>)}
                       </select>
                     </label>
-                    <span className={'tiny ' + (overnight || extra ? 'warn' : 'muted')}>
-                      {fmtTime(t.start)} se {fmtTime(t.end)}{extra ? ` (${extra} din baad)` : overnight ? ' (agle din)' : ''}
+                    <label className="f">
+                      Kab shuru <span className="h">Production ke din se pehle — sirf isi role wale ko us din task dikhta hai</span>
+                      <select value={t.before || 0} onChange={(e) => setRoleBefore(r, Number(e.target.value))}>
+                        <option value={0}>Production ke din hi</option>
+                        {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n} din pehle</option>)}
+                      </select>
+                    </label>
+                    <span className={'tiny ' + (overnight || extra || t.before ? 'warn' : 'muted')}>
+                      {t.before ? `${t.before} din pehle · ` : ''}{fmtTime(t.start)} se {fmtTime(t.end)}{extra ? ` (${extra} din baad)` : overnight ? ' (agle din)' : ''}
                     </span>
                   </div>
                 );
@@ -213,6 +224,11 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
             </div>
           ) : (
             <p className="muted small m0">Pehle upar team ko roles dein, phir har role ka waqt yahan set hoga.</p>
+          )}
+          {fbWho.length > 0 && (
+            <div className="note">
+              📘 <b>{FB_ROLE}</b> (<span data-notr>{fbWho.join(', ')}</span>): is ka waqt set nahi hota. Jab is din ke baqi sab roles apna kaam mukammal karte hain, foran 24 ghante ka task banta hai — video download kar ke Facebook par upload, phir link. Ye EP badal / mita nahi sakta, sirf Facebook link.
+            </div>
           )}
         </div>
         <button className="btn primary block" type="submit" disabled={busy}>
