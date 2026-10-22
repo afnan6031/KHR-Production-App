@@ -117,24 +117,48 @@ ipcMain.on('khr-bar', (_e, o) => {
   lastBar = key;
   try { win.setTitleBarOverlay({ color: o.color, symbolColor: o.dark ? '#E8EBF4' : '#121A2E', height: 32 }); } catch { /* purana Windows */ }
 });
-// v13: Catbox par audio upload (Node ke zariye, file:// wali "Origin: null" ke baghair)
-async function catboxOnce(bytes, name, type, userhash) {
-  const fd = new FormData();
-  fd.append('reqtype', 'fileupload');
-  if (userhash) fd.append('userhash', userhash);
-  fd.append('fileToUpload', new Blob([bytes], { type: type || 'application/octet-stream' }), name || 'audio.mp3');
-  const r = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fd, headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
-  const text = (await r.text()).trim();
-  return { status: r.status, text };
-}
-ipcMain.handle('khr-catbox-upload', async (_e, o) => {
-  let res = await catboxOnce(o.bytes, o.name, o.type, o.userhash);
-  // userhash qabool na ho (412 / error) to bina userhash ke (file phir bhi hamesha rehti hai)
-  if (!/^https:\/\/files\.catbox\.moe\//i.test(res.text) && o.userhash) res = await catboxOnce(o.bytes, o.name, o.type, '');
-  return res;
-});
+// v16: Pixeldrain par audio upload (Node se — browser ki CORS rukawat nahi), progress app ko bhejte hain
+const https = require('https');
+const pdReqs = new Map();
+ipcMain.handle('khr-pd-upload', (e, o) => new Promise((resolve) => {
+  const body = Buffer.from(o.bytes);
+  const name = String(o.name || 'audio.mp3').slice(0, 180);
+  const req = https.request({
+    method: 'PUT',
+    hostname: 'pixeldrain.com',
+    path: '/api/file/' + encodeURIComponent(name),
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(':' + String(o.key || '')).toString('base64'),
+      'Content-Type': o.type || 'application/octet-stream',
+      'Content-Length': body.length,
+      'User-Agent': 'KHR-Production/1.0 (Windows)'
+    }
+  }, (res) => {
+    let text = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => { text += c; });
+    res.on('end', () => { pdReqs.delete(o.id); resolve({ status: res.statusCode || 0, text }); });
+  });
+  pdReqs.set(o.id, req);
+  req.on('error', (err) => { pdReqs.delete(o.id); resolve({ status: 0, text: String(err && err.message || err) }); });
+  const CH = 256 * 1024;
+  let off = 0;
+  let last = -1;
+  const pump = () => {
+    while (off < body.length) {
+      const chunk = body.subarray(off, off + CH);
+      off += chunk.length;
+      const pct = Math.round((off / body.length) * 100);
+      if (pct !== last) { last = pct; try { e.sender.send('khr-pd-progress', { id: o.id, pct }); } catch { /* window band */ } }
+      if (!req.write(chunk)) { req.once('drain', pump); return; }
+    }
+    req.end();
+  };
+  pump();
+}));
+ipcMain.on('khr-pd-cancel', (_e, id) => { const r = pdReqs.get(id); if (r) { r.destroy(new Error('Upload cancel ho gaya')); pdReqs.delete(id); } });
 ipcMain.handle('khr-fetch-bytes', async (_e, url) => {
-  if (!/^https:\/\/(files\.)?catbox\.moe\//i.test(String(url))) throw new Error('not allowed');
+  if (!/^https:\/\/((files\.)?catbox\.moe|pixeldrain\.com)\//i.test(String(url))) throw new Error('not allowed');
   const r = await fetch(url, { headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return { type: r.headers.get('content-type') || 'audio/mpeg', bytes: Buffer.from(await r.arrayBuffer()) };
@@ -149,8 +173,8 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
   app.on('before-quit', () => { quitting = true; });
   app.whenReady().then(() => {
-    // v11: Catbox (music upload / offline download) browser ki CORS rukawat ke baghair
-    session.defaultSession.webRequest.onHeadersReceived({ urls: ['https://catbox.moe/*', 'https://*.catbox.moe/*'] }, (det, cb) => {
+    // v11/v16: Catbox / Pixeldrain (music) aur Gemini (voiceover) — browser ki CORS rukawat ke baghair
+    session.defaultSession.webRequest.onHeadersReceived({ urls: ['https://catbox.moe/*', 'https://*.catbox.moe/*', 'https://pixeldrain.com/*', 'https://generativelanguage.googleapis.com/*'] }, (det, cb) => {
       const h = { ...det.responseHeaders };
       for (const k of Object.keys(h)) if (k.toLowerCase().startsWith('access-control-')) delete h[k];
       h['Access-Control-Allow-Origin'] = ['*'];

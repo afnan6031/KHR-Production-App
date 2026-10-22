@@ -7,7 +7,13 @@ contextBridge.exposeInMainWorld('khrDesktop', {
   setBar: (color, dark) => ipcRenderer.send('khr-bar', { color: String(color || ''), dark: !!dark }),
   attention: () => ipcRenderer.send('khr-attention'),
   show: () => ipcRenderer.send('khr-show'),
-  // v13: Catbox upload / download app ke andar se (browser ki CORS / Origin rukawat nahi)
-  catboxUpload: (bytes, name, type, userhash) => ipcRenderer.invoke('khr-catbox-upload', { bytes, name, type, userhash }),
+  // v16: Pixeldrain upload app ke andar se (progress ke saath) + offline download
+  pdUpload: (o) => ipcRenderer.invoke('khr-pd-upload', o),
+  pdCancel: (id) => ipcRenderer.send('khr-pd-cancel', String(id)),
+  onPdProgress: (cb) => {
+    const h = (_e, p) => cb(p);
+    ipcRenderer.on('khr-pd-progress', h);
+    return () => ipcRenderer.removeListener('khr-pd-progress', h);
+  },
   fetchBytes: (url) => ipcRenderer.invoke('khr-fetch-bytes', url)
 });
