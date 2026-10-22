@@ -142,6 +142,7 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
 export function VideoCard({ url, title, compact }: { url: string; title?: string; compact?: boolean }) {
   const toast = useToast();
   const [play, setPlay] = useState(false);
+  const [vErr, setVErr] = useState(false);
   const emb = embedUrl(url);
   const kind = videoKind(url);
   const host = kind === 'pixeldrain' ? 'Pixeldrain' : kind === 'gofile' ? 'Gofile' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : url.replace(/^https?:\/\//, '').split('/')[0];
@@ -150,7 +151,11 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
     <div className={'vcard' + (compact ? ' compact' : '')}>
       {play && emb ? (
         emb.type === 'video' ? (
-          <video className="vcard-player" src={emb.src} controls autoPlay playsInline preload="metadata" />
+          vErr ? (
+            <p className="vcard-err small m0">Video app ke andar nahi chal saki{kind === 'pixeldrain' ? ' (Pixeldrain ka free account doosri app mein chalne se rok sakta hai — Android / Windows app mein chalegi)' : ''}. "Kholein" ya "Download" dabayein.</p>
+          ) : (
+            <video className="vcard-player" src={emb.src} controls autoPlay playsInline preload="metadata" onError={() => setVErr(true)} />
+          )
         ) : (
           <iframe className="vcard-player" src={emb.src} title={title || 'Video'} allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
         )
@@ -162,7 +167,7 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
           <span className="muted tiny">{host}</span>
         </span>
         {emb && !play && <button type="button" className="btn sm" onClick={() => setPlay(true)}>▶ Chalayein</button>}
-        {dl && <a className="btn sm" href={dl} target="_blank" rel="noopener noreferrer" download>⬇ Download</a>}
+        {dl && <a className="btn sm" href={dl} target="_blank" rel="noopener noreferrer">⬇ Download</a>}
         <a className={'btn sm' + (emb ? '' : ' primary')} href={url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
         <button
           type="button"

@@ -3,7 +3,7 @@ import { useData } from '../lib/data';
 import type { MusicTrack } from '../lib/types';
 import { errorText } from '../lib/utils';
 import { ConfirmButton, Sheet, useToast } from './ui';
-import { checkAudioFile, forgetSrc, isUploaded, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadAudio, normalizeAudioUrl } from '../lib/audio';
+import { checkAudioFile, forgetSrc, isUploaded, offlineKeys, offlineSrc, removeOffline, saveOffline, uploadAudio, normalizeAudioUrl, authedBlobUrl, isPixeldrain } from '../lib/audio';
 
 /* =========================================================================
    v9: MUSIC — har user ki apni playlist. YouTube / YouTube Music, SoundCloud,
@@ -346,7 +346,14 @@ function Player({ track, playing, big, repeat, onEnded, onState }: { track: Musi
     if (src.kind === 'audio') offlineSrc(track.url).then((u) => alive && setLocalSrc(u));
     return () => { alive = false; };
   }, [src, track.url]);
-  const mediaSrc = src.kind === 'audio' ? localSrc || src.src : '';
+  // v16: Pixeldrain free par seedha na chale to owner ki key ke saath le kar chalao
+  const [authSrc, setAuthSrc] = useState<string | null>(null);
+  useEffect(() => setAuthSrc(null), [track.url]);
+  const mediaSrc = src.kind === 'audio' ? localSrc || authSrc || src.src : '';
+  const onMediaError = () => {
+    if (src.kind !== 'audio' || localSrc || authSrc || !isPixeldrain(src.src)) return;
+    authedBlobUrl(src.src).then(setAuthSrc, () => setErr('Ye gaana chal nahi saka (internet / Pixeldrain). Dobara try karein.'));
+  };
 
   const finished = () => {
     if (repeatRef.current === 'one') {
@@ -429,7 +436,8 @@ function Player({ track, playing, big, repeat, onEnded, onState }: { track: Musi
     onPlay: () => onState(true),
     onPause: () => onState(false),
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => setTime({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }),
-    onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => setTime({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 })
+    onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => setTime({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }),
+    onError: onMediaError
   };
   const w = fl.ref.current?.offsetWidth || 360;
   const style = !fl.pos

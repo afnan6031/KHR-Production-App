@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { downloadUrl, normalizeAudioUrl, offlineSrc } from '../lib/audio';
+import { authedBlobUrl, downloadUrl, isPixeldrain, normalizeAudioUrl, offlineSrc } from '../lib/audio';
 
 /**
  * v16: voiceover / audio link ka player — app ke andar chalaye aur download kare.
@@ -27,14 +27,24 @@ export function AudioLink({ url, label = '🎙 Voiceover' }: { url: string; labe
       {drive ? (
         <iframe className="vo-drive" src={`https://drive.google.com/file/d/${drive}/preview`} title={label} allow="autoplay" />
       ) : !err ? (
-        <audio controls preload="metadata" src={src} className="vo-audio" onError={() => setErr(true)} />
+        <audio
+          controls
+          preload="metadata"
+          src={src}
+          className="vo-audio"
+          onError={() => {
+            // seedha nahi chala (Pixeldrain free: hotlink rok) → owner ki key ke saath le kar is device par chalao
+            if (src === u && isPixeldrain(u)) authedBlobUrl(u).then(setSrc, () => setErr(true));
+            else setErr(true);
+          }}
+        />
       ) : (
         <p className="vo-err small m0">
           Ye awaaz app ke andar nahi chal saki{/catbox\.moe/i.test(u) ? ' (Catbox ka server band / blocked hai — dobara upload karein, ab Pixeldrain par jayegi)' : ' (link khula nahi ya server band hai)'}. Neeche "Kholein" se try karein.
         </p>
       )}
       <div className="vo-actions">
-        <a className="btn sm primary" href={dl} target="_blank" rel="noopener noreferrer" download>⬇ Download</a>
+        <a className="btn sm primary" href={dl} target="_blank" rel="noopener noreferrer">⬇ Download</a>
         <a className="btn sm" href={u} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
       </div>
     </div>
