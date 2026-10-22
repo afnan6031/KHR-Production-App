@@ -1,4 +1,7 @@
+import { pixeldrainId, uploadToPixeldrain } from './audio';
 /**
+ * v16: Video PEHLE Pixeldrain par (10 GB tak, 60 din, app ke andar chalti + download hoti hai).
+ *      Pixeldrain na chale (server down, key / account ka masla, internet) to khud Gofile par.
  * v9: Videos Gofile.io par upload hoti hain (Supabase par kabhi nahi).
  * - XMLHttpRequest se, taake app mein live progress (%, MB) aur Cancel ho sake
  * - Owner ka Gofile token saath jata hai, is liye saari videos owner ke Gofile account mein jati hain
@@ -7,7 +10,7 @@
  */
 const DEFAULT_TOKEN = 'zjULNbQbF5HXu7sFsRjvdlTHw5qsHHvM';
 const TOKEN = (import.meta.env.VITE_GOFILE_TOKEN as string | undefined) || DEFAULT_TOKEN;
-export const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+export const MAX_VIDEO_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB (Pixeldrain ki hadd)
 const ENDPOINTS = [
   'https://upload.gofile.io/uploadfile',
   'https://upload-ap-sgp.gofile.io/uploadfile',
@@ -35,7 +38,7 @@ export class UploadCancelled extends Error {
 
 export function checkVideoFile(f: File): string | null {
   if (!(f.type.startsWith('video/') || VIDEO_EXT.test(f.name))) return 'Sirf video file (MP4, MOV, MKV, WEBM) upload ho sakti hai.';
-  if (f.size > MAX_VIDEO_BYTES) return 'Video 2 GB se bari hai. Choti file chunein ya Google Drive ka link paste karein.';
+  if (f.size > MAX_VIDEO_BYTES) return 'Video 10 GB se bari hai. Choti file chunein ya Google Drive ka link paste karein.';
   if (f.size === 0) return 'Ye file khaali hai.';
   return null;
 }
@@ -102,8 +105,31 @@ export async function uploadToGofile(file: File, onProgress: (p: UploadProgress)
   throw last instanceof Error ? last : new Error('Video upload nahi hui.');
 }
 
+export type VideoHost = 'pixeldrain' | 'gofile';
+/**
+ * v16: video upload — pehle Pixeldrain, na ho to Gofile. onHost: abhi kahan ja rahi hai (progress bar par dikhane ke liye)
+ */
+export async function uploadVideo(file: File, onProgress: (p: UploadProgress) => void, signal: AbortSignal, onHost?: (h: VideoHost, why?: string) => void): Promise<GofileResult & { host: VideoHost }> {
+  const bad = checkVideoFile(file);
+  if (bad) throw new Error(bad);
+  let why = '';
+  try {
+    onHost?.('pixeldrain');
+    const url = await uploadToPixeldrain(file, (pct, loaded, total) => onProgress({ loaded, total, pct: Math.max(0, pct) }), signal, file.name);
+    return { url, name: file.name, size: file.size, host: 'pixeldrain' };
+  } catch (e) {
+    if (signal.aborted || /cancel/i.test((e as Error)?.message || '')) throw new UploadCancelled();
+    why = (e as Error)?.message || '';
+    console.warn('Pixeldrain video upload nahi hui, Gofile par:', why);
+  }
+  onHost?.('gofile', why);
+  const r = await uploadToGofile(file, onProgress, signal);
+  return { ...r, host: 'gofile' };
+}
+
 /** link kis cheez ka hai (chat / video mein sahi tarah dikhane ke liye) */
-export function videoKind(url: string): 'gofile' | 'youtube' | 'drive' | 'file' | null {
+export function videoKind(url: string): 'pixeldrain' | 'gofile' | 'youtube' | 'drive' | 'file' | null {
+  if (pixeldrainId(url)) return 'pixeldrain';
   if (/^https?:\/\/(www\.)?gofile\.io\/d\//i.test(url)) return 'gofile';
   if (/^https?:\/\/(www\.|m\.)?(youtube\.com\/(watch|shorts|live)|youtu\.be\/)/i.test(url)) return 'youtube';
   if (/^https?:\/\/drive\.google\.com\/file\//i.test(url)) return 'drive';
@@ -115,6 +141,7 @@ export function videoKind(url: string): 'gofile' | 'youtube' | 'drive' | 'file' 
 export function embedUrl(url: string): { type: 'iframe' | 'video'; src: string } | null {
   const k = videoKind(url);
   if (k === 'file') return { type: 'video', src: url };
+  if (k === 'pixeldrain') return { type: 'video', src: 'https://pixeldrain.com/api/file/' + pixeldrainId(url) };
   if (k === 'youtube') {
     const m = url.match(/(?:v=|youtu\.be\/|shorts\/|live\/)([\w-]{6,})/);
     return m ? { type: 'iframe', src: `https://www.youtube-nocookie.com/embed/${m[1]}` } : null;

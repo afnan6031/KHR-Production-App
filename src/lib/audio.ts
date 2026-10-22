@@ -10,7 +10,8 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 type DesktopBridge = {
-  pdUpload?: (o: { id: string; bytes: ArrayBuffer; name: string; type: string; key: string }) => Promise<{ status: number; text: string }>;
+  pdUpload?: (o: { id: string; bytes?: ArrayBuffer; path?: string; name: string; type: string; key: string }) => Promise<{ status: number; text: string }>;
+  pathOf?: (f: File) => string;
   pdCancel?: (id: string) => void;
   onPdProgress?: (cb: (p: { id: string; pct: number }) => void) => () => void;
   fetchBytes?: (url: string) => Promise<{ type: string; bytes: Uint8Array }>;
@@ -50,76 +51,104 @@ function base64ToBlob(b64: string, type: string): Blob {
 function pdUrl(text: string, status: number): string {
   let id = '';
   let msg = '';
+  let code = '';
   try {
     const j = JSON.parse(text || '{}') as { id?: string; message?: string; value?: string };
     id = j.id || '';
-    msg = j.message || j.value || '';
+    code = j.value || '';
+    msg = j.message || '';
   } catch {
     msg = (text || '').slice(0, 120);
   }
   if (id && /^[\w-]{3,40}$/.test(id)) return 'https://pixeldrain.com/api/file/' + id;
-  if (status === 401 || status === 403) throw new Error('Pixeldrain ne API key qabool nahi ki (HTTP ' + status + '). GitHub secret VITE_PIXELDRAIN_API_KEY check karein.');
-  if (status === 413) throw new Error('File Pixeldrain ki hadd se bari hai.');
-  throw new Error('Pixeldrain upload nahi hua (HTTP ' + status + ')' + (msg ? ': ' + msg : ''));
+  // Pixeldrain ki asli wajah (value) saaf batao
+  const why: Record<string, string> = {
+    email_address_not_verified: 'Pixeldrain account ki email verify nahi hui. pixeldrain.com par login kar ke apni email verify karein (inbox / spam mein link), phir dobara upload karein.',
+    authentication_failed: 'Pixeldrain ne API key qabool nahi ki. Pixeldrain → API Keys se nayi key bana kar GitHub secret VITE_PIXELDRAIN_API_KEY mein lagayein aur app dobara build karein.',
+    authentication_required: 'Pixeldrain API key nahi pahunchi. GitHub secret VITE_PIXELDRAIN_API_KEY check karein.',
+    ip_banned: 'Pixeldrain ne is internet (IP) se upload band kiya hua hai. Doosre internet (misal mobile data) se try karein.',
+    account_banned: 'Pixeldrain ne ye account band kiya hua hai. Naya account bana kar us ki key lagayein.',
+    user_out_of_space: 'Pixeldrain account mein jagah khatam. Purani files mitayein ya naya account lagayein.',
+    too_many_files: 'Pixeldrain account mein files ki hadd poori. Purani files mitayein.',
+    file_too_large: 'File Pixeldrain ki hadd se bari hai.',
+    ip_rate_limit_reached: 'Pixeldrain par bohot zyada uploads — thori der baad try karein.'
+  };
+  if (why[code]) throw new Error(why[code]);
+  if (status === 401) throw new Error(why.authentication_failed);
+  if (status === 413) throw new Error(why.file_too_large);
+  throw new Error('Pixeldrain upload nahi hua (HTTP ' + status + ')' + (code || msg ? ': ' + (code || msg) : ''));
 }
 
 const safeName = (n: string) => (n || 'audio.mp3').replace(/[\\/:*?"<>|#%]+/g, '_').slice(0, 180) || 'audio.mp3';
 
+type Prog = (pct: number, loaded: number, total: number) => void;
+
 /**
- * Audio upload — progress (0..100). Pixeldrain ka seedha stream link wapas (https://pixeldrain.com/api/file/ID).
- * name: Blob (misal Gemini voiceover .wav) ke liye file ka naam.
+ * v16: koi bhi file Pixeldrain par (audio, voiceover, video). Wapas seedha link https://pixeldrain.com/api/file/ID
+ * - Windows app: Node se — bari video bhi (file disk se seedhi jati hai, memory mein nahi)
+ * - Web / Android: XMLHttpRequest PUT (live progress). Android par WebView rok de to phone ka apna HTTP (sirf chhoti file)
  */
-export async function uploadAudio(file: File | Blob, onProgress: (pct: number) => void, signal?: AbortSignal, name?: string): Promise<string> {
+export async function uploadToPixeldrain(f: File, onProg: Prog, signal?: AbortSignal, name?: string, nativeMax = 200 * 1024 * 1024): Promise<string> {
   if (!API_KEY) throw new Error('Pixeldrain API key nahi lagi. GitHub → Settings → Secrets and variables → Actions mein VITE_PIXELDRAIN_API_KEY add kar ke app dobara build karein.');
-  const f = file instanceof File ? file : new File([file], name || 'voiceover.wav', { type: file.type || 'audio/wav' });
-  const bad = checkAudioFile(f);
-  if (bad) throw new Error(bad);
   const fname = safeName(name || f.name);
   const type = f.type || 'application/octet-stream';
 
-  // Windows app: Node se (progress ke saath)
   const d = desk();
   if (d?.pdUpload) {
-    const id = Math.random().toString(36).slice(2);
-    onProgress(0);
-    const off = d.onPdProgress?.((p) => p.id === id && onProgress(Math.min(99, p.pct)));
-    const stop = () => d.pdCancel?.(id);
-    signal?.addEventListener('abort', stop, { once: true });
-    try {
-      const res = await d.pdUpload({ id, bytes: await f.arrayBuffer(), name: fname, type, key: API_KEY });
-      if (signal?.aborted) throw new Error('Upload cancel ho gaya');
-      if (res.status === 0) throw new Error('Pixeldrain tak nahi pahunch sake. Internet check karein. ' + (res.text || ''));
-      const u = pdUrl(res.text, res.status);
-      onProgress(100);
-      return u;
-    } finally {
-      off?.();
-      signal?.removeEventListener('abort', stop);
+    const path = d.pathOf?.(f) || '';
+    if (path || f.size <= 400 * 1024 * 1024) {
+      const id = Math.random().toString(36).slice(2);
+      onProg(0, 0, f.size);
+      const off = d.onPdProgress?.((p) => p.id === id && onProg(Math.min(99, p.pct), Math.round((p.pct / 100) * f.size), f.size));
+      const stop = () => d.pdCancel?.(id);
+      signal?.addEventListener('abort', stop, { once: true });
+      try {
+        const res = await d.pdUpload(path ? { id, path, name: fname, type, key: API_KEY } : { id, bytes: await f.arrayBuffer(), name: fname, type, key: API_KEY });
+        if (signal?.aborted) throw new Error('Upload cancel ho gaya');
+        if (res.status === 0) throw new Error('Pixeldrain tak nahi pahunch sake. Internet check karein. ' + (res.text || ''));
+        const u = pdUrl(res.text, res.status);
+        onProg(100, f.size, f.size);
+        return u;
+      } finally {
+        off?.();
+        signal?.removeEventListener('abort', stop);
+      }
     }
   }
 
   try {
-    return await xhrPut(f, fname, type, onProgress, signal);
+    return await xhrPut(f, fname, type, onProg, signal);
   } catch (e) {
     const err = e as Error & { net?: boolean };
-    // Android: WebView ne rok diya (CORS / network) → phone ka apna HTTP
-    if (err.net && Capacitor.isNativePlatform() && !signal?.aborted) return nativePost(f, fname, type, onProgress);
+    // Android: WebView ne rok diya (CORS / network) → phone ka apna HTTP (bari file memory mein nahi aa sakti)
+    if (err.net && Capacitor.isNativePlatform() && !signal?.aborted && f.size <= nativeMax) return nativePost(f, fname, type, onProg);
     throw err;
   }
 }
 
-function xhrPut(f: File, fname: string, type: string, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<string> {
+/** Audio upload — progress 0..100 (-1 = andaza nahi). name: Blob (misal Gemini .wav) ke liye */
+export async function uploadAudio(file: File | Blob, onProgress: (pct: number) => void, signal?: AbortSignal, name?: string): Promise<string> {
+  const f = file instanceof File ? file : new File([file], name || 'voiceover.wav', { type: file.type || 'audio/wav' });
+  const bad = checkAudioFile(f);
+  if (bad) throw new Error(bad);
+  return uploadToPixeldrain(f, (pct) => onProgress(pct), signal, name);
+}
+
+function xhrPut(f: File, fname: string, type: string, onProg: Prog, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     signal?.addEventListener('abort', () => xhr.abort(), { once: true });
     xhr.open('PUT', API + '/' + encodeURIComponent(fname));
     xhr.setRequestHeader('Authorization', AUTH);
     xhr.setRequestHeader('Content-Type', type);
-    xhr.upload.onprogress = (e) => onProgress(e.lengthComputable ? Math.min(99, Math.round((e.loaded / e.total) * 100)) : -1);
+    xhr.upload.onprogress = (e) => {
+      const total = e.lengthComputable ? e.total : f.size;
+      onProg(total ? Math.min(99, Math.round((e.loaded / total) * 100)) : -1, e.loaded, total);
+    };
     xhr.onload = () => {
       try {
         const u = pdUrl(xhr.responseText, xhr.status);
-        onProgress(100);
+        onProg(100, f.size, f.size);
         resolve(u);
       } catch (e) {
         reject(e);
@@ -135,8 +164,8 @@ function xhrPut(f: File, fname: string, type: string, onProgress: (pct: number) 
   });
 }
 
-async function nativePost(f: File, fname: string, type: string, onProgress: (pct: number) => void): Promise<string> {
-  onProgress(-1);
+async function nativePost(f: File, fname: string, type: string, onProg: Prog): Promise<string> {
+  onProg(-1, 0, f.size);
   const value = await blobToBase64(f);
   const res = await CapacitorHttp.request({
     url: API,
@@ -146,17 +175,28 @@ async function nativePost(f: File, fname: string, type: string, onProgress: (pct
     data: [{ type: 'base64File', key: 'file', value, fileName: fname, contentType: type }],
     responseType: 'text',
     connectTimeout: 30000,
-    readTimeout: 900000
+    readTimeout: 1800000
   });
   const u = pdUrl(typeof res.data === 'string' ? res.data : JSON.stringify(res.data), res.status);
-  onProgress(100);
+  onProg(100, f.size, f.size);
   return u;
+}
+
+/** Pixeldrain file ka ID (api/file/ID ya u/ID) */
+export function pixeldrainId(url: string): string | null {
+  const m = /^https?:\/\/(?:www\.)?pixeldrain\.(?:com|net)\/(?:u|api\/file)\/([\w-]{3,40})/i.exec((url || '').trim());
+  return m ? m[1] : null;
+}
+/** download karne wala link (Pixeldrain: ?download) */
+export function downloadUrl(url: string): string {
+  const id = pixeldrainId(url);
+  return id ? `https://pixeldrain.com/api/file/${id}?download` : url;
 }
 
 /** pixeldrain.com/u/ID (share link) → seedha stream link */
 export function normalizeAudioUrl(url: string): string {
-  const m = /^https?:\/\/(?:www\.)?pixeldrain\.com\/(?:u|api\/file)\/([\w-]{3,40})/i.exec((url || '').trim());
-  return m ? 'https://pixeldrain.com/api/file/' + m[1] : url.trim();
+  const id = pixeldrainId(url);
+  return id ? 'https://pixeldrain.com/api/file/' + id : (url || '').trim();
 }
 
 /* ---------------- offline gaane (IndexedDB) ---------------- */
