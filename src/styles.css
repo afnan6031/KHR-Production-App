@@ -1479,3 +1479,7 @@ html, body { -webkit-tap-highlight-color: transparent; }
 .vo-err { color: var(--warn); }
 .vo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .vcard-err { color: var(--warn); padding: 10px 12px; }
+.engine-seg button { white-space: nowrap; }
+.tone-row select { width: auto; min-width: 160px; }
+.model-pick { min-width: 240px; max-width: 100%; }
+.model-note b { color: var(--fg); }
