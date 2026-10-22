@@ -448,6 +448,26 @@ Ye na karein to bhi app chalegi: deadline alerts phone par phir bhi aate hain (a
 
 ---
 
+## v16: Voiceover studio (Gemini), Pixeldrain music, role "din pehle", Facebook Manager
+
+**Update ke 3 kaam:**
+1. Supabase → SQL Editor mein poori `supabase/schema.sql` dobara chalayein (purana data mehfooz).
+2. GitHub → repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - `VITE_PIXELDRAIN_API_KEY` = aap ki Pixeldrain API key (pixeldrain.com → Account → API keys)
+   - `VITE_GEMINI_API_KEY` = Google AI Studio ki API key (aistudio.google.com → Get API key)
+   (Na dein to code ki default keys chalti hain. `VITE_CATBOX_USERHASH` ab zaroori nahi — mita sakte hain.)
+3. GitHub par purani `src/components/Attachments.tsx` ko is zip wali se badal dein (build error isi purani file se tha).
+
+- **Supabase par koi media nahi:** image → ImgBB, video → Gofile, audio / voiceover → **Pixeldrain**. Supabase mein sirf text aur links.
+- **Music (Pixeldrain):** 🎵 → ➕ Gaana → PC / phone se upload (200 MB tak, 0–100% progress) ya link. Link `https://pixeldrain.com/api/file/ID` aap ki apni list mein save hota hai (`user_music` = `music_tracks`, har user sirf apne gaane). MP4 bhi chalti hai — sirf awaaz. Har uploaded gaane par **📥 Offline**: phone / PC mein save, bina internet chale. Purane Catbox gaane waise hi chalte hain. Voice Over ka voiceover upload bhi ab Pixeldrain par.
+- **🎙 Voiceover tab** (neeche Server ke saath): script likhein, 30 Gemini awaazein (naam, andaaz, Aurat / Mard, ▶ namoona), andaaz (Documentary, Kahani, News, Calm, Energetic, apna) aur raftar. **4000 characters ki hadd:** neeche ginti `x / 4000`, zyada ho to laal aur "Generate Voiceover" band + warning. Bani hui awaaz ka lehron wala player, **⬇️ Download Audio (.wav)** (Android par Documents/KHR + share), **➕ Save to My Playlist** (Pixeldrain → aap ki music). Aakhri 6 voiceovers is device par yaad. Model: `gemini-3.8-flash-tts` (na chale to flash-lite, phir `gemini-2.5-flash-preview-tts`, jo Google 17 Nov 2026 ko band kar raha hai). Free limit mein din mein kuch hi voiceovers banti hain.
+- **Role "din pehle":** Channel edit → har role ke waqt mein **"Kab shuru"** → 1–7 din pehle. Misal Editor 25 ko, Script Writer "1 din pehle" → Script Writer ka task 24 ko (EP 25 wala). Ye early task baqi team ko production ke din se pehle nazar nahi aata (sirf us bande aur owner ko).
+- **Facebook Manager (naya role):** channel mein kisi ko ye role dein. Us din ke **baqi sab roles** ka kaam mukammal hote hi us ko **24 ghante** ka task + notification: EP ki video download kar ke Facebook par upload, phir **Facebook link** laga kar task mukammal. Wo EP ki koi aur cheez badal / mita / naya EP bana nahi sakta — sirf Facebook link. **Mere cards** mein saare channels ke cards (👁 sirf dekhne ke liye, purani video dobara use karne ke liye); **Aaj** mein sirf wo channel jahan us ka task pending hai. EP card par 📘 Facebook link sab ko dikhta hai.
+
+> Note: app ke andar lagi API keys (Pixeldrain, Gemini, ImgBB, Gofile) app file se nikali ja sakti hain — ye keys sirf isi kaam ke liye rakhein, aur jo keys chat mein share hui hain unhein naye se bana lena behtar hai.
+
+---
+
 ## v15: deadline ke naye rules, din chun kar kaam, smooth 120Hz, Discord jaisa typing box
 
 **Supabase update zaroori:** SQL Editor mein poori `supabase/schema.sql` dobara chalayein (purana data mehfooz rehta hai).
