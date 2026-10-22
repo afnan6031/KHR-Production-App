@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.view.View;
 import android.view.Window;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 import androidx.annotation.NonNull;
 import androidx.core.view.ViewCompat;
@@ -126,5 +127,30 @@ public class KhrNativePlugin extends Plugin {
             }
             call.resolve();
         });
+    }
+
+    /**
+     * v16: Pixeldrain free account par doosri app ke andar file chalana ("hotlinking") band hai,
+     * magar file ka owner hamesha chala / download kar sakta hai. Owner ki key Pixeldrain ki cookie
+     * (pd_auth_key) mein rakh dete hain, taake app ke andar video / awaaz chalein.
+     */
+    @PluginMethod
+    public void pdCookie(PluginCall call) {
+        String key = call.getString("key", "");
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            WebView web = getBridge().getWebView();
+            if (web != null) cm.setAcceptThirdPartyCookies(web, true);
+            if (key != null && !key.isEmpty()) {
+                String c = "pd_auth_key=" + key + "; Path=/; Secure; SameSite=None";
+                cm.setCookie("https://pixeldrain.com", c);
+                cm.setCookie("https://pixeldrain.com/api", c);
+                cm.flush();
+            }
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(String.valueOf(e.getMessage()));
+        }
     }
 }
