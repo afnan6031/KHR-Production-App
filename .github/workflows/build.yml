@@ -16,12 +16,15 @@ permissions:
   pages: write
   id-token: write
 
+# Ye secrets teeno builds (Android, Windows, Web) ko milte hain — Settings > Secrets and variables > Actions
 env:
   VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
   VITE_IMGBB_API_KEY: ${{ secrets.VITE_IMGBB_API_KEY }}
   VITE_GOFILE_TOKEN: ${{ secrets.VITE_GOFILE_TOKEN }}
-  VITE_CATBOX_USERHASH: ${{ secrets.VITE_CATBOX_USERHASH }}
+  # v16: music / voiceover upload (Pixeldrain) aur AI voiceover (Google Gemini)
+  VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
+  VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
   VERSION_CODE: ${{ github.run_number }}
   VERSION_NAME: 1.0.${{ github.run_number }}
 
@@ -80,6 +83,8 @@ jobs:
 
       - name: Build web + prepare Android
         env:
+          VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           KHR_KEYSTORE_PASSWORD: ${{ secrets.KHR_KEYSTORE_PASSWORD }}
           KHR_KEY_ALIAS: ${{ secrets.KHR_KEY_ALIAS }}
@@ -124,7 +129,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Build web (Windows)
+        env:
+          VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        run: npm run build
       - name: Build installer
         shell: bash
         env:
@@ -148,7 +157,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Build web (GitHub Pages)
+        env:
+          VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        run: npm run build
       - uses: actions/configure-pages@v5
         continue-on-error: true
         id: pages
