@@ -4,12 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0E151B" />
-    <meta name="description" content="KHR Production — video production team manager" />
+    <meta name="description" content="KHR Production — video production team manager app. Manage channels, scripts, tasks, AI voiceover, team roles, performance and daily views. Free web, Android and Windows app." />
+    <meta name="robots" content="index, follow" />
+    <meta name="keywords" content="KHR Production, video production team manager, YouTube team management app, script manager, voiceover, task manager" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="KHR Production" />
+    <meta property="og:title" content="KHR Production — video production team manager" />
+    <meta property="og:description" content="Channels, scripts, tasks, AI voiceover, team roles, performance and daily views — all in one app." />
+    <meta property="og:image" content="./brand/khr-main.png" />
+    <meta name="twitter:card" content="summary" />
+    <!--KHR_SEO-->
     <link rel="icon" type="image/png" href="./icons/favicon.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" />
-    <title>KHR Production</title>
+    <title>KHR Production — Video Production Team Manager App</title>
     <script>
       // v15: app ka theme pehle hi frame se (warna pehle ek rang phir doosra = flicker)
       (function () {
@@ -24,7 +33,20 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Google ke liye: JS chalne se pehle ka text. App load hote hi React isay hata deta hai. -->
+      <main style="font-family:system-ui,sans-serif;padding:24px;max-width:720px;margin:auto">
+        <h1>KHR Production — Video Production Team Manager</h1>
+        <p>KHR Production is a team app for video production: manage channels, scripts and tasks, assign work, track team performance and daily views, chat with your team, and create AI voiceovers.</p>
+        <ul>
+          <li>Channels, scripts and task management</li>
+          <li>AI voiceover (Gemini) with multiple voices and styles</li>
+          <li>Team roles, approvals, performance and daily views</li>
+          <li>Works as a web app, Android app (APK) and Windows installer</li>
+        </ul>
+        <noscript>Please enable JavaScript to use KHR Production.</noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
