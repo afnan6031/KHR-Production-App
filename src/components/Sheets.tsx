@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type React from 'react';
 import { CropSheet } from './Cropper';
+import { AccountFold, GmailBox, useAccountInfo } from './Account';
 import { applyPrefs } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
@@ -339,6 +340,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
   const d = useData();
   const toast = useToast();
   const me = d.me;
+  const acc = useAccountInfo();
   const [name, setName] = useState(me?.full_name || '');
   const [contact, setContact] = useState(me?.contact || '');
   const [about, setAbout] = useState(me?.about || '');
@@ -425,6 +427,8 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
         <input ref={bnRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
       </div>
 
+      <GmailBox acc={acc} />
+
       <form
         className="form"
         onSubmit={async (e) => {
@@ -454,6 +458,8 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
         </label>
         <button className="btn primary block" type="submit" disabled={busy}>Save karein</button>
       </form>
+
+      <AccountFold acc={acc} />
 
       <Fold id="prof-look" title={<b>🎨 Theme aur background</b>} defaultOpen={false}>
         <div className="f">

@@ -10,3 +10,14 @@ export const supabase: SupabaseClient = createClient(
   key || 'not-configured',
   { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }
 );
+
+/**
+ * v17: "Password bhool gaye" mein code lagate hi Supabase login kar deta hai. Naya password lagne tak
+ * app ko dashboard par jane se roka jata hai (hold), phir chhor diya jata hai (release).
+ */
+export const authHold = { on: false };
+export const AUTH_REFRESH_EVENT = 'khr-auth-refresh';
+export function releaseAuthHold() {
+  authHold.on = false;
+  window.dispatchEvent(new Event(AUTH_REFRESH_EVENT));
+}

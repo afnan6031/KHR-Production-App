@@ -149,9 +149,10 @@ export function VoiceStudio() {
   const music = useMusic();
   const [text, setText] = useState(() => { try { return localStorage.getItem('khr-vo-draft') || ''; } catch { return ''; } });
   const [voice, setVoice] = useState(() => { try { return localStorage.getItem('khr-vo-voice') || 'Charon'; } catch { return 'Charon'; } });
-  const [styleK, setStyleK] = useState('normal');
-  const [custom, setCustom] = useState('');
-  const [pace, setPace] = useState('n');
+  // v17: andaaz / raftar bhi yaad rehte hain (pehle har dafa "Normal" par laut jate the, to wohi awaaz alag sunayi deti thi)
+  const [styleK, setStyleK] = useState(() => { try { const k = localStorage.getItem('khr-vo-style') || ''; return k === 'custom' || STYLES.some((x) => x.k === k) ? k : 'normal'; } catch { return 'normal'; } });
+  const [custom, setCustom] = useState(() => { try { return localStorage.getItem('khr-vo-custom') || ''; } catch { return ''; } });
+  const [pace, setPace] = useState(() => { try { const k = localStorage.getItem('khr-vo-pace') || ''; return PACES.some((x) => x.k === k) ? k : 'n'; } catch { return 'n'; } });
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   // v16: model user khud chunta hai — ek na chale (limit / error) to doosra
@@ -170,9 +171,11 @@ export function VoiceStudio() {
   const abort = useRef<AbortController | null>(null);
   const pv = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => { loadTakes().then((t) => { setTakes(t); if (t[0]) setTake(t[0]); }); previewCached().then((k) => setCached(new Set(k))); }, []);
+  useEffect(() => { loadTakes().then((t) => { setTakes(t); if (t[0]) setTake(t[0]); }); }, []);
+  useEffect(() => { previewCached(model).then((k) => setCached(new Set(k))); }, [model]);
   useEffect(() => { const id = window.setTimeout(() => { try { localStorage.setItem('khr-vo-draft', text); } catch { /* koi baat nahi */ } }, 400); return () => window.clearTimeout(id); }, [text]);
   useEffect(() => { try { localStorage.setItem('khr-vo-voice', voice); } catch { /* koi baat nahi */ } }, [voice]);
+  useEffect(() => { try { localStorage.setItem('khr-vo-style', styleK); localStorage.setItem('khr-vo-custom', custom); localStorage.setItem('khr-vo-pace', pace); } catch { /* koi baat nahi */ } }, [styleK, custom, pace]);
   useEffect(() => () => { pv.current?.pause(); abort.current?.abort(); }, []);
   useEffect(() => {
     if (!busy) return;
@@ -235,6 +238,18 @@ export function VoiceStudio() {
       abort.current = null;
       setUsage(usageToday());
     }
+  }
+
+  /** purani voiceover ki wohi awaaz / andaaz / model dobara lagao (taake naya take bilkul usi jaisa bane) */
+  function reuse(t: Take) {
+    setVoice(t.voice);
+    if (MODELS.some((m) => m.id === t.model)) setModel(t.model);
+    const known = STYLES.find((x) => x.style === t.style);
+    if (!t.style) { setStyleK('normal'); setCustom(''); }
+    else if (known) setStyleK(known.k);
+    else { setStyleK('custom'); setCustom(t.style); }
+    setPace('n');
+    toast('Wohi setting lag gayi — ab Generate dabayein');
   }
 
   async function download() {
@@ -328,7 +343,7 @@ export function VoiceStudio() {
             <p className="muted tiny m0 model-note">
               <b>{mInfo.label}</b>{` · ${mInfo.limit} · ${mInfo.note}. `}
               {mInfo.kind === 'live'
-                ? 'Live model script ko chhote hisson mein hoo-ba-hoo parhta hai; kabhi koi lafz badle to TTS model chunein.'
+                ? 'Live model baat-cheet ke liye hai: har dafa awaaz / lehja thoda badal sakta hai. Har dafa bilkul wohi awaaz chahiye to TTS model chunein.'
                 : 'TTS model sab se hoo-ba-hoo parhta hai; limit poori ho to doosra TTS ya Live model chunein (har model ki limit alag hai).'}
             </p>
           </div>
@@ -364,6 +379,7 @@ export function VoiceStudio() {
               <WavePlayer blob={take.blob} onPlay={stopMusic} />
               <div className="take-actions">
                 <button type="button" className="btn" onClick={download}>⬇️ Download Audio (.wav)</button>
+                <button type="button" className="btn" onClick={() => reuse(take)}>🔁 Yehi setting dobara</button>
                 {take.url ? (
                   <span className="chip good sm">✓ Playlist mein save hai</span>
                 ) : (

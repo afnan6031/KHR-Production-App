@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { checkVideoFile, embedUrl, mb, uploadVideo, UploadCancelled, videoKind, type UploadProgress, type VideoHost } from '../lib/gofile';
-import { downloadUrl } from '../lib/audio';
+import { checkVideoFile, embedUrl, mb, uploadToGofile, UploadCancelled, videoKind, type UploadProgress } from '../lib/gofile';
 import { errorText } from '../lib/utils';
 import { useToast } from './ui';
 
 /* =========================================================================
-   v16: Video upload — pehle Pixeldrain (10 GB, app ke andar chalti + download), na ho to Gofile.
-   Live progress bar (%, MB / MB), Cancel, ya seedha link paste (Drive / Gofile / Pixeldrain / YouTube / .mp4).
+   v9: Video upload (Gofile.io) — live progress bar (%, MB / MB), Cancel,
+   ya seedha link paste (Google Drive / Gofile / YouTube / .mp4).
    ========================================================================= */
 
 /** Upload ki halat + shuru / cancel (form aur chat dono mein) */
 export function useVideoUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [prog, setProg] = useState<UploadProgress | null>(null);
-  const [host, setHost] = useState<VideoHost>('pixeldrain');
   const ctl = useRef<AbortController | null>(null);
   useEffect(() => () => ctl.current?.abort(), []); // screen band ho to upload bhi band
   const start = async (f: File): Promise<string | null> => {
@@ -23,7 +21,7 @@ export function useVideoUpload() {
     setFile(f);
     setProg({ loaded: 0, total: f.size, pct: 0 });
     try {
-      const r = await uploadVideo(f, setProg, ctl.current.signal, (h) => { setHost(h); setProg({ loaded: 0, total: f.size, pct: 0 }); });
+      const r = await uploadToGofile(f, setProg, ctl.current.signal);
       return r.url;
     } catch (e) {
       if (e instanceof UploadCancelled) return null;
@@ -35,11 +33,11 @@ export function useVideoUpload() {
     }
   };
   const cancel = () => ctl.current?.abort();
-  return { uploading: !!file, file, prog, host, start, cancel };
+  return { uploading: !!file, file, prog, start, cancel };
 }
 
 /** Progress bar: naam, %, MB / MB, Cancel */
-export function UploadBar({ file, prog, onCancel, host = 'pixeldrain' }: { file: File; prog: UploadProgress; onCancel: () => void; host?: VideoHost }) {
+export function UploadBar({ file, prog, onCancel }: { file: File; prog: UploadProgress; onCancel: () => void }) {
   const done = prog.pct >= 100;
   return (
     <div className="upbar" role="status" aria-live="polite">
@@ -54,11 +52,7 @@ export function UploadBar({ file, prog, onCancel, host = 'pixeldrain' }: { file:
         <b className="num">{prog.pct}%</b>
         <span className="num">{mb(prog.loaded)} / {mb(prog.total)}</span>
       </div>
-      <span className="muted tiny">
-        {host === 'gofile'
-          ? done ? 'Gofile video process kar raha hai… thora intezar' : 'Pixeldrain nahi chala — video Gofile par upload ho rahi hai. Ye screen band na karein'
-          : done ? 'Pixeldrain file save kar raha hai… thora intezar' : 'Video Pixeldrain par upload ho rahi hai — ye screen band na karein'}
-      </span>
+      <span className="muted tiny">{done ? 'Gofile video process kar raha hai… thora intezar' : 'Video Gofile par upload ho rahi hai — ye screen band na karein'}</span>
     </div>
   );
 }
@@ -67,9 +61,8 @@ export function UploadBar({ file, prog, onCancel, host = 'pixeldrain' }: { file:
 export function VideoField({ value, onChange, onBusy }: { value: string; onChange: (url: string) => void; onBusy?: (b: boolean) => void }) {
   const toast = useToast();
   const up = useVideoUpload();
-  const uploaded = (u: string) => videoKind(u) === 'gofile' || videoKind(u) === 'pixeldrain';
-  const [mode, setMode] = useState<'file' | 'link'>(value && !uploaded(value) ? 'link' : 'file');
-  const [link, setLink] = useState(value && !uploaded(value) ? value : '');
+  const [mode, setMode] = useState<'file' | 'link'>(value && videoKind(value) !== 'gofile' ? 'link' : 'file');
+  const [link, setLink] = useState(value && videoKind(value) !== 'gofile' ? value : '');
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => onBusy?.(up.uploading), [up.uploading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,7 +80,7 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
     }
   }
 
-  if (up.uploading && up.file && up.prog) return <UploadBar file={up.file} prog={up.prog} onCancel={up.cancel} host={up.host} />;
+  if (up.uploading && up.file && up.prog) return <UploadBar file={up.file} prog={up.prog} onCancel={up.cancel} />;
 
   if (value)
     return (
@@ -106,8 +99,8 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
       {mode === 'file' ? (
         <>
           <input ref={fileRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => pick(e.target.files?.[0])} />
-          <button type="button" className="btn" onClick={() => fileRef.current?.click()}>🎬 Video chunein (phone / PC se, 10 GB tak)</button>
-          <span className="h">MP4, MOV, MKV, WEBM. Video Pixeldrain par jati hai (na chale to Gofile), app mein sirf link save hota hai. Pixeldrain wali video app ke andar chalti aur download hoti hai.</span>
+          <button type="button" className="btn" onClick={() => fileRef.current?.click()}>🎬 Video chunein (phone / PC se, 2 GB tak)</button>
+          <span className="h">MP4, MOV, MKV, WEBM. Video Gofile.io par jati hai, app mein sirf link save hota hai.</span>
         </>
       ) : (
         <div className="row">
@@ -117,7 +110,7 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
             inputMode="url"
             value={link}
             onChange={(e) => setLink(e.target.value)}
-            placeholder="https://pixeldrain.com/u/… · https://drive.google.com/… · https://gofile.io/d/…"
+            placeholder="https://drive.google.com/… ya https://gofile.io/d/…"
             aria-label="Video ka link"
           />
           <button
@@ -142,20 +135,14 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
 export function VideoCard({ url, title, compact }: { url: string; title?: string; compact?: boolean }) {
   const toast = useToast();
   const [play, setPlay] = useState(false);
-  const [vErr, setVErr] = useState(false);
   const emb = embedUrl(url);
   const kind = videoKind(url);
-  const host = kind === 'pixeldrain' ? 'Pixeldrain' : kind === 'gofile' ? 'Gofile' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : url.replace(/^https?:\/\//, '').split('/')[0];
-  const dl = kind === 'pixeldrain' ? downloadUrl(url) : '';
+  const host = kind === 'gofile' ? 'Gofile' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : url.replace(/^https?:\/\//, '').split('/')[0];
   return (
     <div className={'vcard' + (compact ? ' compact' : '')}>
       {play && emb ? (
         emb.type === 'video' ? (
-          vErr ? (
-            <p className="vcard-err small m0">Video app ke andar nahi chal saki{kind === 'pixeldrain' ? ' (Pixeldrain ka free account doosri app mein chalne se rok sakta hai — Android / Windows app mein chalegi)' : ''}. "Kholein" ya "Download" dabayein.</p>
-          ) : (
-            <video className="vcard-player" src={emb.src} controls autoPlay playsInline preload="metadata" onError={() => setVErr(true)} />
-          )
+          <video className="vcard-player" src={emb.src} controls autoPlay playsInline />
         ) : (
           <iframe className="vcard-player" src={emb.src} title={title || 'Video'} allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
         )
@@ -167,8 +154,7 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
           <span className="muted tiny">{host}</span>
         </span>
         {emb && !play && <button type="button" className="btn sm" onClick={() => setPlay(true)}>▶ Chalayein</button>}
-        {dl && <a className="btn sm" href={dl} target="_blank" rel="noopener noreferrer">⬇ Download</a>}
-        <a className={'btn sm' + (emb ? '' : ' primary')} href={url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
+        <a className="btn primary sm" href={url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
         <button
           type="button"
           className="btn sm"

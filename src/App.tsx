@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { isConfigured, supabase } from './lib/supabase';
+import { AUTH_REFRESH_EVENT, authHold, isConfigured, supabase } from './lib/supabase';
 import { DataProvider, PersonalScope, RealScope, useData } from './lib/data';
 import { AuthScreen, NotConfigured } from './screens/Auth';
 import { ChannelScreen, ChannelsScreen, GateScreen, MyCardsScreen } from './screens/Main';
@@ -28,8 +28,11 @@ export default function App() {
       setSession(data.session);
       setReady(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => { if (!authHold.on) setSession(s); });
+    // v17: password reset khatam hone par (hold hatne par) session dobara lo
+    const refresh = () => { supabase.auth.getSession().then(({ data: d }) => setSession(d.session)); };
+    window.addEventListener(AUTH_REFRESH_EVENT, refresh);
+    return () => { data.subscription.unsubscribe(); window.removeEventListener(AUTH_REFRESH_EVENT, refresh); };
   }, []);
 
   if (!isConfigured) return <NotConfigured />;

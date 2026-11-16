@@ -354,6 +354,9 @@ export function errorText(e: unknown): string {
   if (/Password should be at least/i.test(msg)) return 'Password kam az kam 6 characters ka rakhein.';
   if (/Email not confirmed/i.test(msg)) return 'Email confirm nahi hui. Apni email mein link dabayein, ya owner Supabase mein "Confirm email" band kare.';
   if (/row-level security|permission denied/i.test(msg)) return 'Aap ko ye kaam karne ki ijazat nahi.';
+  if (/Token has expired|otp_expired|Token is invalid|invalid.*token|Invalid.*OTP/i.test(msg)) return 'Code ghalat hai ya purana ho gaya. Naya code mangwayein.';
+  if (/rate limit|only request this after|too many requests/i.test(msg)) return 'Bohot jaldi jaldi try kiya. Thori der (1 minute) baad dobara koshish karein.';
+  if (/different from the old password/i.test(msg)) return 'Naya password purane se alag rakhein.';
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Internet connection check karein aur dobara try karein.';
   if (/Could not find the function|schema cache/i.test(msg)) return 'Database purana hai. Supabase SQL Editor mein nayi schema.sql dobara Run karein.';
   return msg;

@@ -148,7 +148,7 @@ async function viaGenerate(model: string, q: Req): Promise<Blob> {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
       contents: [{ parts: [{ text: q.style ? `Say in a ${q.style} way: ${q.text}` : q.text }] }],
-      generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: q.voice } } } }
+      generationConfig: { temperature: 0, responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: q.voice } } } }
     })
   });
   if (!r.ok) throw await errorOf(r);
@@ -255,7 +255,7 @@ function viaLive(model: string, shape: LiveShape, q: Req, onPart?: (done: number
       const sys = { parts: [{ text: READ_ONLY(q.style) }] };
       const setup = shape === 'flat'
         ? { model: 'models/' + model, responseModalities: ['AUDIO'], speechConfig: voice, systemInstruction: sys }
-        : { model: 'models/' + model, generationConfig: { responseModalities: ['AUDIO'], speechConfig: voice }, systemInstruction: sys };
+        : { model: 'models/' + model, generationConfig: { temperature: 0, responseModalities: ['AUDIO'], speechConfig: voice }, systemInstruction: sys };
       ws.send(JSON.stringify({ setup }));
       hard = window.setTimeout(() => fail(new TtsError('Gemini Live ka setup nahi hua (time out).')), 20000);
     };
@@ -298,7 +298,8 @@ export const MODELS: TtsModel[] = [
   { id: 'gemini-3.1-flash-tts-preview', label: 'Gemini 3.1 Flash TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: '17 Nov 2026 ko band' },
   { id: 'gemini-2.5-flash-preview-tts', label: 'Gemini 2.5 Flash TTS', kind: 'tts', limit: '10 roz · 3 per minute', note: '17 Nov 2026 ko band' }
 ];
-export const DEFAULT_MODEL = MODELS[0].id;
+/** v17: default TTS — Live model baat-cheet ke liye hai, har dafa lehja thoda badalta hai; TTS mein awaaz mustaqil rehti hai */
+export const DEFAULT_MODEL = 'gemini-3.8-flash-tts';
 export const modelOf = (id: string) => MODELS.find((m) => m.id === id) || MODELS[0];
 
 /* aaj kis model se kitni voiceovers bani (sirf is device par — TTS ki 10 roz ki hadd ka andaza) */
@@ -417,20 +418,30 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectS
 
 const PREVIEW_TEXT = (name: string) => `Assalam o Alaikum! Main ${name} hoon. Ye meri awaaz ka chhota sa namoona hai — aap ki agli video ke liye.`;
 
+/** v17: namoona ab model ke hisaab se alag save hota hai (pehle sirf naam par tha, to model badalne par awaaz alag lagti thi) */
+const previewKey = (model: string, name: string) => modelOf(model).id + '|' + name;
+
 /** awaaz ka namoona: ek dafa bana kar hamesha ke liye is device par (Gemini ki limit bachti hai) */
 export async function voicePreview(name: string, signal?: AbortSignal, model?: string): Promise<Blob> {
+  const key = previewKey(model || DEFAULT_MODEL, name);
   try {
-    const hit = (await tx('previews', 'readonly', (s) => s.get(name))) as Blob | undefined;
+    const hit = (await tx('previews', 'readonly', (s) => s.get(key))) as Blob | undefined;
     if (hit) return hit;
   } catch {
     /* storage band — seedha banao */
   }
   const { blob } = await generateSpeech({ text: PREVIEW_TEXT(name), voice: name, signal, model });
-  try { await tx('previews', 'readwrite', (s) => s.put(blob, name)); } catch { /* koi baat nahi */ }
+  try { await tx('previews', 'readwrite', (s) => s.put(blob, key)); } catch { /* koi baat nahi */ }
   return blob;
 }
-export async function previewCached(): Promise<string[]> {
-  try { return ((await tx('previews', 'readonly', (s) => s.getAllKeys())) as IDBValidKey[]).map(String); } catch { return []; }
+/** is model ke jin awaazon ka namoona bana hua hai (awaaz ke naam) */
+export async function previewCached(model?: string): Promise<string[]> {
+  const prefix = modelOf(model || DEFAULT_MODEL).id + '|';
+  try {
+    return ((await tx('previews', 'readonly', (s) => s.getAllKeys())) as IDBValidKey[]).map(String).filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+  } catch {
+    return [];
+  }
 }
 
 export interface Take { id: string; at: number; voice: string; style: string; text: string; blob: Blob; model: string; url?: string }
