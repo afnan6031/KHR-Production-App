@@ -157,10 +157,21 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: SEO files (sitemap + robots)
+        run: |
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          if [ "${REPO,,}" = "${OWNER_LC}.github.io" ]; then SITE="https://${OWNER_LC}.github.io/"; else SITE="https://${OWNER_LC}.github.io/${REPO}/"; fi
+          echo "VITE_SITE_URL=$SITE" >> "$GITHUB_ENV"
+          printf 'User-agent: *\nAllow: /\n\nSitemap: %ssitemap.xml\n' "$SITE" > public/robots.txt
+          printf '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>%s</loc><lastmod>%s</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>\n</urlset>\n' "$SITE" "$(date -u +%Y-%m-%d)" > public/sitemap.xml
+          echo "Site URL: $SITE"
       - name: Build web (GitHub Pages)
         env:
           VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+          VITE_GOOGLE_VERIFY: ${{ secrets.VITE_GOOGLE_VERIFY }}
         run: npm run build
       - uses: actions/configure-pages@v5
         continue-on-error: true
