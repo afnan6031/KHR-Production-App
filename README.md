@@ -34,6 +34,20 @@ Backend: **Supabase** (login, database, live sync). Free plan kaafi hai.
 
 > **Zaroori:** App mein **sab se pehle jo account banega wo OWNER** banega. Is liye sab se pehle aap khud account banayein, team ko baad mein dein.
 
+### Step 1.5 (v17): Password bhool gaye / Gmail verify — Supabase mein ek dafa setup
+
+Ye teeno cheezein na karein to "Password bhool gaye?" aur "Gmail verify" kaam nahi karenge.
+
+1. **SQL:** purane project mein sirf `supabase/update-account.sql` SQL Editor mein Run karein (naye project mein `schema.sql` mein ye pehle se hai).
+2. **Email mein link ki jagah code:** Supabase → **Authentication → Email Templates** mein neeche ke teen templates kholein aur body mein `{{ .Token }}` likhein (misal: `<p>Aap ka code: <b>{{ .Token }}</b></p>`):
+   - **Reset Password**
+   - **Magic Link** (Gmail verify ke liye)
+   - **Change Email Address** (Gmail badalne ke liye)
+3. **Authentication → Sign In / Providers → Email:** **"Secure email change"** ko **OFF** karein (warna Gmail badalte waqt do code maangta hai).
+4. **Email bhejne ki hadd:** Supabase ki free email service ghanta mein sirf 2–3 emails bhejti hai. Team ke liye **Authentication → Emails → SMTP Settings** mein apna SMTP lagayein (misal: Gmail App Password ya Resend, dono free).
+
+Android / Windows app mein link nahi khulta, is liye ye sab 6 digit **code** se hota hai.
+
 ### Step 2: Code GitHub par daalein
 
 1. **github.com** par account banayein (agar nahi hai).
