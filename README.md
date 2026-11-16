@@ -34,7 +34,7 @@ Backend: **Supabase** (login, database, live sync). Free plan kaafi hai.
 
 > **Zaroori:** App mein **sab se pehle jo account banega wo OWNER** banega. Is liye sab se pehle aap khud account banayein, team ko baad mein dein.
 
-### Step 1.5 (v17): Password bhool gaye / Gmail verify — Supabase mein ek dafa setup
+### Step 1.5 (v18): Password bhool gaye / Gmail verify — Supabase mein ek dafa setup
 
 Ye teeno cheezein na karein to "Password bhool gaye?" aur "Gmail verify" kaam nahi karenge.
 
