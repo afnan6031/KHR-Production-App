@@ -196,21 +196,34 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
   };
 
   const fetchTable = useCallback(async (name: TableName) => {
-    let q = supabase.from(name).select('*');
-    if (name === 'performance') q = q.order('rated_on', { ascending: true }).limit(5000);
+    // Supabase har request mein zyada se zyada ~1000 rows deta hai (.limit(20000) bhi us se zyada nahi dilata).
+    // Is liye pages mein le kar jodte hain, warna tasks jaise bade tables ke nayi (aaj ki) rows kat jati thin.
+    const PAGE = 1000;
+    const spec: { order?: [string, boolean][]; since?: [string, string]; max: number } = { max: PAGE };
+    if (name === 'performance') Object.assign(spec, { order: [['rated_on', true], ['channel_id', true], ['user_id', true], ['role', true]], max: 5000 });
     // pichle ~4 mahine ke tasks: is mahine + pichle mahine ki progress aur leaderboard ke liye kaafi
-    if (name === 'tasks') q = q.gte('day', addDays(todayKey(), -125)).order('day', { ascending: true }).limit(20000);
+    if (name === 'tasks') Object.assign(spec, { since: ['day', addDays(todayKey(), -125)], order: [['day', true], ['id', true]], max: 20000 });
     // videos ki poori history (sab se nayi 10,000)
-    if (name === 'videos') q = q.order('created_at', { ascending: false }).limit(10000);
-    if (name === 'deadline_requests') q = q.order('created_at', { ascending: false }).limit(2000);
-    if (name === 'music_tracks') q = q.order('position', { ascending: true }).order('created_at', { ascending: true });
+    if (name === 'videos') Object.assign(spec, { order: [['created_at', false], ['id', false]], max: 10000 });
+    if (name === 'deadline_requests') Object.assign(spec, { order: [['created_at', false], ['id', false]], max: 2000 });
+    if (name === 'music_tracks') Object.assign(spec, { order: [['position', true], ['created_at', true], ['id', true]], max: 20000 });
     // pichle 90 din ke messages
-    if (name === 'messages') q = q.gte('created_at', new Date(Date.now() - 90 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(5000);
-    if (name === 'server_messages' || name === 'direct_messages') q = q.gte('created_at', new Date(Date.now() - 90 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(8000);
-    if (name === 'server_channels') q = q.order('position', { ascending: true });
-    const { data, error } = await q;
-    if (error) throw error;
-    setT((prev) => ({ ...prev, [name]: INCREMENTAL.includes(name) ? withPending(name, data || []) : data || [] }));
+    if (name === 'messages') Object.assign(spec, { since: ['created_at', new Date(Date.now() - 90 * 864e5).toISOString()], order: [['created_at', false], ['id', false]], max: 5000 });
+    if (name === 'server_messages' || name === 'direct_messages') Object.assign(spec, { since: ['created_at', new Date(Date.now() - 90 * 864e5).toISOString()], order: [['created_at', false], ['id', false]], max: 8000 });
+    if (name === 'server_channels') Object.assign(spec, { order: [['position', true], ['id', true]], max: 5000 });
+
+    const rows: unknown[] = [];
+    for (let from = 0; from < spec.max; from += PAGE) {
+      let q = supabase.from(name).select('*');
+      if (spec.since) q = q.gte(spec.since[0], spec.since[1]);
+      (spec.order || []).forEach(([col, asc]) => { q = q.order(col, { ascending: asc }); });
+      const { data, error } = await q.range(from, Math.min(from + PAGE, spec.max) - 1);
+      if (error) throw error;
+      const got = data || [];
+      rows.push(...got);
+      if (got.length < PAGE) break;
+    }
+    setT((prev) => ({ ...prev, [name]: INCREMENTAL.includes(name) ? withPending(name, rows as never[]) : (rows as never[]) }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Aaj (aur chhoote hue dinon) ke tasks server par bana do — dobara chalana safe hai */
@@ -586,7 +599,8 @@ export function DataProvider({ uid, children }: { uid: string; children: ReactNo
       let id = v.id;
       if (id) must(await supabase.from('videos').update(row).eq('id', id));
       else id = (must(await supabase.from('videos').insert({ ...row, task_id: v.task_id || null }).select('id').single()) as { id: string }).id;
-      await fetchTable('videos');
+      // v18: video mein kaam lagte hi database us din ke task khud complete kar deta hai, is liye tasks bhi taza karo
+      await Promise.all([fetchTable('videos'), fetchTable('tasks')]);
       return id!;
     },
     async deleteVideo(id) {
