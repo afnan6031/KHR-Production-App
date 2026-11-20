@@ -24,6 +24,9 @@ export interface Prefs {
   bg?: { type: 'none' | 'color' | 'gradient' | 'image'; c1?: string; c2?: string; angle?: number; image?: string; dim?: number; blur?: number; sync?: boolean };
   accent?: string;
   textColor?: string;
+  textShadow?: boolean;
+  textShadowColor?: string;
+  glass?: { color?: string; opacity?: number; blur?: number };
 }
 
 export interface MusicTrack {

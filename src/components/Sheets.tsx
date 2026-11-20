@@ -4,7 +4,7 @@ import { CropSheet } from './Cropper';
 import { GmailBox, SecurityPasswordBox, useAccountInfo } from './Account';
 import { supabase } from '../lib/supabase';
 import { APP_VERSION, checkAppUpdate, type UpdateResult } from '../lib/updater';
-import { applyPrefs } from '../lib/appearance';
+import { applyPrefs, reapplyTint } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
 import { FB_ROLE, ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
@@ -337,7 +337,9 @@ const BG_PRESETS: { c1: string; c2: string }[] = [
   { c1: '#1D2671', c2: '#C33764' }
 ];
 const ACCENTS = ['#E5383B', '#C8102E', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899'];
-const TEXT_COLORS = ['#0F172A', '#FFFFFF', '#1E3A8A', '#991B1B', '#065F46', '#581C87', '#92400E', '#334155'];
+const TEXT_COLORS = ['#FFFFFF', '#0F172A', '#F8FAFC', '#E2E8F0', '#1E3A8A', '#991B1B', '#065F46', '#FDE047'];
+const GLASS_COLORS = ['#FFFFFF', '#0F172A', '#1E293B', '#38BDF8', '#A855F7', '#F43F5E', '#10B981', '#F59E0B'];
+const SHADOW_COLORS = ['#000000', '#FFFFFF', '#1E293B', '#3B82F6', '#EF4444'];
 
 type AccountView = 'menu' | 'profile' | 'security' | 'theme' | 'language';
 
@@ -572,7 +574,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
 
       {view === 'theme' && (
         <div className="form">
-          <div className="f">App ka rang<Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }, { v: 'glass', label: '🫧 Glass' }]} /></div>
+          <div className="f">App ka rang<Seg label="Theme" value={theme} onChange={(v) => { setThemeChoice(v); window.setTimeout(() => reapplyTint(), 0); }} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }, { v: 'glass', label: '🫧 Glass' }]} /></div>
           <div className="f">
             Background
             <Seg label="Background" value={bg.type} onChange={(t) => (t === 'image' && !bg.image ? bgRef.current?.click() : setBg({ type: t }))} options={[{ v: 'none', label: 'Asal' }, { v: 'color', label: 'Ek rang' }, { v: 'gradient', label: 'Gradient' }, { v: 'image', label: 'Apni pic' }]} />
@@ -602,15 +604,61 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
             </div>
           </div>
           <div className="f">
-            Text ka rang
+            Text ka rang <span className="h">Auto par background ke hisaab se khud adjust hota hai</span>
             <div className="presets">
+              <button type="button" className={'btn sm' + (!prefs.textColor ? ' primary' : '')} onClick={() => savePrefs({ ...prefs, textColor: undefined })}>Auto</button>
               {TEXT_COLORS.map((tc) => (
                 <button type="button" key={tc} className={'preset dot' + (prefs.textColor === tc ? ' on' : '')} style={{ background: tc }} onClick={() => savePrefs({ ...prefs, textColor: tc })} aria-label={tc} />
               ))}
-              <input type="color" value={prefs.textColor || '#121A2E'} onChange={(e) => savePrefs({ ...prefs, textColor: e.target.value })} aria-label="Text ka apna rang" />
-              {prefs.textColor && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, textColor: undefined })}>Asal</button>}
+              <input type="color" value={prefs.textColor || '#FFFFFF'} onChange={(e) => savePrefs({ ...prefs, textColor: e.target.value })} aria-label="Text ka apna rang" />
             </div>
           </div>
+
+          <div className="f">
+            Text shadow
+            <div className="row wrap">
+              <button type="button" className={'btn sm' + (!prefs.textShadow ? ' primary' : '')} onClick={() => savePrefs({ ...prefs, textShadow: false })}>Band (Off)</button>
+              <button type="button" className={'btn sm' + (prefs.textShadow ? ' primary' : '')} onClick={() => savePrefs({ ...prefs, textShadow: true })}>Chalu (On)</button>
+            </div>
+            {prefs.textShadow && (
+              <div className="presets" style={{ marginTop: 6 }}>
+                {SHADOW_COLORS.map((sc) => (
+                  <button type="button" key={sc} className={'preset dot' + ((prefs.textShadowColor || '#000000') === sc ? ' on' : '')} style={{ background: sc }} onClick={() => savePrefs({ ...prefs, textShadowColor: sc })} aria-label={sc} />
+                ))}
+                <input type="color" value={prefs.textShadowColor || '#000000'} onChange={(e) => savePrefs({ ...prefs, textShadowColor: e.target.value })} aria-label="Shadow ka rang" />
+              </div>
+            )}
+          </div>
+
+          {theme === 'glass' && (
+            <>
+              <div className="f">
+                Glass box ka rang
+                <div className="presets">
+                  {GLASS_COLORS.map((gc) => (
+                    <button
+                      type="button"
+                      key={gc}
+                      className={'preset dot' + ((prefs.glass?.color || '#FFFFFF') === gc ? ' on' : '')}
+                      style={{ background: gc }}
+                      onClick={() => savePrefs({ ...prefs, glass: { ...prefs.glass, color: gc } })}
+                      aria-label={gc}
+                    />
+                  ))}
+                  <input type="color" value={prefs.glass?.color || '#FFFFFF'} onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, color: e.target.value } })} aria-label="Glass box rang" />
+                  {prefs.glass?.color && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, glass: { ...prefs.glass, color: undefined } })}>Asal</button>}
+                </div>
+              </div>
+              <label className="f">
+                <span className="muted tiny">Glass blur: {prefs.glass?.blur ?? 18}px</span>
+                <input type="range" min={0} max={32} step={1} value={prefs.glass?.blur ?? 18} onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, blur: Number(e.target.value) } })} />
+              </label>
+              <label className="f">
+                <span className="muted tiny">Glass box transparency / tint: {Math.round((prefs.glass?.opacity ?? 0.16) * 100)}%</span>
+                <input type="range" min={0.05} max={0.55} step={0.01} value={prefs.glass?.opacity ?? 0.16} onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, opacity: Number(e.target.value) } })} />
+              </label>
+            </>
+          )}
         </div>
       )}
 

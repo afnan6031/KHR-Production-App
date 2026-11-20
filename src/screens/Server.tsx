@@ -349,7 +349,7 @@ function FriendsPane({ current, onOpenDM, onOpenUser }: { current: string; onOpe
               <UserAvatar id={p} status />
               <span className="grow">
                 <span className="mname">{d.nameOf(p)}</span>
-                <small className="muted block one-line">{l ? (l.from_user === d.uid ? 'Aap: ' : '') + (l.body || '📷 Image') : 'Abhi baat nahi hui'}</small>
+                <small className="muted block one-line">{l ? (l.from_user === d.uid ? 'Aap: ' : '') + ((l.body || '').replace(/https?:\/\/(?:www\.)?(?:pixeldrain\.com|i\.ibb\.co|ibb\.co)\/\S+/gi, '').trim() || '📷 Media') : 'Abhi baat nahi hui'}</small>
               </span>
               {unread > 0 && <span className="ccount num">{unread}</span>}
             </button>

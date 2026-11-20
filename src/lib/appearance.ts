@@ -93,10 +93,29 @@ let tintRun = 0;
 async function applyTint(p?: Prefs | null) {
   const run = ++tintRun;
   const root = document.documentElement;
-  const sync = !!p?.bg && p.bg.type !== 'none' && p.bg.sync !== false;
-  const t = sync ? await tintOf(p!.bg) : null;
+  const hasBg = !!p?.bg && p.bg.type !== 'none';
+  const rawTint = hasBg ? await tintOf(p!.bg) : null;
   if (run !== tintRun) return; // beech mein pasand badal gayi
+  const sync = hasBg && p!.bg!.sync !== false;
+  const t = sync ? rawTint : null;
   const dark = isDark();
+  const isGlass = root.getAttribute('data-theme') === 'glass';
+
+  // Auto-sync Glass text color with effective background brightness (unless user manually picked textColor)
+  if (isGlass) {
+    const dim = hasBg ? Math.max(0, Math.min(0.85, p?.bg?.dim ?? (p?.bg?.type === 'image' ? 0.35 : 0))) : 0;
+    const bgLum = rawTint
+      ? ((0.299 * rawTint[0] + 0.587 * rawTint[1] + 0.114 * rawTint[2]) / 255) * (1 - dim)
+      : 0.88;
+    const autoDarkBg = bgLum < 0.52;
+    if (!p?.textColor || !/^#[0-9a-f]{6}$/i.test(p.textColor)) {
+      root.style.setProperty('--fg', autoDarkBg ? '#FFFFFF' : '#0F172A');
+      root.style.setProperty('--muted', autoDarkBg ? 'rgba(255, 255, 255, 0.84)' : 'rgba(15, 23, 42, 0.78)');
+    }
+    root.setAttribute('data-glass-tone', autoDarkBg ? 'dark' : 'light');
+  } else {
+    root.removeAttribute('data-glass-tone');
+  }
   const base: RGB = dark ? [17, 24, 50] : [255, 255, 255];
   if (!t) {
     document.body.classList.remove('tinted-ui');
@@ -218,20 +237,26 @@ export function applyPrefs(p?: Prefs | null, save = true) {
   }
   if (p?.textColor && /^#[0-9a-f]{6}$/i.test(p.textColor)) {
     root.style.setProperty('--fg', p.textColor);
-    root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 76%, transparent)`);
-    const rgb = parse(p.textColor);
-    const lum = rgb ? (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 : 0;
-    root.style.setProperty(
-      '--glass-text-shadow',
-      lum >= 0.52
-        ? '0 1px 4px rgba(0, 0, 0, 0.90), 0 0 10px rgba(0, 0, 0, 0.55)'
-        : '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72)'
-    );
+    root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 84%, transparent)`);
   } else {
     root.style.removeProperty('--fg');
     root.style.removeProperty('--muted');
-    root.style.setProperty('--glass-text-shadow', '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72)');
   }
+  // Text shadow: OFF by default (clean crisp text); only applied if user turns it ON
+  if (p?.textShadow) {
+    const sc = p.textShadowColor && /^#[0-9a-f]{6}$/i.test(p.textShadowColor) ? p.textShadowColor : '#000000';
+    root.style.setProperty('--glass-text-shadow', `0 1px 4px ${sc}`);
+  } else {
+    root.style.setProperty('--glass-text-shadow', 'none');
+  }
+  // Custom Glass Box color, opacity, and blur
+  const gRgb = parse(p?.glass?.color) || [255, 255, 255];
+  const gOp = Math.max(0.05, Math.min(0.55, p?.glass?.opacity ?? 0.16));
+  const gBlur = Math.max(0, Math.min(32, p?.glass?.blur ?? 18));
+  root.style.setProperty('--glass-rgb', `${gRgb[0]}, ${gRgb[1]}, ${gRgb[2]}`);
+  root.style.setProperty('--glass-alpha', String(gOp));
+  root.style.setProperty('--glass-alpha-soft', String(Math.max(0.04, +(gOp * 0.72).toFixed(2))));
+  root.style.setProperty('--glass-blur', gBlur + 'px');
   applyTint(p);
   setLang(p?.lang === 'en' ? 'en' : 'ur');
   if (save) {

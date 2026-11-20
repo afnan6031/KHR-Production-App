@@ -1686,7 +1686,16 @@ html, body { -webkit-tap-highlight-color: transparent; }
   font-size: .9rem;
 }
 
-/* ---------- Clean VideoView inside Sheet (no double border / sharp box) ---------- */
+/* ================= v20.5 Global UI Polish + True iOS 27 Liquid Glass ================= */
+
+/* 1. Fix duplicate label in Status Cards (PendingPending -> Pending) */
+.tstat-label .bt-short { display: none; }
+@media (max-width: 480px) {
+  .tstat-label .bt-full { display: none; }
+  .tstat-label .bt-short { display: inline; }
+}
+
+/* 2. Clean VideoView inside Sheet (prevent header .top class collision & double borders) */
 .viewer.video-view.in-sheet {
   border: 0 !important;
   background: transparent !important;
@@ -1696,42 +1705,121 @@ html, body { -webkit-tap-highlight-color: transparent; }
   padding: 0 !important;
   border-radius: 0 !important;
 }
+.viewer.video-view .row.top {
+  position: static !important;
+  top: auto !important;
+  z-index: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+}
+.viewer-img img {
+  border-radius: 16px !important;
+}
 
-/* ---------- iOS 27 Liquid Glass Theme (True translucent glass + 60fps GPU-friendly + Modal Blur + Auto Text Shadow) ---------- */
+/* 3. Leaderboard Podium — clean rounded cards everywhere (no sharp square corners) */
+.podium {
+  gap: 10px;
+}
+.pod {
+  border-radius: 22px !important;
+  padding: 16px 10px 12px !important;
+  overflow: hidden;
+  transition: transform .15s;
+}
+.pod:hover:not(:disabled) { transform: translateY(-2px); }
+.pod .medal {
+  top: 8px !important;
+  right: 10px;
+  left: auto !important;
+  transform: none !important;
+}
+.pod .plinth {
+  border-radius: 14px !important;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 4. Bottom Navigation Bar — Unique Rounded Pill Active Tab (no ugly square outline box) */
+nav.tabs .in {
+  gap: 4px;
+  padding: 6px 6px;
+  align-items: center;
+}
+nav.tabs button {
+  border-radius: 999px !important;
+  padding: 7px 6px !important;
+  transition: background .18s, color .18s, transform .14s, box-shadow .18s;
+  outline: none !important;
+}
+nav.tabs button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+nav.tabs button.on {
+  background: var(--accent) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+nav.tabs button.on svg {
+  stroke: #FFFFFF !important;
+}
+
+/* 5. Global smooth rounded corners on cards & panels */
+.panel, .card, .stat, .pg-sum, .script-box, .studio-side, .vrow, .vpick, .take, .vtile, .pg-tile, .tstat-card, .tmini-panel, .tmini, .vcard, .acard, .dcard, .vo-box, .script-link, .acct-item, .acct-hero, .gmail-box, .forgot-inline, .pcard, .empty {
+  border-radius: 20px;
+}
+
+/* ================= TRUE iOS 27 LIQUID GLASS THEME ================= */
 :root[data-theme="glass"] {
   --bg: #EEF2F9;
-  --surface: rgba(255, 255, 255, 0.22);
-  --surface-2: rgba(255, 255, 255, 0.16);
-  --card: rgba(255, 255, 255, 0.20);
-  --fg: #0F172A;
-  --muted: #334155;
-  --line: rgba(255, 255, 255, 0.52);
-  --pane-side: rgba(255, 255, 255, 0.18);
-  --pane-chat: rgba(255, 255, 255, 0.14);
-  --pane-members: rgba(255, 255, 255, 0.18);
-  --pane-line: rgba(255, 255, 255, 0.45);
-  --header-bg: rgba(255, 255, 255, 0.26);
-  --nav-bg: rgba(255, 255, 255, 0.26);
-  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 52%, rgba(255, 255, 255, 0.24) 100%);
-  --glass-fill-soft: linear-gradient(135deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.10) 100%);
-  --glass-border: rgba(255, 255, 255, 0.62);
-  --glass-shadow: 0 10px 30px rgba(15, 23, 42, 0.10), inset 0 1.5px 1px rgba(255, 255, 255, 0.85), inset 0 -1px 1px rgba(255, 255, 255, 0.22);
-  --glass-text-shadow: 0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72);
-  --shadow: var(--glass-shadow);
+  --glass-rgb: 255, 255, 255;
+  --glass-alpha: 0.16;
+  --glass-alpha-soft: 0.11;
+  --glass-blur: 18px;
+  --glass-text-shadow: none;
+  /* Liquid water-vapor optical refraction sheen (NO harsh white lines!) */
+  --glass-surface:
+    radial-gradient(120% 90% at 14% 6%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.02) 48%, transparent 72%),
+    linear-gradient(145deg, rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.08)) 0%, rgba(var(--glass-rgb), calc(var(--glass-alpha) * 0.55)) 55%, rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.04)) 100%);
+  --glass-surface-soft:
+    radial-gradient(110% 80% at 12% 8%, rgba(255, 255, 255, 0.16) 0%, transparent 65%),
+    rgba(var(--glass-rgb), var(--glass-alpha-soft));
+  --glass-rim: rgba(255, 255, 255, 0.18);
+  --glass-depth: 0 10px 34px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.06);
+  --surface: rgba(var(--glass-rgb), var(--glass-alpha));
+  --surface-2: rgba(var(--glass-rgb), var(--glass-alpha-soft));
+  --card: rgba(var(--glass-rgb), var(--glass-alpha));
+  --line: rgba(255, 255, 255, 0.16);
+  --pane-side: rgba(var(--glass-rgb), var(--glass-alpha));
+  --pane-chat: rgba(var(--glass-rgb), var(--glass-alpha-soft));
+  --pane-members: rgba(var(--glass-rgb), var(--glass-alpha));
+  --pane-line: rgba(255, 255, 255, 0.14);
+  --header-bg: rgba(var(--glass-rgb), var(--glass-alpha));
+  --nav-bg: rgba(var(--glass-rgb), var(--glass-alpha));
+  --shadow: var(--glass-depth);
   color-scheme: light;
+}
+
+:root[data-theme="glass"][data-glass-tone="dark"] {
+  color-scheme: dark;
+  --glass-rim: rgba(255, 255, 255, 0.15);
+  --line: rgba(255, 255, 255, 0.14);
 }
 
 /* Default luminous soft background when no custom bg is set */
 :root[data-theme="glass"] body:not(.custom-bg) {
   background:
-    radial-gradient(circle at 15% 15%, rgba(125, 211, 252, 0.42) 0%, transparent 45%),
-    radial-gradient(circle at 85% 20%, rgba(244, 168, 210, 0.36) 0%, transparent 48%),
-    radial-gradient(circle at 50% 88%, rgba(134, 239, 172, 0.32) 0%, transparent 50%),
+    radial-gradient(circle at 15% 15%, rgba(125, 211, 252, 0.45) 0%, transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(244, 168, 210, 0.38) 0%, transparent 48%),
+    radial-gradient(circle at 50% 88%, rgba(134, 239, 172, 0.34) 0%, transparent 50%),
     #F8FAFC;
   background-attachment: fixed;
 }
 
-/* Auto text shadow for crystal-clear readability on any glass background */
+/* Crisp high-contrast text & icons in Glass (NO dull gray, optional user shadow only) */
 :root[data-theme="glass"] body,
 :root[data-theme="glass"] h1,
 :root[data-theme="glass"] h2,
@@ -1740,53 +1828,65 @@ html, body { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="glass"] p,
 :root[data-theme="glass"] span,
 :root[data-theme="glass"] small,
-:root[data-theme="glass"] label,
-:root[data-theme="glass"] .muted {
+:root[data-theme="glass"] label {
   text-shadow: var(--glass-text-shadow);
+}
+:root[data-theme="glass"] .muted,
+:root[data-theme="glass"] .eyebrow,
+:root[data-theme="glass"] .d,
+:root[data-theme="glass"] nav.tabs button:not(.on) {
+  color: var(--muted) !important;
+}
+:root[data-theme="glass"] nav.tabs button:not(.on) svg {
+  stroke: var(--fg) !important;
+  opacity: 0.85;
 }
 :root[data-theme="glass"] .btn.primary,
 :root[data-theme="glass"] .btn.danger,
 :root[data-theme="glass"] .btn.primary *,
-:root[data-theme="glass"] .btn.danger * {
-  text-shadow: none;
+:root[data-theme="glass"] .btn.danger *,
+:root[data-theme="glass"] nav.tabs button.on,
+:root[data-theme="glass"] nav.tabs button.on * {
+  color: #FFFFFF !important;
+  text-shadow: none !important;
 }
 
-/* Modal / Popup / Sheet Backdrop — blurs entire background behind popups like iPhone */
+/* Modal / Sheet / Lightbox backdrop: smooth iPhone-style background blur */
 :root[data-theme="glass"] .sheet-bg,
 :root[data-theme="glass"] .lightbox {
-  background: rgba(15, 23, 42, 0.24) !important;
-  backdrop-filter: blur(18px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+  background: rgba(8, 12, 24, 0.32) !important;
+  backdrop-filter: blur(20px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
 }
 
-/* Top bar & Floating Liquid Glass Bottom Nav (single GPU layer each = 60fps) */
-:root[data-theme="glass"] .top,
-:root[data-theme="glass"] body.tinted-ui .top {
-  background: var(--glass-fill) !important;
-  backdrop-filter: blur(16px) saturate(185%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(185%) !important;
-  border-bottom: 1px solid var(--glass-border) !important;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.45) !important;
+/* Header & Bottom Nav (scoped strictly to header.top — never matches .row.top!) */
+:root[data-theme="glass"] header.top,
+:root[data-theme="glass"] body.tinted-ui header.top {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(185%) !important;
+  border-bottom: 1px solid var(--glass-rim) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.10), inset 0 -1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
 :root[data-theme="glass"] nav.tabs,
 :root[data-theme="glass"] body.tinted-ui nav.tabs {
-  background: var(--glass-fill) !important;
-  backdrop-filter: blur(16px) saturate(185%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(185%) !important;
-  border-top: 1px solid var(--glass-border) !important;
-  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.08), inset 0 1.5px 1px rgba(255, 255, 255, 0.8) !important;
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(185%) !important;
+  border-top: 1px solid var(--glass-rim) !important;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
 }
 
-/* Top-level Glass Surfaces ONLY (prevents nested blur lag so app stays 60fps) */
+/* Sheets & Popups */
 :root[data-theme="glass"] .sheet,
 :root[data-theme="glass"] body.tinted-ui .sheet {
-  background: var(--glass-fill) !important;
-  backdrop-filter: blur(20px) saturate(190%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(190%) !important;
-  border: 1.5px solid var(--glass-border) !important;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18), inset 0 1.5px 1.5px rgba(255, 255, 255, 0.88), inset 0 -1px 1px rgba(255, 255, 255, 0.25) !important;
-  border-radius: 26px 26px 0 0;
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(calc(var(--glass-blur) + 4px)) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 4px)) saturate(190%) !important;
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+  border-radius: 26px 26px 0 0 !important;
 }
 @media (min-width: 700px) {
   :root[data-theme="glass"] .sheet {
@@ -1794,32 +1894,64 @@ html, body { -webkit-tap-highlight-color: transparent; }
   }
 }
 
+/* Top-level Liquid Glass Panels, Cards, Progress Summary, Voiceover Studio, Server Chat, Podiums */
 :root[data-theme="glass"] .panel,
 :root[data-theme="glass"] .card,
 :root[data-theme="glass"] .card.tinted,
 :root[data-theme="glass"] .stat,
 :root[data-theme="glass"] .tstat-card,
 :root[data-theme="glass"] .tmini-panel,
-:root[data-theme="glass"] .vtile,
+:root[data-theme="glass"] .pg-sum,
 :root[data-theme="glass"] .pg-tile,
+:root[data-theme="glass"] .script-box,
+:root[data-theme="glass"] .studio-side,
+:root[data-theme="glass"] .vpick,
+:root[data-theme="glass"] .take,
+:root[data-theme="glass"] .vtile,
 :root[data-theme="glass"] .daypick-btn,
 :root[data-theme="glass"] .pod,
 :root[data-theme="glass"] .vmore-menu,
 :root[data-theme="glass"] .fmsg-actions,
+:root[data-theme="glass"] .mplayer,
+:root[data-theme="glass"] .mplayer2,
+:root[data-theme="glass"] main.server-main .srv-side,
+:root[data-theme="glass"] main.server-main .srv-main,
+:root[data-theme="glass"] main.server-main .srv-members,
 :root[data-theme="glass"] body.tinted-ui .panel,
 :root[data-theme="glass"] body.tinted-ui .card,
 :root[data-theme="glass"] body.tinted-ui .card.tinted,
-:root[data-theme="glass"] body.tinted-ui .stat {
-  background: var(--glass-fill) !important;
-  backdrop-filter: blur(14px) saturate(175%) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(175%) !important;
-  border: 1px solid var(--glass-border) !important;
-  box-shadow: var(--glass-shadow) !important;
+:root[data-theme="glass"] body.tinted-ui .stat,
+:root[data-theme="glass"] body.tinted-ui main.server-main .srv-side,
+:root[data-theme="glass"] body.tinted-ui main.server-main .srv-main,
+:root[data-theme="glass"] body.tinted-ui main.server-main .srv-members {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: var(--glass-depth) !important;
 }
 
-/* Inner elements inside sheets/panels: NO nested backdrop-filter (eliminates lag!) — pure liquid-glass translucent fill + specular rim */
+/* Server screen glass spacing & rounded panes on desktop */
+:root[data-theme="glass"] .chat-head,
+:root[data-theme="glass"] .chat-pane .composer,
+:root[data-theme="glass"] body.tinted-ui .chat-head,
+:root[data-theme="glass"] body.tinted-ui .chat-pane .composer {
+  background: var(--glass-surface-soft) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: var(--glass-rim) !important;
+}
+
+/* Inner glass elements (NO nested backdrop-filter -> 60fps smooth scrolling!) */
 :root[data-theme="glass"] .sheet .panel,
 :root[data-theme="glass"] .sheet .vtile,
+:root[data-theme="glass"] .studio-side .vrow,
+:root[data-theme="glass"] .pc,
+:root[data-theme="glass"] .pg-role,
+:root[data-theme="glass"] .pg-days button:not(.on),
+:root[data-theme="glass"] .cp-role,
+:root[data-theme="glass"] .mstat,
+:root[data-theme="glass"] .card .kpis > *,
 :root[data-theme="glass"] .tmini,
 :root[data-theme="glass"] .vcard,
 :root[data-theme="glass"] .acard,
@@ -1833,34 +1965,67 @@ html, body { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="glass"] .gmail-box,
 :root[data-theme="glass"] .forgot-inline,
 :root[data-theme="glass"] .pcard,
-:root[data-theme="glass"] .vv-empty {
-  background: var(--glass-fill-soft) !important;
+:root[data-theme="glass"] .vv-empty,
+:root[data-theme="glass"] .pod .plinth,
+:root[data-theme="glass"] .take-li {
+  background: var(--glass-surface-soft) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  border: 1px solid rgba(255, 255, 255, 0.55) !important;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.78), 0 4px 14px rgba(15, 23, 42, 0.06) !important;
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
 }
 
+:root[data-theme="glass"] .studio-side .vrow.on {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 18%, rgba(var(--glass-rgb), var(--glass-alpha))) !important;
+}
+
+:root[data-theme="glass"] .script-box textarea {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+:root[data-theme="glass"] .script-foot {
+  background: transparent !important;
+  border-top: 1px solid var(--glass-rim) !important;
+}
+
+/* Controls, Buttons, Inputs, Segmented tabs in Glass */
 :root[data-theme="glass"] .btn:not(.primary):not(.danger),
 :root[data-theme="glass"] .seg,
 :root[data-theme="glass"] .chip:not(.on),
+:root[data-theme="glass"] .vb-tab:not(.on),
+:root[data-theme="glass"] .tbtn,
+:root[data-theme="glass"] .hist-btn,
+:root[data-theme="glass"] .theme-btn,
+:root[data-theme="glass"] .mode-switch,
 :root[data-theme="glass"] input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
-:root[data-theme="glass"] textarea,
+:root[data-theme="glass"] textarea:not(.script-box textarea),
 :root[data-theme="glass"] select {
-  background: rgba(255, 255, 255, 0.24) !important;
+  background: rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.04)) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  border: 1px solid rgba(255, 255, 255, 0.62) !important;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  color: var(--fg) !important;
 }
 
-:root[data-theme="glass"] .seg button.on {
-  background: rgba(255, 255, 255, 0.62) !important;
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+:root[data-theme="glass"] .seg button.on,
+:root[data-theme="glass"] .mode-switch button.on {
+  background: var(--accent) !important;
+  color: #FFFFFF !important;
+  border-radius: 999px;
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
-:root[data-theme="glass"] .x {
-  background: rgba(255, 255, 255, 0.28) !important;
-  border: 1px solid rgba(255, 255, 255, 0.62) !important;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8);
+:root[data-theme="glass"] .x,
+:root[data-theme="glass"] .vmore-btn {
+  background: rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.08)) !important;
+  border: 1px solid var(--glass-rim) !important;
+  color: var(--fg) !important;
+}
+
+:root[data-theme="glass"] .role {
+  background: rgba(var(--glass-rgb), 0.22) !important;
+  border: 1px solid var(--glass-rim) !important;
 }
