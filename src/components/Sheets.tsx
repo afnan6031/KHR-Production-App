@@ -3,6 +3,7 @@ import type React from 'react';
 import { CropSheet } from './Cropper';
 import { GmailBox, SecurityPasswordBox, useAccountInfo } from './Account';
 import { supabase } from '../lib/supabase';
+import { APP_VERSION, checkAppUpdate, type UpdateResult } from '../lib/updater';
 import { applyPrefs } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
@@ -327,7 +328,6 @@ export function PerfSheet({ channel, onClose }: { channel: Channel; onClose: () 
 }
 
 /* ================= My account (v19) ================= */
-const APP_VERSION = 'v19.0';
 const BG_PRESETS: { c1: string; c2: string }[] = [
   { c1: '#2B0B14', c2: '#10183A' },
   { c1: '#0F2027', c2: '#2C5364' },
@@ -360,6 +360,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
   const [theme, setThemeChoice] = useTheme();
   const [prefs, setPrefs] = useState<Prefs>(() => me?.prefs || {});
   const [updStatus, setUpdStatus] = useState<'' | 'checking' | 'latest' | 'ready'>('');
+  const [updInfo, setUpdInfo] = useState<UpdateResult | null>(null);
 
   const avRef = useRef<HTMLInputElement>(null);
   const bnRef = useRef<HTMLInputElement>(null);
@@ -430,17 +431,34 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
     try {
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
-        let found = false;
-        for (const reg of regs) { await reg.update().catch(() => undefined); if (reg.waiting) found = true; }
-        if (found) { setUpdStatus('ready'); toast('Nayi update mil gayi — reload karein'); return; }
+        for (const reg of regs) await reg.update().catch(() => undefined);
       }
-      await d.reload().catch(() => undefined);
-      setUpdStatus('latest');
-      toast(`App latest version (${APP_VERSION}) par hai`);
-    } catch {
-      setUpdStatus('latest');
-      toast(`App latest version (${APP_VERSION}) par hai`);
+      const res = await checkAppUpdate();
+      setUpdInfo(res);
+      if (res.hasUpdate) {
+        setUpdStatus('ready');
+        toast(`Nayi update available hai: v${res.latest}`);
+      } else {
+        setUpdStatus('latest');
+        toast(`App latest version (v${res.current}) par hai`);
+      }
+    } catch (e) {
+      setUpdStatus('');
+      toast(errorText(e));
     }
+  }
+
+  function applyUpdate() {
+    if (!updInfo) return;
+    if (updInfo.platform === 'web') {
+      if ('caches' in window) {
+        caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))).finally(() => window.location.reload());
+      } else {
+        window.location.reload();
+      }
+      return;
+    }
+    window.open(updInfo.downloadUrl || updInfo.releaseUrl, '_blank', 'noopener,noreferrer');
   }
 
   const sheetTitle = view === 'profile' ? 'Profile' : view === 'security' ? 'Security' : view === 'theme' ? 'Theme aur background' : view === 'language' ? 'Zabaan / Language' : 'My account';
@@ -484,12 +502,18 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
               <span className="grow"><b>Meri progress dekhein</b><small className="muted block">Weekly / monthly performance & PDF download</small></span>
               <span className="acct-arr">›</span>
             </button>
-            <button type="button" className="acct-item" disabled={updStatus === 'checking'} onClick={() => (updStatus === 'ready' ? window.location.reload() : checkUpdates())}>
-              <span className="acct-ico">🔄</span>
+            <button type="button" className="acct-item" disabled={updStatus === 'checking'} onClick={() => (updStatus === 'ready' ? applyUpdate() : checkUpdates())}>
+              <span className="acct-ico">{updStatus === 'ready' ? '⬇️' : '🔄'}</span>
               <span className="grow">
-                <b>{updStatus === 'ready' ? 'Nayi update install karein' : 'Update check karein'}</b>
+                <b>{updStatus === 'ready' && updInfo ? `Update download karein (v${updInfo.latest})` : 'Update check karein'}</b>
                 <small className="muted block">
-                  {updStatus === 'checking' ? 'Update check ho rahi hai…' : updStatus === 'latest' ? `Up to date · ${APP_VERSION}` : updStatus === 'ready' ? 'Naya version tayyar hai — tap kar ke reload karein' : `Current version · ${APP_VERSION}`}
+                  {updStatus === 'checking'
+                    ? 'GitHub se latest version check ho raha hai…'
+                    : updStatus === 'latest'
+                    ? `Up to date · v${APP_VERSION}`
+                    : updStatus === 'ready' && updInfo
+                    ? `Installed: v${APP_VERSION} → Latest: v${updInfo.latest}${updInfo.platform === 'web' ? ' (reload karein)' : ' (tap kar ke download karein)'}`
+                    : `Current version · v${APP_VERSION}`}
                 </small>
               </span>
               <span className="acct-arr">›</span>

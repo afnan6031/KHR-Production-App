@@ -1057,7 +1057,8 @@ export const EN: Record<string, string> = {
   '🎙 Mic se Record karein': '🎙 Record from Mic',
   '⬆ Audio sample upload karein': '⬆ Upload audio sample',
   '🧬 Voice Clone banayein': '🧬 Create Voice Clone',
-  'Gemini awaaz analyze kar raha hai…': 'Gemini is analyzing your voice…'
+  'Gemini awaaz analyze kar raha hai…': 'Gemini is analyzing your voice…',
+  'GitHub se latest version check ho raha hai…': 'Checking latest version on GitHub…'
 };
 
 const DAY_EN: Record<string, string> = { Itwaar: 'Sunday', Peer: 'Monday', Mangal: 'Tuesday', Budh: 'Wednesday', Jumeraat: 'Thursday', Jumma: 'Friday', Hafta: 'Saturday' };
