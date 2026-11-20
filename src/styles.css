@@ -2029,3 +2029,39 @@ nav.tabs button.on svg {
   background: rgba(var(--glass-rgb), 0.22) !important;
   border: 1px solid var(--glass-rim) !important;
 }
+
+/* ================= v20.6 Ultra-Sharp Rendering (Text, Icons, Images) + Smooth 60+ FPS ================= */
+html, body {
+  text-rendering: geometricPrecision;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+svg {
+  shape-rendering: geometricPrecision;
+  vector-effect: non-scaling-stroke;
+}
+
+img {
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* Hardware-accelerated fixed layers for buttery 60+ FPS scrolling */
+#khr-bg,
+header.top,
+nav.tabs {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.panel,
+.card,
+.vtile,
+.pg-tile,
+.tstat-card,
+.tmini,
+.pod {
+  contain: layout style;
+}

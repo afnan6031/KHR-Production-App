@@ -5,6 +5,11 @@ const { app, BrowserWindow, shell, Menu, Tray, nativeImage, ipcMain, session, po
 const path = require('path');
 const fs = require('fs');
 
+// v20.6: Maximum crispness (High-DPI / 4K) + smooth GPU-accelerated 60+ FPS
+app.commandLine.appendSwitch('high-dpi-support', '1');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+
 const ICON = path.join(__dirname, '..', 'build-resources', 'icon.png');
 const BAR = {
   dark: { color: '#0B1124', symbolColor: '#E8EBF4', bg: '#090C24' },

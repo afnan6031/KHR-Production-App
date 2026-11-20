@@ -156,7 +156,7 @@ function preBlur(url: string, blur: number): Promise<string | null> {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
-        const W = 640;
+        const W = 1920;
         const scale = Math.min(1, W / Math.max(img.naturalWidth, img.naturalHeight));
         const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
         const c = document.createElement('canvas');
@@ -168,7 +168,7 @@ function preBlur(url: string, blur: number): Promise<string | null> {
         g.filter = `blur(${r.toFixed(1)}px)`;
         const pad = r * 2;
         g.drawImage(img, -pad, -pad, w + pad * 2, h + pad * 2);
-        const out = c.toDataURL('image/jpeg', 0.86);
+        const out = c.toDataURL('image/jpeg', 0.94);
         blurCache.set(key, out);
         try { localStorage.setItem(BLUR_KEY, JSON.stringify({ k: key, u: out })); } catch { /* jagah nahi — sirf is dafa */ }
         resolve(out);
