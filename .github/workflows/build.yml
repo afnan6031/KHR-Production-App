@@ -27,6 +27,8 @@ env:
   VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
   VERSION_CODE: ${{ github.run_number }}
   VERSION_NAME: 1.0.${{ github.run_number }}
+  VITE_APP_VERSION: 1.0.${{ github.run_number }}
+  VITE_GITHUB_REPO: ${{ github.repository }}
 
 jobs:
   android:
