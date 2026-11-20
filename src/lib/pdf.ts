@@ -193,26 +193,27 @@ export async function downloadMemberProgressPdf(data: MemberPdfInput): Promise<s
 
 export interface TeamStandingPdfInput {
   periodLabel: string;
-  rows: { rank: number; name: string; title?: string; score: number; points: number; onTime: number; late: number; missed: number; rejected: number; done: number; counted: number }[];
+  rows: { rank: number; name: string; title?: string; score: number | null; points: number; onTime: number; late: number; missed: number; rejected: number; done: number; counted: number }[];
 }
 
 export async function downloadTeamRankingPdf(data: TeamStandingPdfInput): Promise<string> {
   const doc = new PdfDoc();
   const gen = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   doc.banner('KHR Production - Team Performance Standings', `Official Team Ranking - ${data.periodLabel}`, `Total Ranked Members: ${data.rows.length} | Generated: ${gen}`);
-  const avg = data.rows.length ? Math.round(data.rows.reduce((a, r) => a + r.score, 0) / data.rows.length) : 0;
+  const scored = data.rows.filter((r) => r.score != null);
+  const avg = scored.length ? Math.round(scored.reduce((a, r) => a + (r.score ?? 0), 0) / scored.length) : 0;
   const top = data.rows[0];
   doc.section('Team Highlights');
   doc.statBoxes([
     { label: 'Top Performer', value: top ? top.name.slice(0, 14) : '-', accent: 'accent' },
-    { label: 'Top Score', value: top ? `${top.score}%` : '-', accent: 'good' },
+    { label: 'Top Score', value: top && top.score != null ? `${top.score}%` : '-', accent: 'good' },
     { label: 'Team Average', value: `${avg}%`, accent: avg >= 85 ? 'good' : avg >= 65 ? 'warn' : 'bad' },
     { label: 'Total Members', value: String(data.rows.length) }
   ]);
   doc.section('Complete Team Standings');
   doc.table(
     [{ text: '#', w: 6 }, { text: 'Member Name', w: 28 }, { text: 'Score', w: 10 }, { text: 'Points', w: 10 }, { text: 'Done', w: 12 }, { text: 'On Time', w: 10 }, { text: 'Late', w: 8 }, { text: 'Ended', w: 8 }, { text: 'Rej', w: 8 }],
-    data.rows.map((r) => [`#${r.rank}`, r.name, `${r.score}%`, String(r.points), `${r.done}/${r.counted}`, String(r.onTime), String(r.late), String(r.missed), String(r.rejected)])
+    data.rows.map((r) => [`#${r.rank}`, r.name, r.score == null ? '-' : `${r.score}%`, String(r.points), `${r.done}/${r.counted}`, String(r.onTime), String(r.late), String(r.missed), String(r.rejected)])
   );
   doc.note('Official KHR Production standings report. Individual detailed reports can be downloaded from any member profile or ranking row.');
   return saveBlobFile(doc.toBlob(), `KHR-Team-Standings-${data.periodLabel.replace(/[^\w-]+/g, '_').slice(0, 28)}.pdf`);
