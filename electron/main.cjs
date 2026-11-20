@@ -158,7 +158,7 @@ ipcMain.handle('khr-pd-upload', (e, o) => new Promise((resolve) => {
 }));
 ipcMain.on('khr-pd-cancel', (_e, id) => { const r = pdReqs.get(id); if (r) { r.destroy(new Error('Upload cancel ho gaya')); pdReqs.delete(id); } });
 ipcMain.handle('khr-fetch-bytes', async (_e, url) => {
-  if (!/^https:\/\/((files\.)?catbox\.moe|pixeldrain\.com)\//i.test(String(url))) throw new Error('not allowed');
+  if (!/^https:\/\/((files\.)?catbox\.moe|pixeldrain\.com|(i\.)?ibb\.co)\//i.test(String(url))) throw new Error('not allowed');
   const r = await fetch(url, { headers: { 'User-Agent': 'KHR-Production/1.0 (Windows)' } });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return { type: r.headers.get('content-type') || 'audio/mpeg', bytes: Buffer.from(await r.arrayBuffer()) };

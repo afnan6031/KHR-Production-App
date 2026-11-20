@@ -1058,7 +1058,16 @@ export const EN: Record<string, string> = {
   '⬆ Audio sample upload karein': '⬆ Upload audio sample',
   '🧬 Voice Clone banayein': '🧬 Create Voice Clone',
   'Gemini awaaz analyze kar raha hai…': 'Gemini is analyzing your voice…',
-  'GitHub se latest version check ho raha hai…': 'Checking latest version on GitHub…'
+  'GitHub se latest version check ho raha hai…': 'Checking latest version on GitHub…',
+  'Upload ho rahi hai…': 'Uploading…',
+  'Video save ho rahi hai… thora intezar': 'Saving video… please wait',
+  'Video upload ho rahi hai — ye screen band na karein': 'Uploading video — do not close this screen',
+  'MP4, MOV, MKV, WEBM. Video seedha app mein play aur download hoti hai.': 'MP4, MOV, MKV, WEBM. Plays and downloads right inside the app.',
+  '👁 Dekhein': '👁 Preview',
+  '⬇ Video download': '⬇ Download Video',
+  '⬇ Thumbnail download': '⬇ Download Thumbnail',
+  '⬇ Voiceover download': '⬇ Download Voiceover',
+  '⬇ Script download': '⬇ Download Script'
 };
 
 const DAY_EN: Record<string, string> = { Itwaar: 'Sunday', Peer: 'Monday', Mangal: 'Tuesday', Budh: 'Wednesday', Jumeraat: 'Thursday', Jumma: 'Friday', Hafta: 'Saturday' };

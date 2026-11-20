@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useData } from '../lib/data';
 import { STAGES, type Stage, type Video } from '../lib/types';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
@@ -9,6 +9,7 @@ import { ConfirmButton, DateFilter, Fold, Sheet, Stop, useToast } from './ui';
 import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
 import { VideoCard, VideoField } from './VideoUpload';
+import { downloadMediaUrl, saveBlobFile } from '../lib/files';
 
 /* =========================================================================
    v9: VIDEOS — har video mein title, script (Google Doc link ya likhi hui),
@@ -59,6 +60,92 @@ export function useMaker() {
 }
 
 /** Channel card ke andar: Videos + Chat, aaj ki har video ka chhota card, aur purani videos ka button */
+/** v20: Video card ke side mein 3-dots (⋯) menu — Video, Thumbnail, Voiceover, Script seedha app mein download */
+function VideoMoreMenu({ video }: { video: Video }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState('');
+  const hasAny = !!(video.video_url || video.thumbnail_url || video.voiceover_url || video.script || video.script_url);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  if (!hasAny) return null;
+  const baseName = (video.title || 'khr-video').replace(/[^\w.\s-]+/g, '_').slice(0, 50) || 'khr-video';
+
+  async function run(key: string, fn: () => Promise<string>) {
+    setBusy(key);
+    try {
+      const msg = await fn();
+      toast('⬇ ' + msg);
+      setOpen(false);
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <div className="vmore-wrap" ref={boxRef} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className="vmore-btn"
+        aria-label="Download options"
+        aria-expanded={open}
+        title="Download options"
+        onClick={(e) => { e.stopPropagation(); setOpen((x) => !x); }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="vmore-menu" role="menu">
+          {video.video_url && (
+            <button type="button" role="menuitem" disabled={!!busy} onClick={() => run('vid', () => downloadMediaUrl(video.video_url!, baseName + '.mp4'))}>
+              {busy === 'vid' ? '⏳ Downloading…' : '⬇ Video download'}
+            </button>
+          )}
+          {video.thumbnail_url && (
+            <button type="button" role="menuitem" disabled={!!busy} onClick={() => run('th', () => downloadMediaUrl(video.thumbnail_url!, baseName + '-thumbnail.png'))}>
+              {busy === 'th' ? '⏳ Downloading…' : '⬇ Thumbnail download'}
+            </button>
+          )}
+          {video.voiceover_url && (
+            <button type="button" role="menuitem" disabled={!!busy} onClick={() => run('vo', () => downloadMediaUrl(video.voiceover_url!, baseName + '-voiceover.wav'))}>
+              {busy === 'vo' ? '⏳ Downloading…' : '⬇ Voiceover download'}
+            </button>
+          )}
+          {(video.script || video.script_url) && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!!busy}
+              onClick={() =>
+                run('sc', () =>
+                  video.script
+                    ? saveBlobFile(new Blob([video.script], { type: 'text/plain;charset=utf-8' }), baseName + '-script.txt')
+                    : downloadMediaUrl(video.script_url!, baseName + '-script')
+                )
+              }
+            >
+              {busy === 'sc' ? '⏳ Downloading…' : '⬇ Script download'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChannelTools({ channelId, showToday = true, compact }: { channelId: string; showToday?: boolean; compact?: boolean }) {
   const d = useData();
   const [open, setOpen] = useState<Open>(null);
@@ -87,17 +174,20 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
       {showToday && todays.length > 0 && (
         <div className="mini-vids">
           {todays.slice(0, 4).map((v) => (
-            <button type="button" key={v.id} className="mv" onClick={() => setOpen({ kind: 'videos', tab: 'today', focus: v.id })} title={v.title}>
-              <span className="mv-img">{v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <IconVideo />}</span>
-              <span className="mv-body">
-                <span className="mv-t" data-notr>{v.title}</span>
-                <span className="mv-tags">
-                  {v.script_url || v.script ? <i title="Script lagi hui">📄</i> : null}
-                  {v.thumbnail_url ? <i title="Thumbnail">🖼</i> : null}
-                  {v.video_url ? <i title="Video lagi hui">🎬</i> : null}
+            <div key={v.id} className="mv-row">
+              <button type="button" className="mv grow" onClick={() => setOpen({ kind: 'videos', tab: 'today', focus: v.id })} title={v.title}>
+                <span className="mv-img">{v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <IconVideo />}</span>
+                <span className="mv-body">
+                  <span className="mv-t" data-notr>{v.title}</span>
+                  <span className="mv-tags">
+                    {v.script_url || v.script ? <i title="Script lagi hui">📄</i> : null}
+                    {v.thumbnail_url ? <i title="Thumbnail">🖼</i> : null}
+                    {v.video_url ? <i title="Video lagi hui">🎬</i> : null}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              <VideoMoreMenu video={v} />
+            </div>
           ))}
           {todays.length > 4 && (
             <button type="button" className="linkbtn tiny" onClick={() => setOpen({ kind: 'videos', tab: 'today' })}>+{todays.length - 4} aur</button>
@@ -119,7 +209,8 @@ export function ChannelTools({ channelId, showToday = true, compact }: { channel
 export function VideoTile({ v, onOpen, showDay }: { v: Video; onOpen: () => void; showDay?: boolean }) {
   const maker = useMaker();
   return (
-    <button type="button" className="vtile" onClick={onOpen}>
+    <div className="vtile-wrap">
+      <button type="button" className="vtile" onClick={onOpen}>
       <span className="vtile-img">
         {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <span className="vtile-ph"><IconVideo /></span>}
         <span className={'stage ' + v.stage}>{stageLabel(v.stage)}</span>
@@ -140,7 +231,9 @@ export function VideoTile({ v, onOpen, showDay }: { v: Video; onOpen: () => void
           {v.facebook_url ? <i className="on">📘 <span>Facebook</span></i> : null}
         </span>
       </span>
-    </button>
+      </button>
+      <div className="vtile-more"><VideoMoreMenu video={v} /></div>
+    </div>
   );
 }
 
@@ -290,7 +383,10 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
             {video.updated_by && video.updated_by !== video.created_by ? <> · aakhri edit <span data-notr>{maker(video, true)}</span></> : null}
           </span>
         </div>
-        <button className="x" onClick={onClose} aria-label="Band karein">×</button>
+        <div className="row">
+          <VideoMoreMenu video={video} />
+          <button className="x" onClick={onClose} aria-label="Band karein">×</button>
+        </div>
       </div>
       <div className="row">
         <span className={'stage ' + video.stage}>{stageLabel(video.stage)}</span>
@@ -325,8 +421,8 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
       {video.voiceover_url ? (
         <div className="vo-box">
           <b>🎙 Voiceover</b>
-          <audio controls src={video.voiceover_url} className="vo-audio" />
-          <a className="btn sm" href={video.voiceover_url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
+          <audio controls src={video.voiceover_url} className="vo-audio" controlsList="nodownload" />
+          <button type="button" className="btn sm" onClick={() => downloadMediaUrl(video.voiceover_url!, (video.title || 'voiceover') + '.wav').then((m) => toast('⬇ ' + m), (e) => toast(errorText(e)))}>⬇ Download</button>
         </div>
       ) : null}
       {video.youtube_url ? (
@@ -343,7 +439,7 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
           ✎ Edit (script / thumbnail / video / stage)
         </button>
       )}
-      {img && video.thumbnail_url && <ImageViewer url={video.thumbnail_url} onClose={() => setImg(false)} />}
+      {img && video.thumbnail_url && <ImageViewer url={video.thumbnail_url} name={(video.title || "thumbnail") + ".png"} onClose={() => setImg(false)} />}
     </article>
   );
 }

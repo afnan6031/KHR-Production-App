@@ -5,7 +5,8 @@ import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { PdUploadCancelled, normalizePixeldrainUrl, uploadToPixeldrain, type PdProgress } from '../lib/pixeldrain';
 import { mb } from '../lib/gofile';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
-import { Avatar, ConfirmButton, useBackHandler, useToast } from './ui';
+import { Avatar, ConfirmButton, Sheet, useBackHandler, useToast } from './ui';
+import { downloadMediaUrl, isInternalMediaUrl } from '../lib/files';
 import { VideoCard, videoLinksIn } from './VideoUpload';
 
 
@@ -227,8 +228,6 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
     return () => { document.removeEventListener('pointerdown', close, true); document.removeEventListener('keydown', esc); };
   }, [sel]);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
-  const copy = (m: FeedItem) =>
-    navigator.clipboard?.writeText(m.body || m.image_url || '').then(() => toast('Text copy ho gaya'), () => toast('Copy nahi hua'));
   const saveEdit = async () => {
     if (!editing || !kind) return;
     try {
@@ -333,12 +332,15 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
               </div>
             </div>
           ) : (
-            m.body && (
-              <div className="fmsg-body" data-notr>
-                <RichText text={m.body} mre={mre} />
-                {m.edited_at && <span className="fmsg-edited muted"> (edited)</span>}
-              </div>
-            )
+            (() => {
+              const cleanBody = m.body ? visibleChatText(m.body) : '';
+              return cleanBody ? (
+                <div className="fmsg-body" data-notr>
+                  <RichText text={cleanBody} mre={mre} />
+                  {m.edited_at && <span className="fmsg-edited muted"> (edited)</span>}
+                </div>
+              ) : null;
+            })()
           )}
           {!isEditing && m.body && videoLinksIn(m.body).map((u) => <VideoCard key={u} url={u} title={videoTitle(m.body, u)} compact />)}
           {!isEditing && m.body && audioLinksIn(m.body).map((a) => <AudioCard key={a.url} url={a.url} name={a.name} />)}
@@ -361,11 +363,26 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
                 <button role="menuitem" className="act" onClick={() => { composeInsert(composeKey, '@' + p.full_name + ' '); setSel(null); }}><i>@</i>Mention</button>
               )}
               <div className="act-sep" />
-              {m.body && <button role="menuitem" className="act" onClick={() => { copy(m); setSel(null); }}><i>⧉</i>Copy text</button>}
               {(() => {
-                const ls = (m.body || '').match(/https?:\/\/[^\s<>"']+/g) || (m.image_url ? [m.image_url] : [] as string[]);
+                const dl = extractDownloadable(m);
+                return dl ? (
+                  <button
+                    role="menuitem"
+                    className="act"
+                    onClick={() => {
+                      setSel(null);
+                      downloadMediaUrl(dl.url, dl.name).then((res) => toast('⬇ ' + res), (e) => toast(errorText(e)));
+                    }}
+                  >
+                    <i>⬇</i>Download
+                  </button>
+                ) : null;
+              })()}
+              {m.body && visibleChatText(m.body) && <button role="menuitem" className="act" onClick={() => { navigator.clipboard?.writeText(visibleChatText(m.body)).then(() => toast('Text copy ho gaya'), () => toast('Copy nahi hua')); setSel(null); }}><i>⧉</i>Copy text</button>}
+              {(() => {
+                const ls = ((m.body || '').match(/https?:\/\/[^\s<>"']+/g) || []).filter((u) => !isInternalMediaUrl(u));
                 return ls.length ? (
-                  <button role="menuitem" className="act" onClick={() => { navigator.clipboard?.writeText(ls[0] || "").then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua')); setSel(null); }}><i>🔗</i>Copy link</button>
+                  <button role="menuitem" className="act" onClick={() => { navigator.clipboard?.writeText(ls[0] || '').then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua')); setSel(null); }}><i>🔗</i>Copy link</button>
                 ) : null;
               })()}
               {kind && !local && m.user_id === d.uid && m.body !== undefined && (
@@ -413,6 +430,23 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
   );
 }
 
+/** v20: Chat text se internal media lines (🎬/🎵/📎 + pixeldrain/ibb URL) chhupana taake user ko sirf clean card dikhe */
+function visibleChatText(body: string): string {
+  const lines = body.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i].trim();
+    const next = i + 1 < lines.length ? lines[i + 1].trim() : '';
+    if ((cur.startsWith('🎬') || cur.startsWith('🎵') || cur.startsWith('📎')) && isInternalMediaUrl(next)) {
+      i++; // skip both label line and internal URL line
+      continue;
+    }
+    if (isInternalMediaUrl(cur)) continue;
+    out.push(lines[i]);
+  }
+  return out.join('\n').trim();
+}
+
 function audioLinksIn(text: string): { url: string; name: string }[] {
   const out: { url: string; name: string }[] = [];
   const lines = text.split('\n');
@@ -430,6 +464,7 @@ function audioLinksIn(text: string): { url: string; name: string }[] {
   }
   return out.slice(0, 3);
 }
+
 function docLinksIn(text: string): { url: string; name: string }[] {
   const out: { url: string; name: string }[] = [];
   const lines = text.split('\n');
@@ -443,29 +478,76 @@ function docLinksIn(text: string): { url: string; name: string }[] {
   }
   return out.slice(0, 3);
 }
+
+/** v20: Chat message ke andar koi bhi downloadable media (image / video / audio / doc) nikalna */
+function extractDownloadable(m: FeedItem): { url: string; name: string } | null {
+  if (m.image_url) return { url: m.image_url, name: 'khr-image-' + m.id.slice(0, 8) + '.png' };
+  const body = m.body || '';
+  const vids = videoLinksIn(body);
+  if (vids.length) {
+    const u = vids[0];
+    if (isInternalMediaUrl(u) || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u)) {
+      return { url: u, name: videoTitle(body, u) || 'khr-video.mp4' };
+    }
+  }
+  const auds = audioLinksIn(body);
+  if (auds.length) return { url: auds[0].url, name: auds[0].name };
+  const docs = docLinksIn(body);
+  if (docs.length) return { url: docs[0].url, name: docs[0].name };
+  return null;
+}
+
 function AudioCard({ url, name }: { url: string; name: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  async function dl() {
+    setBusy(true);
+    try { toast('⬇ ' + (await downloadMediaUrl(url, name))); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(false); }
+  }
   return (
     <div className="acard">
       <div className="row between">
         <span className="acard-name one-line" data-notr>🎵 {name}</span>
-        <a className="btn sm" href={url} target="_blank" rel="noopener noreferrer" download={name}>⬇ Download</a>
+        <button type="button" className="btn sm" disabled={busy} onClick={dl}>{busy ? '…' : '⬇ Download'}</button>
       </div>
-      <audio className="acard-player" src={url} controls preload="none" />
+      <audio className="acard-player" src={url} controls preload="none" controlsList="nodownload" />
     </div>
   );
 }
+
 function DocCard({ url, name }: { url: string; name: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const canPreview = /\.(pdf|txt|csv|md|json)$/i.test(name);
+  async function dl() {
+    setBusy(true);
+    try { toast('⬇ ' + (await downloadMediaUrl(url, name))); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(false); }
+  }
   return (
     <div className="dcard">
       <span className="dcard-ico" aria-hidden="true">📄</span>
       <span className="grow dcard-t">
         <b className="block one-line" data-notr>{name}</b>
-        <span className="muted tiny">Pixeldrain · Document</span>
+        <span className="muted tiny">Document</span>
       </span>
-      <a className="btn primary sm" href={url} target="_blank" rel="noopener noreferrer">Kholein / Download ↗</a>
+      <div className="row">
+        {canPreview && <button type="button" className="btn sm" onClick={() => setPreview(true)}>👁 Dekhein</button>}
+        <button type="button" className="btn primary sm" disabled={busy} onClick={dl}>{busy ? '…' : '⬇ Download'}</button>
+      </div>
+      {preview && (
+        <Sheet title={name} onClose={() => setPreview(false)} actions={<button type="button" className="btn sm primary" disabled={busy} onClick={dl}>⬇ Download</button>}>
+          <iframe className="doc-preview-frame" src={url} title={name} />
+        </Sheet>
+      )}
     </div>
   );
 }
+
 export const DROP_FILE_EVENT = 'khr-drop-file';
 export function dispatchChatDrop(draftKey: string, file: File) {
   window.dispatchEvent(new CustomEvent(DROP_FILE_EVENT, { detail: { key: draftKey, file } }));
@@ -650,7 +732,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
           </div>
           <div className="upbar-track" aria-hidden="true"><i style={{ width: upState.prog.pct + '%' }} className={upState.prog.pct >= 100 ? 'done' : ''} /></div>
           <div className="row between upbar-meta"><b className="num">{upState.prog.pct}%</b><span className="num">{mb(upState.prog.loaded)} / {mb(upState.prog.total)}</span></div>
-          <span className="muted tiny">Pixeldrain par upload ho rahi hai…</span>
+          <span className="muted tiny">Upload ho rahi hai…</span>
         </div>
       )}
       {mq && mList.length > 0 && (
@@ -670,15 +752,15 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
           {busy === 'img' ? <span className="spin" aria-hidden="true" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-5-5-8 8" /></svg>}
         </button>
         <input ref={vidRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'video'); }} />
-        <button className="attach" type="button" onClick={() => vidRef.current?.click()} disabled={uploading} aria-label="Video bhejein" title="Video bhejein (Pixeldrain)">
+        <button className="attach" type="button" onClick={() => vidRef.current?.click()} disabled={uploading} aria-label="Video bhejein" title="Video bhejein">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="m16 10 5-3v10l-5-3" /></svg>
         </button>
         <input ref={audRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac,.opus,.flac" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'audio'); }} />
-        <button className="attach" type="button" onClick={() => audRef.current?.click()} disabled={uploading} aria-label="Audio bhejein" title="Audio bhejein (Pixeldrain)">
+        <button className="attach" type="button" onClick={() => audRef.current?.click()} disabled={uploading} aria-label="Audio bhejein" title="Audio bhejein">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
         </button>
         <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.psd,.ai,.prproj,.aep,*/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'doc'); }} />
-        <button className="attach" type="button" onClick={() => docRef.current?.click()} disabled={uploading} aria-label="Document bhejein" title="Document / File bhejein (Pixeldrain)">
+        <button className="attach" type="button" onClick={() => docRef.current?.click()} disabled={uploading} aria-label="Document bhejein" title="Document / File bhejein">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
         </button>
         <button className={'attach' + (emoji ? ' on' : '')} type="button" onClick={() => setEmoji((x) => !x)} aria-label="Emoji" title="Emoji">
@@ -693,19 +775,27 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
 }
 
 /** Image bari dekhne ke liye */
-export function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
+export function ImageViewer({ url, onClose, name }: { url: string; onClose: () => void; name?: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
   useBackHandler(true, onClose);
   useEffect(() => {
     const k = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', k);
     return () => document.removeEventListener('keydown', k);
   }, [onClose]);
+  async function dl() {
+    setBusy(true);
+    try { toast('⬇ ' + (await downloadMediaUrl(url, name || 'khr-image.png'))); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(false); }
+  }
   return (
     <div className="lightbox" onClick={onClose} role="dialog" aria-label="Image">
       <img src={url} alt="" onClick={(e) => e.stopPropagation()} />
       <div className="lb-bar" onClick={(e) => e.stopPropagation()}>
-        <a className="btn sm" href={url} target="_blank" rel="noopener noreferrer">Original kholein ↗</a>
-        <button className="btn sm" onClick={onClose}>Band karein</button>
+        <button type="button" className="btn primary sm" disabled={busy} onClick={dl}>{busy ? 'Downloading…' : '⬇ Download'}</button>
+        <button type="button" className="btn sm" onClick={onClose}>Band karein</button>
       </div>
     </div>
   );

@@ -1560,3 +1560,91 @@ html, body { -webkit-tap-highlight-color: transparent; }
 .clone-pill-btn { background: none; border: none; color: var(--fg); padding: 5px 10px; cursor: pointer; font-size: .8rem; }
 .clone-del { background: none; border: none; border-left: 1px solid var(--line); color: var(--muted); padding: 5px 8px; cursor: pointer; }
 .clone-del:hover { color: var(--bad, #dc2626); }
+
+/* ================= v20 White-Label Media & 3-Dots Download Menu ================= */
+.doc-preview-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.mv-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+.vtile-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.vtile-wrap > .vtile {
+  width: 100%;
+  height: 100%;
+}
+.vtile-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+}
+.vmore-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.vmore-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color .14s, background .14s;
+}
+.vmore-btn:hover {
+  border-color: var(--accent);
+  background: var(--card);
+}
+.vmore-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 175px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 30;
+}
+.vmore-menu button {
+  background: none;
+  border: none;
+  color: var(--fg);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: .84rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vmore-menu button:hover {
+  background: var(--bg);
+  color: var(--accent);
+}
+.vmore-menu button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
