@@ -9,7 +9,7 @@ import { ConfirmButton, DateFilter, Fold, Sheet, Stop, useToast } from './ui';
 import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
 import { VideoCard, VideoField } from './VideoUpload';
-import { downloadMediaUrl, saveBlobFile } from '../lib/files';
+import { downloadMediaUrl, fetchMediaBlob, normalizeMediaUrl, saveBlobFile } from '../lib/files';
 
 /* =========================================================================
    v9: VIDEOS — har video mein title, script (Google Doc link ya likhi hui),
@@ -367,6 +367,57 @@ export function VideoList({ videos, onOpen }: { videos: Video[]; onOpen: (v: Vid
 }
 
 /** Ek video: thumbnail, script, notes, aur Edit */
+/** v20: Reliable in-app Voiceover Audio Player (normalizes Pixeldrain /u/ -> /api/file/ + auto Blob fallback on error) */
+function VoiceoverPlayer({ url, title }: { url: string; title: string }) {
+  const toast = useToast();
+  const [src, setSrc] = useState(() => normalizeMediaUrl(url));
+  const [fallbackTried, setFallbackTried] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [dlBusy, setDlBusy] = useState(false);
+
+  useEffect(() => {
+    setSrc(normalizeMediaUrl(url));
+    setFallbackTried(false);
+  }, [url]);
+
+  useEffect(() => {
+    return () => {
+      if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    };
+  }, [src]);
+
+  async function onAudioError() {
+    if (fallbackTried || loading) return;
+    setFallbackTried(true);
+    setLoading(true);
+    try {
+      const b = await fetchMediaBlob(url);
+      if (b) setSrc(URL.createObjectURL(b));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function dl() {
+    setDlBusy(true);
+    try { toast('⬇ ' + (await downloadMediaUrl(url, (title || 'voiceover') + '.mp3'))); }
+    catch (e) { toast(errorText(e)); }
+    finally { setDlBusy(false); }
+  }
+
+  return (
+    <div className="vo-box">
+      <div className="row between" style={{ width: '100%' }}>
+        <b>🎙 Voiceover {loading ? <small className="muted">(loading…)</small> : null}</b>
+        <button type="button" className="btn sm icon-dl" disabled={dlBusy} onClick={dl} title="Voiceover download karein" aria-label="Voiceover download karein">
+          {dlBusy ? '⏳' : '⬇'}
+        </button>
+      </div>
+      <audio controls preload="metadata" src={src} className="vo-audio" controlsList="nodownload" onError={onAudioError} />
+    </div>
+  );
+}
+
 export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; canEdit: boolean; onEdit: () => void; onClose: () => void }) {
   const maker = useMaker();
   const toast = useToast();
@@ -393,9 +444,20 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
         {video.due && <span className="muted small">Due {fmtDate(video.due)}</span>}
       </div>
       {video.thumbnail_url ? (
-        <button className="viewer-img" onClick={() => setImg(true)} aria-label="Thumbnail bara dekhein">
-          <img src={video.thumbnail_url} alt={video.title} />
-        </button>
+        <div className="viewer-img-wrap">
+          <button className="viewer-img" onClick={() => setImg(true)} aria-label="Thumbnail bara dekhein">
+            <img src={video.thumbnail_url} alt={video.title} />
+          </button>
+          <button
+            type="button"
+            className="btn sm thumb-dl-btn"
+            title="Thumbnail download karein"
+            aria-label="Thumbnail download karein"
+            onClick={() => downloadMediaUrl(video.thumbnail_url, (video.title || 'thumbnail') + '.png').then((m) => toast('⬇ ' + m), (e) => toast(errorText(e)))}
+          >
+            ⬇
+          </button>
+        </div>
       ) : (
         <div className="vv-empty muted small">🖼 Abhi thumbnail nahi laga{canEdit ? ' — Edit dabayein aur lagayein' : ''}</div>
       )}
@@ -418,13 +480,7 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
       ) : (
         <div className="vv-empty muted small">🎬 Abhi video file nahi lagi{canEdit ? ' — Edit dabayein aur upload karein' : ''}</div>
       )}
-      {video.voiceover_url ? (
-        <div className="vo-box">
-          <b>🎙 Voiceover</b>
-          <audio controls src={video.voiceover_url} className="vo-audio" controlsList="nodownload" />
-          <button type="button" className="btn sm" onClick={() => downloadMediaUrl(video.voiceover_url!, (video.title || 'voiceover') + '.wav').then((m) => toast('⬇ ' + m), (e) => toast(errorText(e)))}>⬇ Download</button>
-        </div>
-      ) : null}
+      {video.voiceover_url ? <VoiceoverPlayer url={video.voiceover_url} title={video.title} /> : null}
       {video.youtube_url ? (
         <div className="script-link">
           <span className="mono-url">▶ {video.youtube_url.replace(/^https?:\/\//, '')}</span>

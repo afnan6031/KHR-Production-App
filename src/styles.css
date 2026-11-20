@@ -20,7 +20,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="glass"]) {
   --bg: #090E1C; --surface: #111832; --surface-2: #1A2246; --fg: #E8EBF4; --muted: #99A2BA; --line: #263056;
   --accent: #E5383B; --accent-fg: #FFFFFF; --accent-soft: #3B1521; --live: #FF8B4E; --live-soft: #3D2418;
   --blue: #6B95FF; --blue-soft: #1B2756;
@@ -1647,4 +1647,136 @@ html, body { -webkit-tap-highlight-color: transparent; }
 .vmore-menu button:disabled {
   opacity: .55;
   cursor: wait;
+}
+
+/* ================= v20.3 Compact Download Buttons & iOS 27 Liquid Glass Theme ================= */
+.viewer-img-wrap {
+  position: relative;
+  display: block;
+}
+.viewer-img-wrap .viewer-img {
+  width: 100%;
+}
+.thumb-dl-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.thumb-dl-btn:hover {
+  background: var(--accent);
+  border-color: transparent;
+}
+.icon-dl {
+  min-width: 32px;
+  padding: 4px 8px;
+  display: inline-grid;
+  place-items: center;
+  font-size: .9rem;
+}
+
+/* ---------- iOS 27 Liquid Glass Theme ---------- */
+:root[data-theme="glass"] {
+  --bg: #F5F7FC;
+  --surface: rgba(255, 255, 255, 0.48);
+  --surface-2: rgba(255, 255, 255, 0.34);
+  --card: rgba(255, 255, 255, 0.46);
+  --fg: #0F172A;
+  --muted: #475569;
+  --line: rgba(255, 255, 255, 0.72);
+  --pane-side: rgba(255, 255, 255, 0.42);
+  --pane-chat: rgba(255, 255, 255, 0.36);
+  --pane-members: rgba(255, 255, 255, 0.42);
+  --pane-line: rgba(255, 255, 255, 0.65);
+  --header-bg: rgba(255, 255, 255, 0.52);
+  --nav-bg: rgba(255, 255, 255, 0.54);
+  --shadow: 0 10px 34px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  color-scheme: light;
+}
+
+:root[data-theme="glass"] body:not(.custom-bg) {
+  background:
+    radial-gradient(circle at 12% 14%, rgba(147, 197, 253, 0.35) 0%, transparent 45%),
+    radial-gradient(circle at 86% 18%, rgba(244, 180, 212, 0.32) 0%, transparent 48%),
+    radial-gradient(circle at 50% 90%, rgba(167, 243, 208, 0.28) 0%, transparent 50%),
+    #FFFFFF;
+  background-attachment: fixed;
+}
+
+:root[data-theme="glass"] .top,
+:root[data-theme="glass"] nav.tabs {
+  background: rgba(255, 255, 255, 0.48) !important;
+  backdrop-filter: blur(26px) saturate(200%);
+  -webkit-backdrop-filter: blur(26px) saturate(200%);
+  border-color: rgba(255, 255, 255, 0.75) !important;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="glass"] .panel,
+:root[data-theme="glass"] .card,
+:root[data-theme="glass"] .stat,
+:root[data-theme="glass"] .sheet,
+:root[data-theme="glass"] .tstat-card,
+:root[data-theme="glass"] .tmini-panel,
+:root[data-theme="glass"] .tmini,
+:root[data-theme="glass"] .vcard,
+:root[data-theme="glass"] .acard,
+:root[data-theme="glass"] .dcard,
+:root[data-theme="glass"] .vo-box,
+:root[data-theme="glass"] .acct-item,
+:root[data-theme="glass"] .acct-hero,
+:root[data-theme="glass"] .daypick-btn,
+:root[data-theme="glass"] .vtile,
+:root[data-theme="glass"] .pg-tile,
+:root[data-theme="glass"] .empty,
+:root[data-theme="glass"] .composer,
+:root[data-theme="glass"] .vmore-menu,
+:root[data-theme="glass"] .fmsg-actions,
+:root[data-theme="glass"] .gmail-box,
+:root[data-theme="glass"] .forgot-inline,
+:root[data-theme="glass"] .pcard,
+:root[data-theme="glass"] .pod {
+  background: rgba(255, 255, 255, 0.44) !important;
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
+}
+
+:root[data-theme="glass"] .sheet {
+  border-radius: 26px 26px 0 0;
+}
+@media (min-width: 640px) {
+  :root[data-theme="glass"] .sheet {
+    border-radius: 26px;
+  }
+}
+
+:root[data-theme="glass"] .btn:not(.primary):not(.danger),
+:root[data-theme="glass"] .seg,
+:root[data-theme="glass"] .chip:not(.on),
+:root[data-theme="glass"] input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+:root[data-theme="glass"] textarea,
+:root[data-theme="glass"] select {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.78) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+:root[data-theme="glass"] .seg button.on {
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.10);
 }

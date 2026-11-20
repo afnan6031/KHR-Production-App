@@ -165,22 +165,10 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
           <span className="muted tiny">{host}</span>
         </span>
         {emb && !play && <button type="button" className="btn primary sm" onClick={() => setPlay(true)}>▶ Chalayein</button>}
-        {internal ? (
-          <button type="button" className="btn sm" disabled={dlBusy} onClick={download}>
-            {dlBusy ? 'Downloading…' : '⬇ Download'}
-          </button>
-        ) : (
-          <>
-            <a className="btn primary sm" href={url} target="_blank" rel="noopener noreferrer">Kholein ↗</a>
-            <button
-              type="button"
-              className="btn sm"
-              onClick={() => navigator.clipboard?.writeText(url).then(() => toast('Video ka link copy ho gaya'), () => toast('Copy nahi hua'))}
-            >
-              Copy link
-            </button>
-          </>
-        )}
+        {emb && play && <button type="button" className="btn sm" onClick={() => setPlay(false)}>Band</button>}
+        <button type="button" className="btn sm icon-dl" disabled={dlBusy} onClick={download} title="Video download karein" aria-label="Video download karein">
+          {dlBusy ? '⏳' : '⬇'}
+        </button>
       </div>
     </div>
   );

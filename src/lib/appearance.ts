@@ -216,6 +216,13 @@ export function applyPrefs(p?: Prefs | null, save = true) {
     root.style.removeProperty('--accent');
     root.style.removeProperty('--accent-soft');
   }
+  if (p?.textColor && /^#[0-9a-f]{6}$/i.test(p.textColor)) {
+    root.style.setProperty('--fg', p.textColor);
+    root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 68%, transparent)`);
+  } else {
+    root.style.removeProperty('--fg');
+    root.style.removeProperty('--muted');
+  }
   applyTint(p);
   setLang(p?.lang === 'en' ? 'en' : 'ur');
   if (save) {

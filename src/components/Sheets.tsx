@@ -337,6 +337,7 @@ const BG_PRESETS: { c1: string; c2: string }[] = [
   { c1: '#1D2671', c2: '#C33764' }
 ];
 const ACCENTS = ['#E5383B', '#C8102E', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899'];
+const TEXT_COLORS = ['#0F172A', '#FFFFFF', '#1E3A8A', '#991B1B', '#065F46', '#581C87', '#92400E', '#334155'];
 
 type AccountView = 'menu' | 'profile' | 'security' | 'theme' | 'language';
 
@@ -401,7 +402,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
   async function saveProfile(e: FormEvent) {
     e.preventDefault(); setBusy(true);
     try {
-      await d.updateMyProfile({ about: about.trim() });
+      await d.updateMyProfile({ full_name: name.trim(), about: about.trim() });
       if (!acc.oldDb) {
         const { error } = await supabase.rpc('save_my_account', { p_birth: birth || null, p_phone: phone.trim() });
         if (error) throw error;
@@ -415,7 +416,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
   async function saveSecurity(e: FormEvent) {
     e.preventDefault(); setBusy(true);
     try {
-      await d.updateMyProfile({ full_name: name.trim(), contact: contact.trim() });
+      await d.updateMyProfile({ contact: contact.trim() });
       if (!acc.oldDb) {
         const { error } = await supabase.rpc('save_my_account', { p_birth: birth || null, p_phone: phone.trim() });
         if (error) throw error;
@@ -479,17 +480,17 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
           <div className="acct-list">
             <button type="button" className="acct-item" onClick={() => setView('profile')}>
               <span className="acct-ico">👤</span>
-              <span className="grow"><b>Profile</b><small className="muted block">Logo, banner, about, date of birth</small></span>
+              <span className="grow"><b>Profile</b><small className="muted block">Logo, banner, naam, about, date of birth</small></span>
               <span className="acct-arr">›</span>
             </button>
             <button type="button" className="acct-item" onClick={() => setView('security')}>
               <span className="acct-ico">🔒</span>
-              <span className="grow"><b>Security</b><small className="muted block">Email, naam, ID, password & forgot password</small></span>
+              <span className="grow"><b>Security</b><small className="muted block">Email, ID, password & forgot password</small></span>
               <span className="acct-arr">›</span>
             </button>
             <button type="button" className="acct-item" onClick={() => setView('theme')}>
               <span className="acct-ico">🎨</span>
-              <span className="grow"><b>Theme</b><small className="muted block">Light / Dark mode, app color, background</small></span>
+              <span className="grow"><b>Theme</b><small className="muted block">Light / Dark / Glass theme, text & app color, background</small></span>
               <span className="acct-arr">›</span>
             </button>
             <button type="button" className="acct-item" onClick={() => setView('language')}>
@@ -549,6 +550,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
             <input ref={bnRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
           </div>
           <form className="form" onSubmit={saveProfile}>
+            <label className="f">Naam<input id="p-name" type="text" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} /></label>
             <label className="f">About <span className="h">Apne baare mein kuch likhein — sab ko profile par nazar aayega</span><textarea id="p-about" rows={3} maxLength={500} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="e.g. Script writer · history aur disaster channels" /></label>
             <label className="f">Birth date<input type="date" value={birth} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setBirth(e.target.value)} disabled={acc.oldDb} /></label>
             <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Save ho raha hai…' : 'Save karein'}</button>
@@ -560,7 +562,6 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
         <div className="form">
           <GmailBox acc={acc} />
           <form className="form" onSubmit={saveSecurity}>
-            <label className="f">Naam<input id="p-name" type="text" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} /></label>
             <label className="f">ID / WhatsApp<input id="p-contact" type="text" maxLength={80} value={contact} onChange={(e) => setContact(e.target.value)} /></label>
             <label className="f">Phone number<input type="tel" inputMode="tel" autoComplete="tel" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0300-1234567" disabled={acc.oldDb} /></label>
             <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Save ho raha hai…' : 'Save karein'}</button>
@@ -571,7 +572,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
 
       {view === 'theme' && (
         <div className="form">
-          <div className="f">App ka rang<Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} /></div>
+          <div className="f">App ka rang<Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }, { v: 'glass', label: '🫧 Glass' }]} /></div>
           <div className="f">
             Background
             <Seg label="Background" value={bg.type} onChange={(t) => (t === 'image' && !bg.image ? bgRef.current?.click() : setBg({ type: t }))} options={[{ v: 'none', label: 'Asal' }, { v: 'color', label: 'Ek rang' }, { v: 'gradient', label: 'Gradient' }, { v: 'image', label: 'Apni pic' }]} />
@@ -598,6 +599,16 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
               {ACCENTS.map((a) => <button type="button" key={a} className={'preset dot' + (prefs.accent === a ? ' on' : '')} style={{ background: a }} onClick={() => savePrefs({ ...prefs, accent: a })} aria-label={a} />)}
               <input type="color" value={prefs.accent || '#E5383B'} onChange={(e) => savePrefs({ ...prefs, accent: e.target.value })} aria-label="Apna rang" />
               {prefs.accent && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, accent: undefined })}>Asal</button>}
+            </div>
+          </div>
+          <div className="f">
+            Text ka rang
+            <div className="presets">
+              {TEXT_COLORS.map((tc) => (
+                <button type="button" key={tc} className={'preset dot' + (prefs.textColor === tc ? ' on' : '')} style={{ background: tc }} onClick={() => savePrefs({ ...prefs, textColor: tc })} aria-label={tc} />
+              ))}
+              <input type="color" value={prefs.textColor || '#121A2E'} onChange={(e) => savePrefs({ ...prefs, textColor: e.target.value })} aria-label="Text ka apna rang" />
+              {prefs.textColor && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, textColor: undefined })}>Asal</button>}
             </div>
           </div>
         </div>

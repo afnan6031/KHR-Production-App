@@ -1067,7 +1067,12 @@ export const EN: Record<string, string> = {
   '⬇ Video download': '⬇ Download Video',
   '⬇ Thumbnail download': '⬇ Download Thumbnail',
   '⬇ Voiceover download': '⬇ Download Voiceover',
-  '⬇ Script download': '⬇ Download Script'
+  '⬇ Script download': '⬇ Download Script',
+  'Logo, banner, naam, about, date of birth': 'Photo, banner, name, about, date of birth',
+  'Email, ID, password & forgot password': 'Email, ID, password & forgot password',
+  'Light / Dark / Glass theme, text & app color, background': 'Light / Dark / Glass theme, text & app colour, background',
+  'Text ka rang': 'Text colour',
+  '🫧 Glass': '🫧 Glass'
 };
 
 const DAY_EN: Record<string, string> = { Itwaar: 'Sunday', Peer: 'Monday', Mangal: 'Tuesday', Budh: 'Wednesday', Jumeraat: 'Thursday', Jumma: 'Friday', Hafta: 'Saturday' };

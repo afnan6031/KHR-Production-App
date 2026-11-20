@@ -66,5 +66,6 @@ export function embedUrl(url: string): { type: 'iframe' | 'video'; src: string }
     const m = url.match(/\/file\/d\/([\w-]+)/);
     return m ? { type: 'iframe', src: `https://drive.google.com/file/d/${m[1]}/preview` } : null;
   }
+  if (k === 'gofile') return { type: 'iframe', src: url };
   return null;
 }

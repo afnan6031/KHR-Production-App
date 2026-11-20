@@ -6,7 +6,7 @@ import { PdUploadCancelled, normalizePixeldrainUrl, uploadToPixeldrain, type PdP
 import { mb } from '../lib/gofile';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
 import { Avatar, ConfirmButton, Sheet, useBackHandler, useToast } from './ui';
-import { downloadMediaUrl, isInternalMediaUrl } from '../lib/files';
+import { downloadMediaUrl, fetchMediaBlob, isInternalMediaUrl, normalizeMediaUrl } from '../lib/files';
 import { VideoCard, videoLinksIn } from './VideoUpload';
 
 
@@ -499,7 +499,20 @@ function extractDownloadable(m: FeedItem): { url: string; name: string } | null 
 
 function AudioCard({ url, name }: { url: string; name: string }) {
   const toast = useToast();
+  const [src, setSrc] = useState(() => normalizeMediaUrl(url));
+  const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setSrc(normalizeMediaUrl(url)); setTried(false); }, [url]);
+  useEffect(() => () => { if (src.startsWith('blob:')) URL.revokeObjectURL(src); }, [src]);
+
+  async function onErr() {
+    if (tried) return;
+    setTried(true);
+    const b = await fetchMediaBlob(url);
+    if (b) setSrc(URL.createObjectURL(b));
+  }
+
   async function dl() {
     setBusy(true);
     try { toast('⬇ ' + (await downloadMediaUrl(url, name))); }
@@ -510,9 +523,9 @@ function AudioCard({ url, name }: { url: string; name: string }) {
     <div className="acard">
       <div className="row between">
         <span className="acard-name one-line" data-notr>🎵 {name}</span>
-        <button type="button" className="btn sm" disabled={busy} onClick={dl}>{busy ? '…' : '⬇ Download'}</button>
+        <button type="button" className="btn sm icon-dl" disabled={busy} onClick={dl} title="Audio download karein" aria-label="Audio download karein">{busy ? '⏳' : '⬇'}</button>
       </div>
-      <audio className="acard-player" src={url} controls preload="none" controlsList="nodownload" />
+      <audio className="acard-player" src={src} controls preload="metadata" controlsList="nodownload" onError={onErr} />
     </div>
   );
 }

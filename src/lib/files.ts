@@ -31,9 +31,43 @@ export function isInternalMediaUrl(url: string): boolean {
   return /^https?:\/\/(?:www\.)?(?:pixeldrain\.com\/(?:u|api\/file)\/|i\.ibb\.co\/|ibb\.co\/|files\.catbox\.moe\/)/i.test((url || '').trim());
 }
 
-function normalizeUrl(url: string): string {
-  const m = /^https?:\/\/(?:www\.)?pixeldrain\.com\/(?:u|api\/file)\/([\w-]{3,40})/i.exec((url || '').trim());
-  return m ? 'https://pixeldrain.com/api/file/' + m[1] : (url || '').trim();
+export function normalizeMediaUrl(url: string): string {
+  const u = (url || '').trim();
+  const pd = /^https?:\/\/(?:www\.)?pixeldrain\.com\/(?:u|api\/file)\/([\w-]{3,40})/i.exec(u);
+  if (pd) return 'https://pixeldrain.com/api/file/' + pd[1];
+  const gd = /^https?:\/\/drive\.google\.com\/file\/d\/([\w-]+)/i.exec(u);
+  if (gd) return 'https://drive.google.com/uc?export=download&id=' + gd[1];
+  return u;
+}
+
+/** v20: Audio/media bytes ko Blob mein laana (agar direct <audio src> CORS ya format ki wajah se play na ho) */
+export async function fetchMediaBlob(rawUrl: string): Promise<Blob | null> {
+  const url = normalizeMediaUrl(rawUrl);
+  const dk = desk();
+  if (dk?.fetchBytes && isInternalMediaUrl(url)) {
+    try {
+      const r = await dk.fetchBytes(url);
+      if (r?.bytes?.length) return new Blob([r.bytes as unknown as BlobPart], { type: r.type || 'audio/mpeg' });
+    } catch { /* fallback */ }
+  }
+  try {
+    const r = await fetch(url, { mode: 'cors' });
+    if (r.ok) {
+      const b = await r.blob();
+      if (b.size > 0) return b;
+    }
+  } catch { /* fallback */ }
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await CapacitorHttp.get({ url, responseType: 'blob', connectTimeout: 25000, readTimeout: 120000 });
+      if (res.status >= 200 && res.status < 300 && res.data) {
+        const ctKey = Object.keys(res.headers || {}).find((k) => k.toLowerCase() === 'content-type');
+        const mime = ctKey ? String(res.headers[ctKey]) : 'audio/mpeg';
+        return base64ToBlob(String(res.data), mime);
+      }
+    } catch { /* ignore */ }
+  }
+  return null;
 }
 
 const MIME_EXT: Record<string, string> = {
@@ -88,7 +122,7 @@ export async function saveBlobFile(blob: Blob, name: string): Promise<string> {
  * — bina kisi external website page khole.
  */
 export async function downloadMediaUrl(rawUrl: string, name?: string): Promise<string> {
-  const url = normalizeUrl(rawUrl);
+  const url = normalizeMediaUrl(rawUrl);
   const fallbackName = name || url.split('/').pop()?.split('?')[0] || 'khr-file';
 
   // 1) Windows Electron app: Node bridge se (zero CORS)

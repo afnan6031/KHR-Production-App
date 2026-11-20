@@ -1,13 +1,13 @@
 import { syncSystemBars } from './keyboard';
 /** Light / Dark / System theme — har device par yaad rehta hai */
-export type ThemeChoice = 'system' | 'light' | 'dark';
+export type ThemeChoice = 'system' | 'light' | 'dark' | 'glass';
 const KEY = 'khr-theme';
 const EVT = 'khr-theme';
 
 export function getTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : 'system';
+    return v === 'light' || v === 'dark' || v === 'glass' ? v : 'system';
   } catch {
     return 'system';
   }
