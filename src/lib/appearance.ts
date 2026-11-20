@@ -218,10 +218,19 @@ export function applyPrefs(p?: Prefs | null, save = true) {
   }
   if (p?.textColor && /^#[0-9a-f]{6}$/i.test(p.textColor)) {
     root.style.setProperty('--fg', p.textColor);
-    root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 68%, transparent)`);
+    root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 76%, transparent)`);
+    const rgb = parse(p.textColor);
+    const lum = rgb ? (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 : 0;
+    root.style.setProperty(
+      '--glass-text-shadow',
+      lum >= 0.52
+        ? '0 1px 4px rgba(0, 0, 0, 0.90), 0 0 10px rgba(0, 0, 0, 0.55)'
+        : '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72)'
+    );
   } else {
     root.style.removeProperty('--fg');
     root.style.removeProperty('--muted');
+    root.style.setProperty('--glass-text-shadow', '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72)');
   }
   applyTint(p);
   setLang(p?.lang === 'en' ? 'en' : 'ur');

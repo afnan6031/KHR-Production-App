@@ -1686,81 +1686,159 @@ html, body { -webkit-tap-highlight-color: transparent; }
   font-size: .9rem;
 }
 
-/* ---------- iOS 27 Liquid Glass Theme ---------- */
+/* ---------- Clean VideoView inside Sheet (no double border / sharp box) ---------- */
+.viewer.video-view.in-sheet {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* ---------- iOS 27 Liquid Glass Theme (True translucent glass + 60fps GPU-friendly + Modal Blur + Auto Text Shadow) ---------- */
 :root[data-theme="glass"] {
-  --bg: #F5F7FC;
-  --surface: rgba(255, 255, 255, 0.48);
-  --surface-2: rgba(255, 255, 255, 0.34);
-  --card: rgba(255, 255, 255, 0.46);
+  --bg: #EEF2F9;
+  --surface: rgba(255, 255, 255, 0.22);
+  --surface-2: rgba(255, 255, 255, 0.16);
+  --card: rgba(255, 255, 255, 0.20);
   --fg: #0F172A;
-  --muted: #475569;
-  --line: rgba(255, 255, 255, 0.72);
-  --pane-side: rgba(255, 255, 255, 0.42);
-  --pane-chat: rgba(255, 255, 255, 0.36);
-  --pane-members: rgba(255, 255, 255, 0.42);
-  --pane-line: rgba(255, 255, 255, 0.65);
-  --header-bg: rgba(255, 255, 255, 0.52);
-  --nav-bg: rgba(255, 255, 255, 0.54);
-  --shadow: 0 10px 34px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --muted: #334155;
+  --line: rgba(255, 255, 255, 0.52);
+  --pane-side: rgba(255, 255, 255, 0.18);
+  --pane-chat: rgba(255, 255, 255, 0.14);
+  --pane-members: rgba(255, 255, 255, 0.18);
+  --pane-line: rgba(255, 255, 255, 0.45);
+  --header-bg: rgba(255, 255, 255, 0.26);
+  --nav-bg: rgba(255, 255, 255, 0.26);
+  --glass-fill: linear-gradient(135deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 52%, rgba(255, 255, 255, 0.24) 100%);
+  --glass-fill-soft: linear-gradient(135deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.10) 100%);
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-shadow: 0 10px 30px rgba(15, 23, 42, 0.10), inset 0 1.5px 1px rgba(255, 255, 255, 0.85), inset 0 -1px 1px rgba(255, 255, 255, 0.22);
+  --glass-text-shadow: 0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.72);
+  --shadow: var(--glass-shadow);
   color-scheme: light;
 }
 
+/* Default luminous soft background when no custom bg is set */
 :root[data-theme="glass"] body:not(.custom-bg) {
   background:
-    radial-gradient(circle at 12% 14%, rgba(147, 197, 253, 0.35) 0%, transparent 45%),
-    radial-gradient(circle at 86% 18%, rgba(244, 180, 212, 0.32) 0%, transparent 48%),
-    radial-gradient(circle at 50% 90%, rgba(167, 243, 208, 0.28) 0%, transparent 50%),
-    #FFFFFF;
+    radial-gradient(circle at 15% 15%, rgba(125, 211, 252, 0.42) 0%, transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(244, 168, 210, 0.36) 0%, transparent 48%),
+    radial-gradient(circle at 50% 88%, rgba(134, 239, 172, 0.32) 0%, transparent 50%),
+    #F8FAFC;
   background-attachment: fixed;
 }
 
+/* Auto text shadow for crystal-clear readability on any glass background */
+:root[data-theme="glass"] body,
+:root[data-theme="glass"] h1,
+:root[data-theme="glass"] h2,
+:root[data-theme="glass"] h3,
+:root[data-theme="glass"] b,
+:root[data-theme="glass"] p,
+:root[data-theme="glass"] span,
+:root[data-theme="glass"] small,
+:root[data-theme="glass"] label,
+:root[data-theme="glass"] .muted {
+  text-shadow: var(--glass-text-shadow);
+}
+:root[data-theme="glass"] .btn.primary,
+:root[data-theme="glass"] .btn.danger,
+:root[data-theme="glass"] .btn.primary *,
+:root[data-theme="glass"] .btn.danger * {
+  text-shadow: none;
+}
+
+/* Modal / Popup / Sheet Backdrop — blurs entire background behind popups like iPhone */
+:root[data-theme="glass"] .sheet-bg,
+:root[data-theme="glass"] .lightbox {
+  background: rgba(15, 23, 42, 0.24) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+}
+
+/* Top bar & Floating Liquid Glass Bottom Nav (single GPU layer each = 60fps) */
 :root[data-theme="glass"] .top,
-:root[data-theme="glass"] nav.tabs {
-  background: rgba(255, 255, 255, 0.48) !important;
-  backdrop-filter: blur(26px) saturate(200%);
-  -webkit-backdrop-filter: blur(26px) saturate(200%);
-  border-color: rgba(255, 255, 255, 0.75) !important;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+:root[data-theme="glass"] body.tinted-ui .top {
+  background: var(--glass-fill) !important;
+  backdrop-filter: blur(16px) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(185%) !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+:root[data-theme="glass"] nav.tabs,
+:root[data-theme="glass"] body.tinted-ui nav.tabs {
+  background: var(--glass-fill) !important;
+  backdrop-filter: blur(16px) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(185%) !important;
+  border-top: 1px solid var(--glass-border) !important;
+  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.08), inset 0 1.5px 1px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Top-level Glass Surfaces ONLY (prevents nested blur lag so app stays 60fps) */
+:root[data-theme="glass"] .sheet,
+:root[data-theme="glass"] body.tinted-ui .sheet {
+  background: var(--glass-fill) !important;
+  backdrop-filter: blur(20px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(190%) !important;
+  border: 1.5px solid var(--glass-border) !important;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18), inset 0 1.5px 1.5px rgba(255, 255, 255, 0.88), inset 0 -1px 1px rgba(255, 255, 255, 0.25) !important;
+  border-radius: 26px 26px 0 0;
+}
+@media (min-width: 700px) {
+  :root[data-theme="glass"] .sheet {
+    border-radius: 26px !important;
+  }
 }
 
 :root[data-theme="glass"] .panel,
 :root[data-theme="glass"] .card,
+:root[data-theme="glass"] .card.tinted,
 :root[data-theme="glass"] .stat,
-:root[data-theme="glass"] .sheet,
 :root[data-theme="glass"] .tstat-card,
 :root[data-theme="glass"] .tmini-panel,
+:root[data-theme="glass"] .vtile,
+:root[data-theme="glass"] .pg-tile,
+:root[data-theme="glass"] .daypick-btn,
+:root[data-theme="glass"] .pod,
+:root[data-theme="glass"] .vmore-menu,
+:root[data-theme="glass"] .fmsg-actions,
+:root[data-theme="glass"] body.tinted-ui .panel,
+:root[data-theme="glass"] body.tinted-ui .card,
+:root[data-theme="glass"] body.tinted-ui .card.tinted,
+:root[data-theme="glass"] body.tinted-ui .stat {
+  background: var(--glass-fill) !important;
+  backdrop-filter: blur(14px) saturate(175%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(175%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+/* Inner elements inside sheets/panels: NO nested backdrop-filter (eliminates lag!) — pure liquid-glass translucent fill + specular rim */
+:root[data-theme="glass"] .sheet .panel,
+:root[data-theme="glass"] .sheet .vtile,
 :root[data-theme="glass"] .tmini,
 :root[data-theme="glass"] .vcard,
 :root[data-theme="glass"] .acard,
 :root[data-theme="glass"] .dcard,
 :root[data-theme="glass"] .vo-box,
+:root[data-theme="glass"] .script-link,
 :root[data-theme="glass"] .acct-item,
 :root[data-theme="glass"] .acct-hero,
-:root[data-theme="glass"] .daypick-btn,
-:root[data-theme="glass"] .vtile,
-:root[data-theme="glass"] .pg-tile,
 :root[data-theme="glass"] .empty,
 :root[data-theme="glass"] .composer,
-:root[data-theme="glass"] .vmore-menu,
-:root[data-theme="glass"] .fmsg-actions,
 :root[data-theme="glass"] .gmail-box,
 :root[data-theme="glass"] .forgot-inline,
 :root[data-theme="glass"] .pcard,
-:root[data-theme="glass"] .pod {
-  background: rgba(255, 255, 255, 0.44) !important;
-  backdrop-filter: blur(22px) saturate(190%);
-  -webkit-backdrop-filter: blur(22px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.72) !important;
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
-}
-
-:root[data-theme="glass"] .sheet {
-  border-radius: 26px 26px 0 0;
-}
-@media (min-width: 640px) {
-  :root[data-theme="glass"] .sheet {
-    border-radius: 26px;
-  }
+:root[data-theme="glass"] .vv-empty {
+  background: var(--glass-fill-soft) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.78), 0 4px 14px rgba(15, 23, 42, 0.06) !important;
 }
 
 :root[data-theme="glass"] .btn:not(.primary):not(.danger),
@@ -1769,14 +1847,20 @@ html, body { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="glass"] input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
 :root[data-theme="glass"] textarea,
 :root[data-theme="glass"] select {
-  background: rgba(255, 255, 255, 0.52) !important;
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.78) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.24) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.78);
 }
 
 :root[data-theme="glass"] .seg button.on {
-  background: rgba(255, 255, 255, 0.88) !important;
-  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="glass"] .x {
+  background: rgba(255, 255, 255, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8);
 }

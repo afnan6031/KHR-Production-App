@@ -134,8 +134,7 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
   const [dlBusy, setDlBusy] = useState(false);
   const emb = embedUrl(url);
   const kind = videoKind(url);
-  const internal = isInternalMediaUrl(url) || kind === 'file';
-  const host = internal ? 'KHR Video' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : kind === 'gofile' ? 'Video Link' : url.replace(/^https?:\/\//, '').split('/')[0];
+  void kind;
 
   async function download() {
     setDlBusy(true);
@@ -161,8 +160,7 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
       <div className="vcard-row">
         <span className="vcard-ico" aria-hidden="true">🎬</span>
         <span className="grow vcard-t">
-          <b className="block one-line" data-notr>{title || 'Video'}</b>
-          <span className="muted tiny">{host}</span>
+          <b className="block one-line">Video</b>
         </span>
         {emb && !play && <button type="button" className="btn primary sm" onClick={() => setPlay(true)}>▶ Chalayein</button>}
         {emb && play && <button type="button" className="btn sm" onClick={() => setPlay(false)}>Band</button>}

@@ -350,8 +350,12 @@ export function VideosSheet({ channelId, initialTab, focus, create, taskId, onCl
   if (editing) return <VideoForm channelId={channelId} video={editing === 'new' ? null : editing} taskId={taskId} onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); setView(id); }} />;
   if (cur)
     return (
-      <Sheet title={(ch?.name || 'Channel') + ' · Video'} onClose={() => (focus && view === focus ? onClose() : setView(null))}>
-        <VideoView video={cur} canEdit={canWork} onEdit={() => setEditing(cur)} onClose={() => setView(null)} />
+      <Sheet
+        title={(ch?.name || 'Channel') + ' · Video'}
+        actions={<VideoMoreMenu video={cur} />}
+        onClose={() => (focus && view === focus ? onClose() : setView(null))}
+      >
+        <VideoView video={cur} canEdit={canWork} onEdit={() => setEditing(cur)} onClose={() => setView(null)} inSheet />
       </Sheet>
     );
   return (
@@ -418,30 +422,32 @@ function VoiceoverPlayer({ url, title }: { url: string; title: string }) {
   );
 }
 
-export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; canEdit: boolean; onEdit: () => void; onClose: () => void }) {
+export function VideoView({ video, canEdit, onEdit, onClose, inSheet }: { video: Video; canEdit: boolean; onEdit: () => void; onClose: () => void; inSheet?: boolean }) {
   const maker = useMaker();
   const toast = useToast();
   const [img, setImg] = useState(false);
   const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => toast('Link copy ho gaya'), () => toast('Copy nahi hua'));
   return (
-    <article className="viewer video-view">
+    <article className={'viewer video-view' + (inSheet ? ' in-sheet' : '')}>
       <div className="row between top">
         <div className="grow">
-          <span className="eyebrow">{dayLabel(video.day)} · {fmtClock(video.created_at)}</span>
+          <div className="row wrap" style={{ gap: '6px', marginBottom: '4px' }}>
+            <span className="eyebrow">{dayLabel(video.day)} · {fmtClock(video.created_at)}</span>
+            <span className={'stage ' + video.stage}>{stageLabel(video.stage)}</span>
+            {video.due && <span className="muted tiny">Due {fmtDate(video.due)}</span>}
+          </div>
           <h3 className="viewer-t">{video.title}</h3>
           <span className="muted tiny">
             <span data-notr>{maker(video)}</span> ne banayi
             {video.updated_by && video.updated_by !== video.created_by ? <> · aakhri edit <span data-notr>{maker(video, true)}</span></> : null}
           </span>
         </div>
-        <div className="row">
-          <VideoMoreMenu video={video} />
-          <button className="x" onClick={onClose} aria-label="Band karein">×</button>
-        </div>
-      </div>
-      <div className="row">
-        <span className={'stage ' + video.stage}>{stageLabel(video.stage)}</span>
-        {video.due && <span className="muted small">Due {fmtDate(video.due)}</span>}
+        {!inSheet && (
+          <div className="row">
+            <VideoMoreMenu video={video} />
+            <button className="x" onClick={onClose} aria-label="Band karein">×</button>
+          </div>
+        )}
       </div>
       {video.thumbnail_url ? (
         <div className="viewer-img-wrap">
@@ -463,7 +469,7 @@ export function VideoView({ video, canEdit, onEdit, onClose }: { video: Video; c
       )}
       {video.script_url ? (
         <div className="script-link">
-          <span className="mono-url">{video.script_url.replace(/^https?:\/\//, '')}</span>
+          <span className="grow"><b>📄 Script</b></span>
           <a className="btn primary sm" href={video.script_url} target="_blank" rel="noopener noreferrer">Script kholein ↗</a>
           <button className="btn sm" onClick={() => copy(video.script_url)}>Copy</button>
         </div>
