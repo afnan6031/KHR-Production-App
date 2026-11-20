@@ -467,3 +467,63 @@ export async function saveTake(t: Take): Promise<void> {
 export async function deleteTake(id: string): Promise<void> {
   try { await tx('history', 'readwrite', (s) => s.delete(id)); } catch { /* koi baat nahi */ }
 }
+
+/* ---------------- v19: Gemini Voice-Style Clone (Free, uses existing GEMINI_KEY) ---------------- */
+export interface ClonedVoice { id: string; label: string; baseVoice: string; stylePrompt: string; summary: string; createdAt: number; }
+const CLONE_KEY = 'khr-vo-clones-v19';
+export function loadClonedVoices(): ClonedVoice[] {
+  try { const raw = localStorage.getItem(CLONE_KEY); const arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr : []; } catch { return []; }
+}
+export function saveClonedVoice(v: ClonedVoice): ClonedVoice[] {
+  const all = [v, ...loadClonedVoices().filter((x) => x.id !== v.id)].slice(0, 10);
+  try { localStorage.setItem(CLONE_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+  return all;
+}
+export function deleteClonedVoice(id: string): ClonedVoice[] {
+  const all = loadClonedVoices().filter((x) => x.id !== id);
+  try { localStorage.setItem(CLONE_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+  return all;
+}
+function blobToB64(b: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('Audio file parhi nahi ja saki'));
+    r.readAsDataURL(b);
+  });
+}
+export async function analyzeVoiceSample(blob: Blob, label: string): Promise<ClonedVoice> {
+  if (!GEMINI_KEY) throw new Error('Gemini API key set nahi. Owner GitHub secret VITE_GEMINI_API_KEY check kare.');
+  if (blob.size > 15 * 1024 * 1024) throw new Error('Voice sample 15 MB se chhota rakhein (10–30 second kaafi hain).');
+  const b64 = await blobToB64(blob);
+  const mime = blob.type && blob.type.startsWith('audio/') ? blob.type.split(';')[0] : 'audio/webm';
+  const voiceCatalog = VOICES.map((v) => `${v.name} (${v.gender}, ${v.style}, ${v.best})`).join('; ');
+  const prompt = [
+    'Listen carefully to this voice sample. Analyze the speaker gender, vocal pitch, timbre, energy, warmth, pacing, and cadence.',
+    `Pick the SINGLE closest matching voice name from this exact list: ${voiceCatalog}.`,
+    'Return ONLY valid JSON with keys: {"baseVoice":"<exact name from list>","stylePrompt":"<15-30 word English speaking style directive for TTS to mimic this speaker tone, pitch, pace, and delivery>","summary":"<short 6-10 word description of the voice>"}.'
+  ].join('\n');
+  let lastErr = 'Voice analyze nahi ho saki.';
+  for (const m of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+    try {
+      const res = await fetch(`${BASE}/models/${m}:generateContent?key=${encodeURIComponent(GEMINI_KEY)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } })
+      });
+      if (!res.ok) { lastErr = `Gemini HTTP ${res.status}`; continue; }
+      const j = await res.json();
+      const rawText: string = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const match = rawText.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match ? match[0] : rawText) as { baseVoice?: string; stylePrompt?: string; summary?: string };
+      const chosen = VOICES.find((v) => v.name.toLowerCase() === String(parsed.baseVoice || '').trim().toLowerCase())?.name || 'Charon';
+      const clone: ClonedVoice = {
+        id: 'cl-' + Date.now().toString(36), label: label.trim() || 'Meri Awaaz', baseVoice: chosen,
+        stylePrompt: String(parsed.stylePrompt || 'natural, clear, expressive delivery').slice(0, 160),
+        summary: String(parsed.summary || `${chosen} style match`).slice(0, 80), createdAt: Date.now()
+      };
+      saveClonedVoice(clone);
+      return clone;
+    } catch (e) { lastErr = e instanceof Error ? e.message : String(e); }
+  }
+  throw new Error(lastErr);
+}

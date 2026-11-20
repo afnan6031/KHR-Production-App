@@ -13,7 +13,7 @@ import { VoiceStudio } from './screens/Voice';
 import { ChannelSheet, PerfSheet, ProfileSheet } from './components/Sheets';
 import { MusicProvider, useMusic } from './components/Music';
 import { applyPrefs } from './lib/appearance';
-import { Avatar, Logo, ThemeButton, ToastProvider, runBackHandler } from './components/ui';
+import { Avatar, Logo, ToastProvider, runBackHandler } from './components/ui';
 import { BellButton, NotificationsProvider } from './components/Notifications';
 import { initPush, onPushOpen, stopPush, takePendingOpen, type PushOpen } from './lib/push';
 import { clearSnapshot } from './lib/offline';
@@ -393,7 +393,6 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
           </div>
           {mode && <ModeSwitch mode={mode} setMode={setMode} />}
           <MusicButton />
-          <ThemeButton />
           <BellButton />
           <button className="who" onClick={() => setSheet({ kind: 'profile' })} aria-label="Mera profile">
             <Avatar name={d.me.full_name || 'Owner'} url={d.me.avatar_url || undefined} />

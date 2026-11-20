@@ -2,9 +2,11 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type K
 import type React from 'react';
 import { useData } from '../lib/data';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
+import { PdUploadCancelled, normalizePixeldrainUrl, uploadToPixeldrain, type PdProgress } from '../lib/pixeldrain';
+import { mb } from '../lib/gofile';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
 import { Avatar, ConfirmButton, useBackHandler, useToast } from './ui';
-import { UploadBar, VideoCard, useVideoUpload, videoLinksIn } from './VideoUpload';
+import { VideoCard, useVideoUpload, videoLinksIn } from './VideoUpload';
 
 
 /* ---------- Server roles ka rang ---------- */
@@ -339,6 +341,8 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
             )
           )}
           {!isEditing && m.body && videoLinksIn(m.body).map((u) => <VideoCard key={u} url={u} title={videoTitle(m.body, u)} compact />)}
+          {!isEditing && m.body && audioLinksIn(m.body).map((a) => <AudioCard key={a.url} url={a.url} name={a.name} />)}
+          {!isEditing && m.body && docLinksIn(m.body).map((doc) => <DocCard key={doc.url} url={doc.url} name={doc.name} />)}
           {m.image_url && (
             <button className="fmsg-img" onClick={() => onImage?.(m.image_url!)} aria-label="Image bari dekhein">
               <img src={m.image_url} alt="Bheji gayi image" loading="lazy" />
@@ -409,6 +413,64 @@ export function MessageFeed({ items, byId, onReply, canDelete, onDelete, onOpenU
   );
 }
 
+function audioLinksIn(text: string): { url: string; name: string }[] {
+  const out: { url: string; name: string }[] = [];
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const prev = i > 0 ? lines[i - 1].trim() : '';
+    for (const m of lines[i].matchAll(/https?:\/\/[^\s<>"']+/g)) {
+      const raw = m[0];
+      const isPd = /^https?:\/\/(?:www\.)?pixeldrain\.com\/(?:u|api\/file)\/[\w-]{3,40}/i.test(raw);
+      const isAudExt = /\.(mp3|wav|m4a|ogg|aac|opus|flac)(\?|$)/i.test(raw);
+      if ((isPd && prev.startsWith('🎵')) || isAudExt) {
+        const url = normalizePixeldrainUrl(raw);
+        if (!out.some((x) => x.url === url)) out.push({ url, name: prev.startsWith('🎵') ? prev.replace(/^🎵\s*/, '') : 'Audio' });
+      }
+    }
+  }
+  return out.slice(0, 3);
+}
+function docLinksIn(text: string): { url: string; name: string }[] {
+  const out: { url: string; name: string }[] = [];
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const prev = i > 0 ? lines[i - 1].trim() : '';
+    if (!prev.startsWith('📎')) continue;
+    for (const m of lines[i].matchAll(/https?:\/\/[^\s<>"']+/g)) {
+      const url = normalizePixeldrainUrl(m[0]);
+      if (!out.some((x) => x.url === url)) out.push({ url, name: prev.replace(/^📎\s*/, '') || 'Document' });
+    }
+  }
+  return out.slice(0, 3);
+}
+function AudioCard({ url, name }: { url: string; name: string }) {
+  return (
+    <div className="acard">
+      <div className="row between">
+        <span className="acard-name one-line" data-notr>🎵 {name}</span>
+        <a className="btn sm" href={url} target="_blank" rel="noopener noreferrer" download={name}>⬇ Download</a>
+      </div>
+      <audio className="acard-player" src={url} controls preload="none" />
+    </div>
+  );
+}
+function DocCard({ url, name }: { url: string; name: string }) {
+  return (
+    <div className="dcard">
+      <span className="dcard-ico" aria-hidden="true">📄</span>
+      <span className="grow dcard-t">
+        <b className="block one-line" data-notr>{name}</b>
+        <span className="muted tiny">Pixeldrain · Document</span>
+      </span>
+      <a className="btn primary sm" href={url} target="_blank" rel="noopener noreferrer">Kholein / Download ↗</a>
+    </div>
+  );
+}
+export const DROP_FILE_EVENT = 'khr-drop-file';
+export function dispatchChatDrop(draftKey: string, file: File) {
+  window.dispatchEvent(new CustomEvent(DROP_FILE_EVENT, { detail: { key: draftKey, file } }));
+}
+
 /** message mein video ke link se pehle wali line ("🎬 naam") title ke taur par */
 function videoTitle(body: string, url: string): string | undefined {
   const lines = body.split('\n');
@@ -417,83 +479,103 @@ function videoTitle(body: string, url: string): string | undefined {
   return prev.startsWith('🎬') ? prev.replace(/^🎬\s*/, '') : undefined;
 }
 
-/** Message likhne ki jagah: text + image (ImgBB) + video (Gofile) + reply */
+/** Message likhne ki jagah: text + image + video + audio + document (sab Pixeldrain) + Drag & Drop */
 export interface Mentionable { id: string; name: string; url?: string; sub?: string }
+interface PendingMedia { kind: 'video' | 'audio' | 'doc'; url: string; name: string }
+
 export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, onSend, mentions, draftKey }: {
-  /** v14: @ likhne par in logon ki list (+ @everyone) */
-  mentions?: Mentionable[];
-  /** v15: likha hua text yaad rakhne ki chaabi (har chat ki alag) */
-  draftKey?: string;
-  placeholder: string;
-  disabledNote?: string;
-  replyTo?: FeedItem | null;
-  onCancelReply?: () => void;
-  onSend: (body: string, imageUrl: string) => Promise<void>;
+  mentions?: Mentionable[]; draftKey?: string; placeholder: string; disabledNote?: string;
+  replyTo?: FeedItem | null; onCancelReply?: () => void; onSend: (body: string, imageUrl: string) => Promise<void>;
 }) {
   const d = useData();
   const toast = useToast();
   const [text, setText] = useDraft(draftKey);
   const [img, setImg] = useState<{ url: string; name: string } | null>(null);
+  const [media, setMedia] = useState<PendingMedia | null>(null);
   const [busy, setBusy] = useState<'' | 'img' | 'send'>('');
+  const [upState, setUpState] = useState<{ file: File; kind: 'video' | 'audio' | 'doc'; prog: PdProgress } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const upCtl = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const vidRef = useRef<HTMLInputElement>(null);
+  const audRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [emoji, setEmoji] = useState(false);
   const [mq, setMq] = useState<{ q: string; at: number } | null>(null);
   const [mi, setMi] = useState(0);
+
+  useEffect(() => () => upCtl.current?.abort(), []);
   const mList = useMemo(() => {
     if (!mq || !mentions) return [] as Mentionable[];
     const q = mq.q.toLowerCase();
-    const all: Mentionable[] = [{ id: 'everyone', name: 'everyone', sub: 'Sab ko mention' }, ...mentions];
-    return all.filter((x) => x.name.toLowerCase().includes(q)).slice(0, 8);
+    return [{ id: 'everyone', name: 'everyone', sub: 'Sab ko mention' }, ...mentions].filter((x) => x.name.toLowerCase().includes(q)).slice(0, 8);
   }, [mq, mentions]);
   const checkMention = (val: string, caret: number) => {
     if (!mentions) return;
-    const before = val.slice(0, caret);
-    const m = /(^|\s)@([^\s@]{0,30})$/.exec(before);
+    const m = /(^|\s)@([^\s@]{0,30})$/.exec(val.slice(0, caret));
     if (m) { setMq({ q: m[2], at: caret - m[2].length - 1 }); setMi(0); } else setMq(null);
   };
   const pickMention = (x: Mentionable) => {
     if (!mq) return;
-    const el = inputRef.current;
-    const caret = el?.selectionStart ?? text.length;
-    const ins = '@' + x.name + ' ';
-    const nt = text.slice(0, mq.at) + ins + text.slice(caret);
-    setText(nt);
-    setMq(null);
+    const el = inputRef.current; const caret = el?.selectionStart ?? text.length; const ins = '@' + x.name + ' ';
+    setText(text.slice(0, mq.at) + ins + text.slice(caret)); setMq(null);
     const pos = mq.at + ins.length;
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(pos, pos); });
   };
-  const vid = useVideoUpload();
-  const vidRef = useRef<HTMLInputElement>(null);
-  async function pickVideo(f: File | undefined) {
-    if (vidRef.current) vidRef.current.value = '';
-    if (!f) return;
+  const vid = useVideoUpload(); void vid;
+
+  async function uploadMediaFile(f: File, kind: 'video' | 'audio' | 'doc') {
+    upCtl.current?.abort();
+    const ctl = new AbortController();
+    upCtl.current = ctl;
+    setUpState({ file: f, kind, prog: { loaded: 0, total: f.size, pct: 0 } });
     try {
-      const url = await vid.start(f);
-      if (!url) return toast('Upload cancel ho gaya');
-      const body = (text.trim() ? text.trim() + '\n' : '') + '🎬 ' + f.name + '\n' + url;
-      await onSend(body, '');
-      setText('');
-      toast('🎬 Video bhej di');
+      const url = await uploadToPixeldrain(f, (prog) => setUpState((cur) => (cur ? { ...cur, prog } : cur)), ctl.signal, f.name);
+      setMedia({ kind, url, name: f.name });
+      toast(kind === 'video' ? '🎬 Video attach ho gayi — Send dabayein' : kind === 'audio' ? '🎵 Audio attach ho gayi — Send dabayein' : '📎 Document attach ho gaya — Send dabayein');
     } catch (e) {
-      toast(errorText(e));
-    }
+      if (e instanceof PdUploadCancelled) toast('Upload cancel ho gaya');
+      else toast(errorText(e));
+    } finally { setUpState(null); upCtl.current = null; }
   }
-  const insert = (e: string) => {
-    const el = inputRef.current;
-    const a = el?.selectionStart ?? text.length, b = el?.selectionEnd ?? text.length;
-    const nt = text.slice(0, a) + e + text.slice(b);
-    setText(nt);
-    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(a + e.length, a + e.length); });
-  };
+
+  async function pickImage(f: File | undefined) {
+    if (!f) return;
+    setBusy('img');
+    try { const r = await uploadToImgBB(f, 'khr-' + Date.now()); setImg({ url: r.url, name: f.name }); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(''); if (fileRef.current) fileRef.current.value = ''; }
+  }
+
+  async function handleDroppedFile(f: File) {
+    if (f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)) await pickImage(f);
+    else if (f.type.startsWith('video/') || /\.(mp4|mov|mkv|webm|m4v|avi|3gp)$/i.test(f.name)) await uploadMediaFile(f, 'video');
+    else if (f.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|aac|opus|flac|wma)$/i.test(f.name)) await uploadMediaFile(f, 'audio');
+    else await uploadMediaFile(f, 'doc');
+  }
+  const dropHandlerRef = useRef(handleDroppedFile);
+  dropHandlerRef.current = handleDroppedFile;
 
   useEffect(() => {
-    if (replyTo) inputRef.current?.focus();
-  }, [replyTo]);
+    if (!draftKey) return;
+    const onDropEvt = (e: Event) => {
+      const det = (e as CustomEvent<{ key: string; file: File }>).detail;
+      if (det && det.key === draftKey && det.file) dropHandlerRef.current(det.file);
+    };
+    window.addEventListener(DROP_FILE_EVENT, onDropEvt);
+    return () => window.removeEventListener(DROP_FILE_EVENT, onDropEvt);
+  }, [draftKey]);
+
+  const insert = (e: string) => {
+    const el = inputRef.current; const a = el?.selectionStart ?? text.length; const b = el?.selectionEnd ?? text.length;
+    setText(text.slice(0, a) + e + text.slice(b));
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(a + e.length, a + e.length); });
+  };
+  useEffect(() => { if (replyTo) inputRef.current?.focus(); }, [replyTo]);
   useAutoGrow(inputRef, text);
-  // ⋯ menu se quote / mention
-  const textRef = useRef(text);
-  textRef.current = text;
+
+  const textRef = useRef(text); textRef.current = text;
   useEffect(() => {
     if (!draftKey) return;
     const on = (e: Event) => {
@@ -510,34 +592,16 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
 
   if (disabledNote) return <div className="composer locked-note">🔒 {disabledNote}</div>;
 
-  async function pick(f: File | undefined) {
-    if (!f) return;
-    setBusy('img');
-    try {
-      const r = await uploadToImgBB(f, 'khr-' + Date.now());
-      setImg({ url: r.url, name: f.name });
-    } catch (e) {
-      toast(errorText(e));
-    } finally {
-      setBusy('');
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
-
   async function send() {
-    const body = text.trim();
+    const parts: string[] = [];
+    if (text.trim()) parts.push(text.trim());
+    if (media) parts.push(`${media.kind === 'video' ? '🎬' : media.kind === 'audio' ? '🎵' : '📎'} ${media.name}\n${media.url}`);
+    const body = parts.join('\n');
     if (!body && !img) return;
     setBusy('send');
-    try {
-      await onSend(body, img?.url || '');
-      setText('');
-      setImg(null);
-      inputRef.current?.focus();
-    } catch (e) {
-      toast(errorText(e));
-    } finally {
-      setBusy('');
-    }
+    try { await onSend(body, img?.url || ''); setText(''); setImg(null); setMedia(null); inputRef.current?.focus(); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(''); }
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -547,70 +611,82 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mList[mi] || mList[0]); return; }
       if (e.key === 'Escape') { setMq(null); return; }
     }
-    if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); send(); }
   }
 
+  const uploading = !!upState || busy === 'img';
   return (
-    <div className="composer">
+    <div
+      className={'composer' + (dragOver ? ' drag-over' : '')}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleDroppedFile(f); }}
+    >
+      {dragOver && <div className="drop-banner">📥 File yahan drop karein (Image / Video / Audio / Document)</div>}
       {replyTo && (
         <div className="reply-bar">
-          <span>
-            <b>{d.nameOf(replyTo.user_id)}</b> ko reply: {replyTo.body ? replyTo.body.slice(0, 80) : 'Image'}
-          </span>
+          <span><b>{d.nameOf(replyTo.user_id)}</b> ko reply: {replyTo.body ? replyTo.body.slice(0, 80) : 'Image'}</span>
           <button className="x" onClick={onCancelReply} aria-label="Reply hatayein">×</button>
         </div>
       )}
       {img && (
         <div className="img-pending">
           <img src={img.url} alt="" />
-          <span className="small">{img.name}</span>
+          <span className="small one-line grow" data-notr>{img.name}</span>
           <button className="x" onClick={() => setImg(null)} aria-label="Image hatayein">×</button>
         </div>
       )}
-      {vid.uploading && vid.file && vid.prog && <UploadBar file={vid.file} prog={vid.prog} onCancel={vid.cancel} />}
+      {media && (
+        <div className="img-pending">
+          <span className="media-ico">{media.kind === 'video' ? '🎬' : media.kind === 'audio' ? '🎵' : '📎'}</span>
+          <span className="small one-line grow" data-notr>{media.name}</span>
+          <button className="x" onClick={() => setMedia(null)} aria-label="File hatayein">×</button>
+        </div>
+      )}
+      {upState && (
+        <div className="upbar" role="status" aria-live="polite">
+          <div className="row between">
+            <span className="upbar-name" data-notr>{upState.kind === 'video' ? '🎬' : upState.kind === 'audio' ? '🎵' : '📎'} {upState.file.name}</span>
+            <button type="button" className="btn sm" onClick={() => upCtl.current?.abort()}>Cancel</button>
+          </div>
+          <div className="upbar-track" aria-hidden="true"><i style={{ width: upState.prog.pct + '%' }} className={upState.prog.pct >= 100 ? 'done' : ''} /></div>
+          <div className="row between upbar-meta"><b className="num">{upState.prog.pct}%</b><span className="num">{mb(upState.prog.loaded)} / {mb(upState.prog.total)}</span></div>
+          <span className="muted tiny">Pixeldrain par upload ho rahi hai…</span>
+        </div>
+      )}
       {mq && mList.length > 0 && (
         <div className="mention-pop" role="listbox" aria-label="Mention karein">
           {mList.map((x, i) => (
             <button type="button" key={x.id} role="option" aria-selected={i === mi} className={i === mi ? 'on' : ''} onMouseDown={(e) => { e.preventDefault(); pickMention(x); }}>
               {x.id === 'everyone' ? <span className="av">@</span> : <Avatar name={x.name} url={x.url} />}
-              <b data-notr>@{x.name}</b>
-              {x.sub && <small>{x.sub}</small>}
+              <b data-notr>@{x.name}</b>{x.sub && <small>{x.sub}</small>}
             </button>
           ))}
         </div>
       )}
       {emoji && <EmojiPicker onPick={insert} onClose={() => setEmoji(false)} />}
       <div className="composer-row">
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pick(e.target.files?.[0])} />
-        <button className="attach" onClick={() => fileRef.current?.click()} disabled={busy !== '' || !imgbbReady} aria-label="Image lagayein" title="Image lagayein">
-          {busy === 'img' ? <span className="spin" aria-hidden="true" /> : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-5-5-8 8" /></svg>
-          )}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickImage(e.target.files?.[0])} />
+        <button className="attach" type="button" onClick={() => fileRef.current?.click()} disabled={uploading || !imgbbReady} aria-label="Image lagayein" title="Image lagayein (Pixeldrain)">
+          {busy === 'img' ? <span className="spin" aria-hidden="true" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-5-5-8 8" /></svg>}
         </button>
-        <input ref={vidRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => pickVideo(e.target.files?.[0])} />
-        <button className="attach" type="button" onClick={() => vidRef.current?.click()} disabled={busy !== '' || vid.uploading} aria-label="Video bhejein" title="Video bhejein (Gofile, 2 GB tak)">
+        <input ref={vidRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'video'); }} />
+        <button className="attach" type="button" onClick={() => vidRef.current?.click()} disabled={uploading} aria-label="Video bhejein" title="Video bhejein (Pixeldrain)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="m16 10 5-3v10l-5-3" /></svg>
+        </button>
+        <input ref={audRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.aac,.opus,.flac" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'audio'); }} />
+        <button className="attach" type="button" onClick={() => audRef.current?.click()} disabled={uploading} aria-label="Audio bhejein" title="Audio bhejein (Pixeldrain)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+        </button>
+        <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.psd,.ai,.prproj,.aep,*/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'doc'); }} />
+        <button className="attach" type="button" onClick={() => docRef.current?.click()} disabled={uploading} aria-label="Document bhejein" title="Document / File bhejein (Pixeldrain)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
         </button>
         <button className={'attach' + (emoji ? ' on' : '')} type="button" onClick={() => setEmoji((x) => !x)} aria-label="Emoji" title="Emoji">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" /><path d="M9 9.5h.01M15 9.5h.01" strokeWidth="3" strokeLinecap="round" /></svg>
         </button>
-        <textarea
-          ref={inputRef}
-          rows={1}
-          maxLength={MSG_MAX}
-          value={text}
-          onChange={(e) => { setText(e.target.value); checkMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
-          onClick={(e) => checkMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)}
-          onKeyDown={onKey}
-          placeholder={placeholder}
-          aria-label={placeholder}
-        />
-        <button className="btn primary" onClick={send} disabled={busy !== '' || (!text.trim() && !img)}>
-          Bhejein
-        </button>
+        <textarea ref={inputRef} rows={1} maxLength={MSG_MAX} value={text} onChange={(e) => { setText(e.target.value); checkMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }} onClick={(e) => checkMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)} onKeyDown={onKey} placeholder={placeholder} aria-label={placeholder} />
+        <button className="btn primary" onClick={send} disabled={busy !== '' || !!upState || (!text.trim() && !img && !media)}>Bhejein</button>
       </div>
       {text.length > MSG_MAX - 400 && <div className={'char-count num' + (text.length >= MSG_MAX ? ' bad' : '')}>{text.length}/{MSG_MAX}</div>}
     </div>

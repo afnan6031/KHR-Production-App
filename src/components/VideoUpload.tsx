@@ -52,7 +52,7 @@ export function UploadBar({ file, prog, onCancel }: { file: File; prog: UploadPr
         <b className="num">{prog.pct}%</b>
         <span className="num">{mb(prog.loaded)} / {mb(prog.total)}</span>
       </div>
-      <span className="muted tiny">{done ? 'Gofile video process kar raha hai… thora intezar' : 'Video Gofile par upload ho rahi hai — ye screen band na karein'}</span>
+      <span className="muted tiny">{done ? 'Pixeldrain video save kar raha hai… thora intezar' : 'Video Pixeldrain par upload ho rahi hai — ye screen band na karein'}</span>
     </div>
   );
 }
@@ -61,8 +61,8 @@ export function UploadBar({ file, prog, onCancel }: { file: File; prog: UploadPr
 export function VideoField({ value, onChange, onBusy }: { value: string; onChange: (url: string) => void; onBusy?: (b: boolean) => void }) {
   const toast = useToast();
   const up = useVideoUpload();
-  const [mode, setMode] = useState<'file' | 'link'>(value && videoKind(value) !== 'gofile' ? 'link' : 'file');
-  const [link, setLink] = useState(value && videoKind(value) !== 'gofile' ? value : '');
+  const [mode, setMode] = useState<'file' | 'link'>(value && videoKind(value) !== 'pixeldrain' && videoKind(value) !== 'gofile' ? 'link' : 'file');
+  const [link, setLink] = useState(value && videoKind(value) !== 'pixeldrain' && videoKind(value) !== 'gofile' ? value : '');
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => onBusy?.(up.uploading), [up.uploading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,7 +100,7 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
         <>
           <input ref={fileRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => pick(e.target.files?.[0])} />
           <button type="button" className="btn" onClick={() => fileRef.current?.click()}>🎬 Video chunein (phone / PC se, 2 GB tak)</button>
-          <span className="h">MP4, MOV, MKV, WEBM. Video Gofile.io par jati hai, app mein sirf link save hota hai.</span>
+          <span className="h">MP4, MOV, MKV, WEBM. Video Pixeldrain par jati hai, app mein sirf link save hota hai.</span>
         </>
       ) : (
         <div className="row">
@@ -110,7 +110,7 @@ export function VideoField({ value, onChange, onBusy }: { value: string; onChang
             inputMode="url"
             value={link}
             onChange={(e) => setLink(e.target.value)}
-            placeholder="https://drive.google.com/… ya https://gofile.io/d/…"
+            placeholder="https://drive.google.com/… ya https://pixeldrain.com/u/…"
             aria-label="Video ka link"
           />
           <button
@@ -137,7 +137,7 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
   const [play, setPlay] = useState(false);
   const emb = embedUrl(url);
   const kind = videoKind(url);
-  const host = kind === 'gofile' ? 'Gofile' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : url.replace(/^https?:\/\//, '').split('/')[0];
+  const host = kind === 'pixeldrain' ? 'Pixeldrain' : kind === 'gofile' ? 'Gofile' : kind === 'youtube' ? 'YouTube' : kind === 'drive' ? 'Google Drive' : url.replace(/^https?:\/\//, '').split('/')[0];
   return (
     <div className={'vcard' + (compact ? ' compact' : '')}>
       {play && emb ? (
@@ -170,6 +170,15 @@ export function VideoCard({ url, title, compact }: { url: string; title?: string
 /** text mein video links dhoondo (chat ke neeche card dikhane ke liye) */
 export function videoLinksIn(text: string): string[] {
   const out: string[] = [];
-  for (const m of text.matchAll(/https?:\/\/[^\s<>"']+/g)) if (videoKind(m[0]) && !out.includes(m[0])) out.push(m[0]);
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const prev = i > 0 ? lines[i - 1].trim() : '';
+    const isAudioOrDoc = prev.startsWith('🎵') || prev.startsWith('📎');
+    for (const m of lines[i].matchAll(/https?:\/\/[^\s<>"']+/g)) {
+      const u = m[0]; const k = videoKind(u);
+      if (!k || (k === 'pixeldrain' && isAudioOrDoc)) continue;
+      if (!out.includes(u)) out.push(u);
+    }
+  }
   return out.slice(0, 3);
 }

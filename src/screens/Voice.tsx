@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../lib/data';
 import { errorText } from '../lib/utils';
-import { MAX_CHARS, VOICES, deleteTake, generateSpeech, loadTakes, peaksOf, previewCached, saveTake, voicePreview, MODELS, DEFAULT_MODEL, modelOf, usageToday, type Take, type Voice } from '../lib/gemini';
+import { MAX_CHARS, VOICES, analyzeVoiceSample, deleteClonedVoice, deleteTake, generateSpeech, loadClonedVoices, loadTakes, peaksOf, previewCached, saveTake, voicePreview, MODELS, DEFAULT_MODEL, modelOf, usageToday, type ClonedVoice, type Take, type Voice } from '../lib/gemini';
 import { uploadAudio } from '../lib/audio';
 import { saveBlobFile } from '../lib/files';
 import { useMusic } from '../components/Music';
@@ -166,6 +166,9 @@ export function VoiceStudio() {
   const [previewing, setPreviewing] = useState('');
   const [cached, setCached] = useState<Set<string>>(new Set());
   const [pickOpen, setPickOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [clones, setClones] = useState<ClonedVoice[]>(() => loadClonedVoices());
+  const [activeCloneId, setActiveCloneId] = useState<string>('');
   const [saving, setSaving] = useState<number | null>(null);
   const [plist, setPlist] = useState('');
   const abort = useRef<AbortController | null>(null);
@@ -196,6 +199,7 @@ export function VoiceStudio() {
   const estSec = Math.round(len / 14);
 
   const stopMusic = () => { if (music?.playing) music.toggle(); };
+  const applyClone = (c: ClonedVoice) => { setVoice(c.baseVoice); setStyleK('custom'); setCustom(c.stylePrompt); setPace('n'); setActiveCloneId(c.id); toast(`🧬 "${c.label}" lag gaya (${c.baseVoice})`); };
 
   async function preview(x: Voice) {
     if (previewing === x.name) { pv.current?.pause(); setPreviewing(''); return; }
@@ -291,11 +295,25 @@ export function VoiceStudio() {
 
       <div className="studio-grid">
         <section className="studio-main">
-          <button type="button" className="vpick" onClick={() => setPickOpen(true)}>
-            <Voiceprint v={v} live={previewing === v.name} />
-            <span className="vrow-txt"><b data-notr>{v.name}</b><small>{v.style}, {v.best}</small></span>
-            <span className="btn sm">Awaaz badlein</span>
-          </button>
+          <div className="vpick-row">
+            <button type="button" className="vpick grow" onClick={() => setPickOpen(true)}>
+              <Voiceprint v={v} live={previewing === v.name} />
+              <span className="vrow-txt"><b data-notr>{v.name}</b><small>{v.style}, {v.best}</small></span>
+              <span className="btn sm">Awaaz badlein</span>
+            </button>
+            <button type="button" className="btn sm clone-btn" onClick={() => setCloneOpen(true)}>🧬 Apni Awaaz Clone</button>
+          </div>
+          {clones.length > 0 && (
+            <div className="clones-strip">
+              <span className="muted tiny">🧬 Mere clones:</span>
+              {clones.map((c) => (
+                <span key={c.id} className={'clone-pill' + (activeCloneId === c.id ? ' on' : '')}>
+                  <button type="button" className="clone-pill-btn" onClick={() => applyClone(c)} title={c.summary}><b data-notr>{c.label}</b> <small className="muted">({c.baseVoice})</small></button>
+                  <button type="button" className="clone-del" aria-label="Clone hatayein" onClick={() => { setClones(deleteClonedVoice(c.id)); if (activeCloneId === c.id) setActiveCloneId(''); }}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
 
           <div className={'script-box' + (over ? ' over' : '')}>
             <textarea
@@ -429,9 +447,72 @@ export function VoiceStudio() {
 
       {pickOpen && (
         <Sheet title="Awaaz chunein" onClose={() => setPickOpen(false)}>
-          <VoiceList voice={voice} setVoice={(n) => { setVoice(n); setPickOpen(false); }} preview={preview} previewing={previewing} cached={cached} />
+          <VoiceList voice={voice} setVoice={(n) => { setVoice(n); setActiveCloneId(''); setPickOpen(false); }} preview={preview} previewing={previewing} cached={cached} />
         </Sheet>
       )}
+      {cloneOpen && (
+        <VoiceCloneSheet onClose={() => setCloneOpen(false)} onCreated={(c) => { setClones(loadClonedVoices()); applyClone(c); setCloneOpen(false); }} />
+      )}
     </div>
+  );
+}
+
+function VoiceCloneSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (c: ClonedVoice) => void }) {
+  const toast = useToast();
+  const [label, setLabel] = useState('Meri Awaaz');
+  const [sample, setSample] = useState<Blob | null>(null);
+  const [sampleName, setSampleName] = useState('');
+  const [rec, setRec] = useState(false);
+  const [sec, setSec] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const mrRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (!rec) return; const t0 = Date.now(); const id = window.setInterval(() => setSec(Math.round((Date.now() - t0) / 1000)), 500); return () => window.clearInterval(id); }, [rec]);
+  useEffect(() => () => { try { mrRef.current?.stop(); } catch { /* ignore */ } }, []);
+
+  async function toggleRecord() {
+    if (rec) { mrRef.current?.stop(); setRec(false); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mrRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        const b = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        if (b.size > 0) { setSample(b); setSampleName(`Recording (${Math.max(1, sec)}s)`); }
+      };
+      setSec(0); mr.start(); setRec(true);
+    } catch { toast('Mic ki ijazat nahi mili. Aap neeche se apni audio file upload kar sakte hain.'); }
+  }
+
+  async function createClone() {
+    if (!sample) return;
+    setBusy(true);
+    try { const c = await analyzeVoiceSample(sample, label); onCreated(c); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Sheet title="🧬 Apni Awaaz Clone (Gemini)" onClose={onClose}>
+      <p className="muted small m0">Apni awaaz ka 10–20 second ka sample record ya upload karein. Gemini aap ki awaaz ka lehja, pitch aur raftar analyze kar ke aap ka apna Voice Clone profile bana dega — bilkul free.</p>
+      <label className="f">Clone ka naam<input type="text" maxLength={40} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Meri Awaaz" /></label>
+      <div className="row wrap">
+        <button type="button" className={'btn ' + (rec ? 'danger' : 'primary')} onClick={toggleRecord} disabled={busy}>{rec ? `⏹ Rokein (${sec}s)` : '🎙 Mic se Record karein'}</button>
+        <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setSample(f); setSampleName(f.name); } }} />
+        <button type="button" className="btn" onClick={() => fileRef.current?.click()} disabled={busy || rec}>⬆ Audio sample upload karein</button>
+      </div>
+      {sample && (
+        <div className="panel tight">
+          <div className="row between"><b className="small" data-notr>🎵 {sampleName}</b><button type="button" className="linkbtn" onClick={() => { setSample(null); setSampleName(''); }}>Hatayein</button></div>
+          <WavePlayer blob={sample} />
+        </div>
+      )}
+      <button type="button" className="btn primary block" disabled={!sample || busy || rec} onClick={createClone}>{busy ? 'Gemini awaaz analyze kar raha hai…' : '🧬 Voice Clone banayein'}</button>
+    </Sheet>
   );
 }

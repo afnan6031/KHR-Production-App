@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react';
 import { UserAvatar } from '../components/Messaging';
 import { useData } from '../lib/data';
 import type { Task } from '../lib/types';
-import { DAYS_LONG, DAYS_UR, addDays, errorText, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
+import { DAYS_LONG, addDays, errorText, inPeriod, isToday, periodOf, scoreOf, taskState, todayKey, weekdayOf } from '../lib/utils';
 import { CardSizePicker, MemberCard, OwnerCard, useCardSize, useMyCards } from '../components/Cards';
 import { ExtensionReview, TaskBoard } from '../components/Tasks';
 import { ConfirmButton, Fold, useNow, useToast } from '../components/ui';
-import { MiniScore } from './Progress';
 import { DayStrip, DayTasks } from '../components/DayPlan';
 
 /** Aaj ke tasks + pichle 7 din ke jo abhi bhi pending hain + aane wale khaas kaam (custom) */
@@ -19,7 +18,7 @@ export function boardTasks(tasks: Task[], today: string, userId?: string) {
   );
 }
 
-export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
+export function HomeScreen({ openChannel, openProgress: _openProgress, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
   const d = useData();
   const now = useNow(5000);
   const today = todayKey();
@@ -29,30 +28,12 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
   const isNow = day === today;
   const [size, setSize] = useCardSize();
   const todayCards = useMyCards(true);
-  const greet = (
-    <div className="hello">
-      <span className="eyebrow">
-        {DAYS_UR[weekdayOf(today)]} · {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-      </span>
-      <h1>Assalam o Alaikum, {d.me?.full_name || (d.isOwner ? 'Owner' : '')}</h1>
-    </div>
-  );
 
   const myTasks = useMemo(() => boardTasks(d.tasks, today, d.uid), [d.tasks, today, d.uid]);
-  const myScores = useMemo(() => {
-    const mine = d.tasks.filter((t) => t.user_id === d.uid);
-    return (['day', 'week', 'month'] as const).map((k) => ({ k, s: scoreOf(mine.filter((t) => inPeriod(t, periodOf(k))), now) }));
-  }, [d.tasks, d.uid, now]);
 
   if (!d.isOwner) {
     return (
       <>
-        {greet}
-        <button className="mini-scores" onClick={() => openProgress(d.uid)} aria-label="Meri progress kholein">
-          {myScores.map(({ k, s }) => (
-            <MiniScore key={k} label={k === 'day' ? 'Aaj' : k === 'week' ? 'Is hafte' : 'Is mahine'} s={s} />
-          ))}
-        </button>
         <section className="sec">
           <div className="sec-head">
             <h2>{isNow ? 'Aaj ke kaam' : 'Is din ka kaam'}</h2>
@@ -100,7 +81,6 @@ export function HomeScreen({ openChannel, openProgress, goTeam, newChannel }: { 
 
   return (
     <>
-      {greet}
       <div className="stats four">
         <div className="stat"><div className="v">{cnt.pending}</div><div className="l">Aaj pending</div></div>
         <div className="stat"><div className={'v ' + (cnt.expired ? 'bad' : '')}>{cnt.expired}</div><div className="l">Aaj expired</div></div>

@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useData } from '../lib/data';
 import { FB_ROLE, type Task } from '../lib/types';
-import { DAYS_LONG, DAYS_UR, addDays, fmtDate, isToday, roleClass, roleTime, roleTimeText, todayKey, weekdayOf } from '../lib/utils';
+import { DAYS_UR, addDays, fmtDate, isToday, roleClass, roleTime, roleTimeText, todayKey, weekdayOf } from '../lib/utils';
 import { TaskBoard } from './Tasks';
 import { ROLE_WORK, hasWork } from './TaskWork';
 import { channelHue } from './Cards';
@@ -12,45 +12,23 @@ import { channelHue } from './Cards';
  * + jo EP (title / script / voiceover…) advance mein lag chuka hai.
  */
 
-const SHORT = ['Itw', 'Pir', 'Mng', 'Bdh', 'Jmrt', 'Jum', 'Hfta'];
-
 export function DayStrip({ value, onChange }: { value: string; onChange: (k: string) => void }) {
   const today = todayKey();
   const inp = useRef<HTMLInputElement>(null);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(value, i - 3));
   const rel = (k: string) => (k === today ? 'Aaj' : k === addDays(today, 1) ? 'Aane wala kal' : k === addDays(today, -1) ? 'Guzra kal' : '');
+  const openPicker = () => { try { inp.current?.showPicker?.(); } catch { inp.current?.click(); } };
   return (
-    <div className="daystrip" role="group" aria-label="Din chunein">
-      <button type="button" className="ds-arrow" onClick={() => onChange(addDays(value, -7))} aria-label="Pichla hafta">‹</button>
-      <div className="ds-days">
-        {days.map((k) => (
-          <button
-            type="button"
-            key={k}
-            className={'ds-day' + (k === value ? ' on' : '') + (k === today ? ' today' : '') + (k < today ? ' past' : '')}
-            onClick={() => onChange(k)}
-            aria-pressed={k === value}
-            aria-label={DAYS_LONG[weekdayOf(k)] + ' ' + fmtDate(k)}
-          >
-            <small>{SHORT[weekdayOf(k)]}</small>
-            <b className="num">{Number(k.slice(8))}</b>
-          </button>
-        ))}
-      </div>
-      <button type="button" className="ds-arrow r" onClick={() => onChange(addDays(value, 7))} aria-label="Agla hafta">›</button>
-      <span className="ds-tools">
-        {value !== today && (
-          <button type="button" className="btn sm" onClick={() => onChange(today)}>Aaj</button>
-        )}
-        <button type="button" className="btn sm icon-btn" onClick={() => { try { inp.current?.showPicker?.(); } catch { inp.current?.click(); } }} aria-label="Calendar se date chunein" title="Calendar">
-          📅
-        </button>
-        <input ref={inp} type="date" className="ds-native" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} tabIndex={-1} aria-hidden="true" />
-      </span>
-      <div className="ds-label">
-        <b>{(rel(value) ? rel(value) + ' · ' : '') + DAYS_UR[weekdayOf(value)]}</b>
-        <span className="muted">{fmtDate(value)}</span>
-      </div>
+    <div className="daypick" role="group" aria-label="Din chunein">
+      <button type="button" className="daypick-btn" onClick={openPicker} aria-label="Calendar se date chunein" title="Calendar se date chunein">
+        <span className="daypick-ico" aria-hidden="true">📅</span>
+        <span className="daypick-txt">
+          <b>{(rel(value) ? rel(value) + ' · ' : '') + DAYS_UR[weekdayOf(value)]}</b>
+          <span className="muted">{fmtDate(value)}</span>
+        </span>
+        <span className="daypick-caret" aria-hidden="true">▾</span>
+      </button>
+      <input ref={inp} type="date" className="ds-native" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} tabIndex={-1} aria-hidden="true" />
+      {value !== today && <button type="button" className="btn sm" onClick={() => onChange(today)}>Aaj</button>}
     </div>
   );
 }

@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import type React from 'react';
 import { useData } from '../lib/data';
 import type { Task, TaskState } from '../lib/types';
 import { REJECT_PENALTY, errorText, fmtClock, fmtDate, graceEnd, notStarted, periodOf, roleClass, taskState, todayKey, type PeriodKind, type Score, fmtWhen } from '../lib/utils';
-import { Chevron, Seg, Sheet, useFold, useToast } from './ui';
+import { Seg, Sheet, useToast } from './ui';
 import { TaskSheet } from './TaskSheet';
 import { TaskTimer } from './Timer';
-import { ChannelTools } from './Videos';
 import { ROLE_WORK, TaskWorkSheet, needsWork } from './TaskWork';
 
 /* ================= One task row ================= */
@@ -147,53 +145,98 @@ export function TaskItem({ task, now, showName, showChannel = true, onOpenChanne
   );
 }
 
-/* ================= Pending / Expired / Ended / Completed board ================= */
+/* ================= Pending / Expired / Ended / Completed board (v19) ================= */
 type SecKey = 'pending' | 'expired' | 'ended' | 'completed';
-const SECTIONS: { key: SecKey; title: string; short: string; hint?: string; empty: string }[] = [
-  { key: 'pending', title: 'Pending', short: 'Pending', empty: 'Koi pending task nahi.' },
-  { key: 'expired', title: 'Deadline expired', short: 'Expired', hint: 'extra 24 ghante chal rahe hain', empty: 'Koi task late nahi. Shabaash!' },
-  { key: 'ended', title: 'Deadline ended', short: 'Ended', hint: 'extra deadline bhi khatam', empty: 'Koi task reh nahi gaya.' },
-  { key: 'completed', title: 'Completed', short: 'Done', empty: 'Abhi koi task complete nahi hua.' }
+const SECTIONS: { key: SecKey; icon: string; title: string; short: string; hint?: string; empty: string }[] = [
+  { key: 'pending', icon: '⏳', title: 'Pending', short: 'Pending', empty: 'Koi pending task nahi.' },
+  { key: 'expired', icon: '⚠️', title: 'Deadline expired', short: 'Expired', hint: 'extra 24 ghante', empty: 'Koi task late nahi. Shabaash!' },
+  { key: 'ended', icon: '⛔', title: 'Deadline ended', short: 'Ended', hint: 'waqt khatam', empty: 'Koi task reh nahi gaya.' },
+  { key: 'completed', icon: '✅', title: 'Completed', short: 'Done', empty: 'Abhi koi task complete nahi hua.' }
 ];
 
-/** Board mein ek channel ka group: naam (channel kholta hai) + dropdown */
-function ChannelGroup({ foldKey, name, count, onOpen, children }: { foldKey: string; name: string; count: number; onOpen?: () => void; children: React.ReactNode }) {
-  const [open, toggle] = useFold(foldKey, true);
+function TaskMiniCard({ task, now, showName, onOpenChannel, onReject }: {
+  task: Task; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; onReject?: (t: Task) => void;
+}) {
+  const d = useData();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [workOpen, setWorkOpen] = useState(false);
+  const [extOpen, setExtOpen] = useState(false);
+  const st = taskState(task, now);
+  const ch = d.channels.find((c) => c.id === task.channel_id);
+  const mine = task.user_id === d.uid;
+  const early = notStarted(task, now);
+  const work = needsWork(task) ? ROLE_WORK[task.role] : null;
+  const closed = st === 'ended' && !d.isOwner;
+  const canToggle = !work && mine && st !== 'rejected' && !closed && !(early && st !== 'done');
+  const canWork = !!work && (mine || d.isOwner) && st !== 'rejected' && !closed && !early;
+  const ep = task.video_id ? d.videos.find((v) => v.id === task.video_id) : undefined;
+  const canReview = d.isOwner;
+  const today = todayKey();
+  const req = d.deadline_requests.find((r) => r.task_id === task.id && r.status === 'pending');
+  const canExtend = mine && task.status === 'pending' && new Date(task.due_at).getTime() - now <= 30 * 60000 && new Date(task.due_at).getTime() > now - 7 * 864e5 && !req;
+
+  async function toggle() {
+    setBusy(true);
+    try { await d.setTaskDone(task.id, st !== 'done'); toast(st !== 'done' ? 'Task complete ho gaya' : 'Task wapas pending mein'); }
+    catch (e) { toast(errorText(e)); }
+    finally { setBusy(false); }
+  }
+
   return (
-    <div className={'cgroup' + (open ? '' : ' closed')}>
-      <div className="cgroup-h">
-        <button className="cgroup-name" onClick={onOpen} disabled={!onOpen}>{name}</button>
-        <button type="button" className="cgroup-fold" onClick={toggle} aria-expanded={open} aria-label={open ? 'Band karein' : 'Kholein'}>
-          <span className="muted tiny">{count} task{count > 1 ? 's' : ''}</span>
-          <Chevron open={open} />
+    <div className={'tmini ' + st}>
+      <div className="tmini-top">
+        <button type="button" className="tmini-ch" onClick={() => (onOpenChannel && ch ? onOpenChannel(ch.id) : setOpen(true))} title={ch?.name || 'Channel'}>
+          <span className="tmini-ch-name" data-notr>{ch?.name || 'Channel'}</span>
         </button>
+        {task.day !== today && <span className="tmini-day muted">{fmtDate(task.day)}</span>}
       </div>
-      {open && children}
+      <button type="button" className="tmini-mid" onClick={() => setOpen(true)}>
+        {task.kind === 'custom' && task.title && <span className="task-custom">📌 {task.title}</span>}
+        <div className="tmini-role-row">
+          <span className={'role sm ' + roleClass(task.role)}>{task.role}</span>
+          {showName && <span className="tmini-who" data-notr>{d.nameOf(task.user_id)}</span>}
+        </div>
+        <div className="tmini-time"><TaskTimer task={task} /></div>
+        {ep && <span className="tmini-ep" data-notr>{work?.icon} {ep.title}</span>}
+      </button>
+      <div className="tmini-foot">
+        {work && canWork && (
+          <button type="button" className={'btn sm tmini-attach' + (st === 'done' ? '' : ' primary')} onClick={() => setWorkOpen(true)}>
+            {st === 'done' ? `✎ ${work.done}` : `📎 ${work.action}`}
+          </button>
+        )}
+        {!work && canToggle && (
+          <button type="button" className={'btn sm tmini-attach' + (st === 'done' ? '' : ' primary')} disabled={busy} onClick={toggle}>
+            {st === 'done' ? '✓ Complete' : '✓ Complete karein'}
+          </button>
+        )}
+        {early && st === 'pending' && <span className="muted tiny">🔒 Waqt shuru nahi</span>}
+        {canExtend && <button type="button" className="btn sm ext-btn" onClick={() => setExtOpen(true)}>⏳ +Waqt</button>}
+        {canReview && (st === 'done' || st === 'expired' || st === 'ended') && onReject && (
+          <button type="button" className="btn sm danger" onClick={() => onReject(task)}>Reject</button>
+        )}
+        {canReview && st === 'rejected' && (
+          <button type="button" className="btn sm" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try { await d.reviewTask(task.id, false); toast('Rejection hata di'); }
+            catch (e) { toast(errorText(e)); }
+            finally { setBusy(false); }
+          }}>Wapas lein</button>
+        )}
+      </div>
+      {req && mine && <div className="tmini-ext"><span className="ext-wait" title={req.reason}>⏳ +{req.minutes} min · owner ke paas</span></div>}
+      {req && d.isOwner && <div className="tmini-ext"><ExtensionReview reqId={req.id} /></div>}
+      {workOpen && <TaskWorkSheet task={task} onClose={() => setWorkOpen(false)} />}
+      {open && <TaskSheet taskId={task.id} onClose={() => setOpen(false)} onOpenChannel={onOpenChannel} onReject={onReject} />}
+      {extOpen && <ExtensionSheet task={task} onClose={() => setExtOpen(false)} />}
     </div>
   );
 }
 
-/** v15: board ka ek hissa — shuru mein band, sirf ginti; arrow dabane par list (dropdown) */
-function BoardSection({ k, title, short, hint, count, foldId, children }: { k: string; title: string; short?: string; hint?: string; count: number; foldId: string; children: React.ReactNode }) {
-  // har dafa band se shuru (sirf ginti); arrow / naam dabane par khule
-  const [open, toggle] = useFold(undefined, false);
-  void foldId;
-  return (
-    <section className={'bsec ' + k + (open ? ' open' : ' closed')}>
-      <button type="button" className="bsec-h" onClick={toggle} aria-expanded={open}>
-        <span className="dot" aria-hidden="true" />
-        <h3><span className="bt-full">{title}</span>{short && <span className="bt-short">{short}</span>}</h3>
-        {hint && count > 0 && <small className="muted bsec-hint">{hint}</small>}
-        <span className="count num">{count}</span>
-        <Chevron open={open} />
-      </button>
-      {open && <div className="bsec-body">{children}</div>}
-    </section>
-  );
-}
-
-export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, emptyTitle = 'Aaj koi task nahi', groupByChannel = true, foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; emptyTitle?: string; groupByChannel?: boolean; foldId?: string }) {
-  const d = useData();
+export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, emptyTitle = 'Aaj koi task nahi', groupByChannel: _groupByChannel = true, foldId: _foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; emptyTitle?: string; groupByChannel?: boolean; foldId?: string }) {
+  const [active, setActive] = useState<SecKey | null>(null);
   const [rejecting, setRejecting] = useState<Task | null>(null);
   const groups: Record<SecKey, Task[]> = { pending: [], expired: [], ended: [], completed: [] };
   tasks.forEach((t) => {
@@ -208,43 +251,51 @@ export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, empty
 
   if (!tasks.length) return <div className="empty"><b>{emptyTitle}</b>{emptyAll}</div>;
 
-  const chName = (id: string) => d.channels.find((c) => c.id === id)?.name || 'Channel';
+  const activeSec = active ? SECTIONS.find((s) => s.key === active) : null;
+  const activeList = active ? groups[active] : [];
 
   return (
-    <div className="board">
-      {SECTIONS.map((s) => {
-        const list = groups[s.key];
-        // channel-wise groups (pehla task jis channel ka, wo channel pehle)
-        const order: string[] = [];
-        list.forEach((t) => !order.includes(t.channel_id) && order.push(t.channel_id));
-        return (
-          <BoardSection key={s.key} k={s.key} title={s.title} short={s.short} hint={s.hint} count={list.length} foldId={foldId}>
-            {!list.length && <p className="muted small m0 bsec-empty">{s.empty}</p>}
-            {list.length > 0 && !groupByChannel && (
-              <div className="tasks">
-                {list.map((t) => (
-                  <TaskItem key={t.id} task={t} now={now} showName={showName} onOpenChannel={onOpenChannel} onReject={setRejecting} />
-                ))}
+    <div className="tboard-v19">
+      <div className="tstat-bar" role="tablist" aria-label="Task status">
+        {SECTIONS.map((s) => {
+          const isOpen = active === s.key;
+          const cnt = groups[s.key].length;
+          return (
+            <button key={s.key} type="button" role="tab" aria-selected={isOpen} className={'tstat-card ' + s.key + (isOpen ? ' on' : '')} onClick={() => setActive((cur) => (cur === s.key ? null : s.key))}>
+              <div className="tstat-top">
+                <span className="tstat-dot" aria-hidden="true" />
+                <span className="tstat-cnt num">{cnt}</span>
               </div>
-            )}
-            {list.length > 0 &&
-              groupByChannel &&
-              order.map((cid) => {
-                const ts = list.filter((t) => t.channel_id === cid);
-                return (
-                  <ChannelGroup key={cid} foldKey={foldId + '-' + s.key + '-' + cid} name={chName(cid)} count={ts.length} onOpen={onOpenChannel ? () => onOpenChannel(cid) : undefined}>
-                    <ChannelTools channelId={cid} showToday={false} compact />
-                    <div className="tasks">
-                      {ts.map((t) => (
-                        <TaskItem key={t.id} task={t} now={now} showName={showName} showChannel={false} onOpenChannel={onOpenChannel} onReject={setRejecting} />
-                      ))}
-                    </div>
-                  </ChannelGroup>
-                );
-              })}
-          </BoardSection>
-        );
-      })}
+              <div className="tstat-label">
+                <span className="bt-full">{s.title}</span>
+                <span className="bt-short">{s.short}</span>
+              </div>
+              {s.hint && cnt > 0 && <small className="tstat-hint muted">{s.hint}</small>}
+            </button>
+          );
+        })}
+      </div>
+      {activeSec && (
+        <div className={'tmini-panel ' + activeSec.key}>
+          <div className="tmini-panel-head">
+            <div className="row">
+              <span className="tstat-dot" aria-hidden="true" />
+              <b>{activeSec.title}</b>
+              <span className="count num">{activeList.length}</span>
+            </div>
+            <button type="button" className="btn sm" onClick={() => setActive(null)}>Band karein ✕</button>
+          </div>
+          {!activeList.length ? (
+            <p className="muted small m0">{activeSec.empty}</p>
+          ) : (
+            <div className="tmini-grid">
+              {activeList.map((t) => (
+                <TaskMiniCard key={t.id} task={t} now={now} showName={showName} onOpenChannel={onOpenChannel} onReject={setRejecting} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {rejecting && <RejectSheet task={rejecting} onClose={() => setRejecting(null)} />}
     </div>
   );

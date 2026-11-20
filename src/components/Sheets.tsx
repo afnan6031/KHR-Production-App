@@ -1,13 +1,15 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type React from 'react';
 import { CropSheet } from './Cropper';
-import { AccountFold, GmailBox, useAccountInfo } from './Account';
+import { useEffect } from 'react';
+import { GmailBox, SecurityPasswordBox, useAccountInfo } from './Account';
+import { supabase } from '../lib/supabase';
 import { applyPrefs } from '../lib/appearance';
 import { imgbbReady, uploadToImgBB } from '../lib/imgbb';
 import { useData } from '../lib/data';
 import { FB_ROLE, ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
 import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
-import { Avatar, ConfirmButton, Fold, Seg, Sheet, useTheme, useToast } from './ui';
+import { Avatar, ConfirmButton, Seg, Sheet, useTheme, useToast } from './ui';
 
 /* ================= Channel create / edit ================= */
 export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel | null; onClose: () => void; onSaved: (id: string) => void }) {
@@ -325,7 +327,8 @@ export function PerfSheet({ channel, onClose }: { channel: Channel; onClose: () 
   );
 }
 
-/* ================= My profile (v9) ================= */
+/* ================= My account (v19) ================= */
+const APP_VERSION = 'v19.0';
 const BG_PRESETS: { c1: string; c2: string }[] = [
   { c1: '#2B0B14', c2: '#10183A' },
   { c1: '#0F2027', c2: '#2C5364' },
@@ -336,33 +339,37 @@ const BG_PRESETS: { c1: string; c2: string }[] = [
 ];
 const ACCENTS = ['#E5383B', '#C8102E', '#F97316', '#EAB308', '#22C55E', '#14B8A6', '#3B82F6', '#8B5CF6', '#EC4899'];
 
-export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusic }: { onClose: () => void; onSignOut: () => void; onProgress: () => void; onRecords?: () => void; onMusic?: () => void }) {
+type AccountView = 'menu' | 'profile' | 'security' | 'theme' | 'language';
+
+export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { onClose: () => void; onSignOut: () => void; onProgress: () => void; onRecords?: () => void; onMusic?: () => void }) {
   const d = useData();
   const toast = useToast();
   const me = d.me;
   const acc = useAccountInfo();
+  const [view, setView] = useState<AccountView>('menu');
+  const [about, setAbout] = useState(me?.about || '');
+  const [birth, setBirth] = useState('');
   const [name, setName] = useState(me?.full_name || '');
   const [contact, setContact] = useState(me?.contact || '');
-  const [about, setAbout] = useState(me?.about || '');
+  const [phone, setPhone] = useState('');
+
+  useEffect(() => { setBirth(acc.birth); setPhone(acc.phone); }, [acc.birth, acc.phone]);
+
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState<'' | 'avatar' | 'banner' | 'bg'>('');
   const [crop, setCrop] = useState<{ file: File; kind: 'avatar' | 'banner' } | null>(null);
   const [theme, setThemeChoice] = useTheme();
   const [prefs, setPrefs] = useState<Prefs>(() => me?.prefs || {});
+  const [updStatus, setUpdStatus] = useState<'' | 'checking' | 'latest' | 'ready'>('');
+
   const avRef = useRef<HTMLInputElement>(null);
   const bnRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
   const bg = prefs.bg || { type: 'none' as const };
 
-  /** pasand foran screen par, aur profile mein save */
   const savePrefs = async (p: Prefs) => {
-    setPrefs(p);
-    applyPrefs(p);
-    try {
-      await d.updateMyProfile({ prefs: p });
-    } catch (e) {
-      toast(errorText(e));
-    }
+    setPrefs(p); applyPrefs(p);
+    try { await d.updateMyProfile({ prefs: p }); } catch (e) { toast(errorText(e)); }
   };
   const setBg = (patch: Partial<NonNullable<Prefs['bg']>>) => savePrefs({ ...prefs, bg: { ...bg, ...patch } as Prefs['bg'] });
 
@@ -374,11 +381,8 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
       else await d.updateMyProfile({ banner_url: r.url });
       toast(kind === 'avatar' ? 'Profile photo lag gayi' : 'Banner lag gaya');
       setCrop(null);
-    } catch (e) {
-      toast(errorText(e));
-    } finally {
-      setUp('');
-    }
+    } catch (e) { toast(errorText(e)); }
+    finally { setUp(''); }
   }
   async function pickBg(f: File | undefined) {
     if (!f) return;
@@ -387,177 +391,204 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords, onMusi
       const r = await uploadToImgBB(f, 'bg-' + d.uid.slice(0, 8));
       await savePrefs({ ...prefs, bg: { type: 'image', image: r.url, dim: bg.dim ?? 0.35, blur: bg.blur ?? 8, sync: bg.sync } });
       toast('Background lag gaya');
-    } catch (e) {
-      toast(errorText(e));
-    } finally {
-      setUp('');
-      if (bgRef.current) bgRef.current.value = '';
-    }
+    } catch (e) { toast(errorText(e)); }
+    finally { setUp(''); if (bgRef.current) bgRef.current.value = ''; }
   }
   const pick = (kind: 'avatar' | 'banner') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (f) setCrop({ file: f, kind });
+    const f = e.target.files?.[0]; e.target.value = ''; if (f) setCrop({ file: f, kind });
   };
 
+  async function saveProfile(e: FormEvent) {
+    e.preventDefault(); setBusy(true);
+    try {
+      await d.updateMyProfile({ about: about.trim() });
+      if (!acc.oldDb) {
+        const { error } = await supabase.rpc('save_my_account', { p_birth: birth || null, p_phone: phone.trim() });
+        if (error) throw error;
+        await acc.reload();
+      }
+      toast('Profile save ho gaya');
+    } catch (err) { toast(errorText(err)); }
+    finally { setBusy(false); }
+  }
+
+  async function saveSecurity(e: FormEvent) {
+    e.preventDefault(); setBusy(true);
+    try {
+      await d.updateMyProfile({ full_name: name.trim(), contact: contact.trim() });
+      if (!acc.oldDb) {
+        const { error } = await supabase.rpc('save_my_account', { p_birth: birth || null, p_phone: phone.trim() });
+        if (error) throw error;
+        await acc.reload();
+      }
+      toast('Security details save ho gayin');
+    } catch (err) { toast(errorText(err)); }
+    finally { setBusy(false); }
+  }
+
+  async function checkUpdates() {
+    setUpdStatus('checking');
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        let found = false;
+        for (const reg of regs) { await reg.update().catch(() => undefined); if (reg.waiting) found = true; }
+        if (found) { setUpdStatus('ready'); toast('Nayi update mil gayi — reload karein'); return; }
+      }
+      await d.reload().catch(() => undefined);
+      setUpdStatus('latest');
+      toast(`App latest version (${APP_VERSION}) par hai`);
+    } catch {
+      setUpdStatus('latest');
+      toast(`App latest version (${APP_VERSION}) par hai`);
+    }
+  }
+
+  const sheetTitle = view === 'profile' ? 'Profile' : view === 'security' ? 'Security' : view === 'theme' ? 'Theme aur background' : view === 'language' ? 'Zabaan / Language' : 'My account';
+
   return (
-    <Sheet title="Mera profile" onClose={onClose}>
-      <div className="pcard mine">
-        <div className="pcard-banner" style={me?.banner_url ? { backgroundImage: `url("${me.banner_url}")` } : undefined}>
-          <div className="pcard-banner-btns">
-            <button type="button" className="btn sm" disabled={!!up || !imgbbReady} onClick={() => bnRef.current?.click()}>{up === 'banner' ? 'Upload…' : me?.banner_url ? 'Banner badlein' : '+ Banner'}</button>
-            {me?.banner_url && <button type="button" className="btn sm" onClick={() => d.updateMyProfile({ banner_url: '' }).catch((e) => toast(errorText(e)))}>✕</button>}
+    <Sheet title={sheetTitle} onClose={onClose}>
+      {view !== 'menu' && <button type="button" className="back acct-back" onClick={() => setView('menu')}>‹ Wapas menu par</button>}
+      {view === 'menu' && (
+        <div className="acct-menu">
+          <div className="acct-hero">
+            <Avatar name={me?.full_name || 'Owner'} url={me?.avatar_url || undefined} />
+            <div className="grow">
+              <b className="block" data-notr>{me?.full_name || 'Member'}</b>
+              {me?.title && <span className="ptitle sm block" data-notr>🏆 {me.title}</span>}
+              <small className="muted block" data-notr>{acc.email || me?.server_role || (d.realOwner ? 'Owner' : '')}</small>
+            </div>
           </div>
-        </div>
-        <div className="pcard-av big">
-          <Avatar name={me?.full_name || 'Owner'} url={me?.avatar_url || undefined} />
-        </div>
-        <div className="pcard-body">
-          <h2 data-notr>{me?.full_name}</h2>
-          {me?.title && <div className="ptitle" data-notr>🏆 {me.title}</div>}
-          <small className="muted block" data-notr>{me?.server_role || (d.realOwner ? 'Owner' : '')}</small>
-          <div className="row">
-            <button type="button" className="btn sm primary" disabled={!!up || !imgbbReady} onClick={() => avRef.current?.click()}>
-              {up === 'avatar' ? 'Upload ho rahi hai…' : me?.avatar_url ? 'Photo badlein' : 'Profile photo lagayein'}
+          <div className="acct-list">
+            <button type="button" className="acct-item" onClick={() => setView('profile')}>
+              <span className="acct-ico">👤</span>
+              <span className="grow"><b>Profile</b><small className="muted block">Logo, banner, about, date of birth</small></span>
+              <span className="acct-arr">›</span>
             </button>
-            {me?.avatar_url && <button type="button" className="btn sm" disabled={!!up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
+            <button type="button" className="acct-item" onClick={() => setView('security')}>
+              <span className="acct-ico">🔒</span>
+              <span className="grow"><b>Security</b><small className="muted block">Email, naam, ID, password & forgot password</small></span>
+              <span className="acct-arr">›</span>
+            </button>
+            <button type="button" className="acct-item" onClick={() => setView('theme')}>
+              <span className="acct-ico">🎨</span>
+              <span className="grow"><b>Theme</b><small className="muted block">Light / Dark mode, app color, background</small></span>
+              <span className="acct-arr">›</span>
+            </button>
+            <button type="button" className="acct-item" onClick={() => setView('language')}>
+              <span className="acct-ico">🌐</span>
+              <span className="grow"><b>Language</b><small className="muted block">{prefs.lang === 'en' ? 'English' : 'Roman Urdu'}</small></span>
+              <span className="acct-arr">›</span>
+            </button>
+            <button type="button" className="acct-item" onClick={onProgress}>
+              <span className="acct-ico">📊</span>
+              <span className="grow"><b>Meri progress dekhein</b><small className="muted block">Weekly / monthly performance & PDF download</small></span>
+              <span className="acct-arr">›</span>
+            </button>
+            <button type="button" className="acct-item" disabled={updStatus === 'checking'} onClick={() => (updStatus === 'ready' ? window.location.reload() : checkUpdates())}>
+              <span className="acct-ico">🔄</span>
+              <span className="grow">
+                <b>{updStatus === 'ready' ? 'Nayi update install karein' : 'Update check karein'}</b>
+                <small className="muted block">
+                  {updStatus === 'checking' ? 'Update check ho rahi hai…' : updStatus === 'latest' ? `Up to date · ${APP_VERSION}` : updStatus === 'ready' ? 'Naya version tayyar hai — tap kar ke reload karein' : `Current version · ${APP_VERSION}`}
+                </small>
+              </span>
+              <span className="acct-arr">›</span>
+            </button>
           </div>
+          <button className="btn block" type="button" onClick={onSignOut}>Logout</button>
+          {d.realOwner && onRecords && <button type="button" className="records-link" onClick={onRecords}>Company records</button>}
         </div>
-        <input ref={avRef} type="file" accept="image/*" hidden onChange={pick('avatar')} />
-        <input ref={bnRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
-      </div>
-
-      <GmailBox acc={acc} />
-
-      <form
-        className="form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          try {
-            await d.updateMyProfile({ full_name: name.trim(), contact: contact.trim(), about: about.trim() });
-            toast('Profile save ho gaya');
-          } catch (err) {
-            toast(errorText(err));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label className="f">
-          Naam
-          <input id="p-name" type="text" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="f">
-          About <span className="h">Apne baare mein kuch likhein — sab ko profile par nazar aayega</span>
-          <textarea id="p-about" rows={3} maxLength={500} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="e.g. Script writer · history aur disaster channels" />
-        </label>
-        <label className="f">
-          ID / WhatsApp
-          <input id="p-contact" type="text" maxLength={80} value={contact} onChange={(e) => setContact(e.target.value)} />
-        </label>
-        <button className="btn primary block" type="submit" disabled={busy}>Save karein</button>
-      </form>
-
-      <AccountFold acc={acc} />
-
-      <Fold id="prof-look" title={<b>🎨 Theme aur background</b>} defaultOpen={false}>
-        <div className="f">
-          App ka rang
-          <Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} />
-        </div>
-        <div className="f">
-          Background
-          <Seg
-            label="Background"
-            value={bg.type}
-            onChange={(t) => (t === 'image' && !bg.image ? bgRef.current?.click() : setBg({ type: t }))}
-            options={[{ v: 'none', label: 'Asal' }, { v: 'color', label: 'Ek rang' }, { v: 'gradient', label: 'Gradient' }, { v: 'image', label: 'Apni pic' }]}
-          />
-          <input ref={bgRef} type="file" accept="image/*" hidden onChange={(e) => pickBg(e.target.files?.[0])} />
-        </div>
-        {bg.type === 'color' && (
-          <label className="f row">
-            <input type="color" value={bg.c1 || '#101828'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Background ka rang" />
-            <span className="muted small">Rang chunein</span>
-          </label>
-        )}
-        {bg.type === 'gradient' && (
-          <>
-            <div className="presets">
-              {BG_PRESETS.map((g) => (
-                <button type="button" key={g.c1 + g.c2} className="preset" style={{ background: `linear-gradient(135deg, ${g.c1}, ${g.c2})` }} onClick={() => setBg({ c1: g.c1, c2: g.c2 })} aria-label="Gradient" />
-              ))}
-            </div>
-            <div className="row">
-              <input type="color" value={bg.c1 || '#2B0B14'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Pehla rang" />
-              <input type="color" value={bg.c2 || '#10183A'} onChange={(e) => setBg({ c2: e.target.value })} aria-label="Doosra rang" />
-              <label className="grow f">
-                <span className="muted tiny">Angle {bg.angle ?? 135}°</span>
-                <input type="range" min={0} max={360} value={bg.angle ?? 135} onChange={(e) => setBg({ angle: Number(e.target.value) })} />
-              </label>
-            </div>
-          </>
-        )}
-        {bg.type === 'image' && (
-          <div className="row">
-            {bg.image && <img className="bg-thumb" src={bg.image} alt="" />}
-            <button type="button" className="btn sm" disabled={!!up} onClick={() => bgRef.current?.click()}>{up === 'bg' ? 'Upload…' : 'Pic badlein'}</button>
-          </div>
-        )}
-        {bg.type === 'image' && (
-          <label className="f">
-            <span className="muted tiny">Blur (tasveer dhundli, taake text aur cards saaf nazar aayein): {bg.blur ?? 8}px</span>
-            <input type="range" min={0} max={30} step={1} value={bg.blur ?? 8} onChange={(e) => setBg({ blur: Number(e.target.value) })} />
-          </label>
-        )}
-        {bg.type !== 'none' && (
-          <label className="row check">
-            <input type="checkbox" checked={bg.sync !== false} onChange={(e) => setBg({ sync: e.target.checked })} />
-            <span>Header, neeche ki patti aur cards ka rang background ke saath milayein</span>
-          </label>
-        )}
-        {bg.type !== 'none' && (
-          <label className="f">
-            <span className="muted tiny">Andhera (text saaf parhne ke liye): {Math.round((bg.dim ?? 0) * 100)}%</span>
-            <input type="range" min={0} max={0.85} step={0.05} value={bg.dim ?? 0} onChange={(e) => setBg({ dim: Number(e.target.value) })} />
-          </label>
-        )}
-        <div className="f">
-          Khaas rang (buttons, links)
-          <div className="presets">
-            {ACCENTS.map((a) => (
-              <button type="button" key={a} className={'preset dot' + (prefs.accent === a ? ' on' : '')} style={{ background: a }} onClick={() => savePrefs({ ...prefs, accent: a })} aria-label={a} />
-            ))}
-            <input type="color" value={prefs.accent || '#E5383B'} onChange={(e) => savePrefs({ ...prefs, accent: e.target.value })} aria-label="Apna rang" />
-            {prefs.accent && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, accent: undefined })}>Asal</button>}
-          </div>
-        </div>
-      </Fold>
-
-      <div className="f">
-        Zabaan / Language
-        <Seg label="Language" value={prefs.lang === 'en' ? 'en' : 'ur'} onChange={(l) => savePrefs({ ...prefs, lang: l })} options={[{ v: 'ur', label: 'Roman Urdu' }, { v: 'en', label: 'English' }]} />
-      </div>
-
-      {onMusic && <button className="btn block" type="button" onClick={onMusic}>🎵 Music playlist</button>}
-      <button className="btn block" type="button" onClick={onProgress}>Meri progress dekhein</button>
-      <button className="btn block" type="button" onClick={onSignOut}>Logout</button>
-      {d.realOwner && onRecords && (
-        <button type="button" className="records-link" onClick={onRecords}>
-          Company records
-        </button>
       )}
+
+      {view === 'profile' && (
+        <>
+          <div className="pcard mine">
+            <div className="pcard-banner" style={me?.banner_url ? { backgroundImage: `url("${me.banner_url}")` } : undefined}>
+              <div className="pcard-banner-btns">
+                <button type="button" className="btn sm" disabled={!!up || !imgbbReady} onClick={() => bnRef.current?.click()}>{up === 'banner' ? 'Upload…' : me?.banner_url ? 'Banner badlein' : '+ Banner'}</button>
+                {me?.banner_url && <button type="button" className="btn sm" onClick={() => d.updateMyProfile({ banner_url: '' }).catch((e) => toast(errorText(e)))}>✕</button>}
+              </div>
+            </div>
+            <div className="pcard-av big"><Avatar name={me?.full_name || 'Owner'} url={me?.avatar_url || undefined} /></div>
+            <div className="pcard-body">
+              <h2 data-notr>{me?.full_name}</h2>
+              {me?.title && <div className="ptitle" data-notr>🏆 {me.title}</div>}
+              <small className="muted block" data-notr>{me?.server_role || (d.realOwner ? 'Owner' : '')}</small>
+              <div className="row">
+                <button type="button" className="btn sm primary" disabled={!!up || !imgbbReady} onClick={() => avRef.current?.click()}>
+                  {up === 'avatar' ? 'Upload ho rahi hai…' : me?.avatar_url ? 'Photo badlein' : 'Profile photo lagayein'}
+                </button>
+                {me?.avatar_url && <button type="button" className="btn sm" disabled={!!up} onClick={() => d.setMyAvatar('').then(() => toast('Photo hata di'), (e) => toast(errorText(e)))}>Hatayein</button>}
+              </div>
+            </div>
+            <input ref={avRef} type="file" accept="image/*" hidden onChange={pick('avatar')} />
+            <input ref={bnRef} type="file" accept="image/*" hidden onChange={pick('banner')} />
+          </div>
+          <form className="form" onSubmit={saveProfile}>
+            <label className="f">About <span className="h">Apne baare mein kuch likhein — sab ko profile par nazar aayega</span><textarea id="p-about" rows={3} maxLength={500} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="e.g. Script writer · history aur disaster channels" /></label>
+            <label className="f">Birth date<input type="date" value={birth} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setBirth(e.target.value)} disabled={acc.oldDb} /></label>
+            <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Save ho raha hai…' : 'Save karein'}</button>
+          </form>
+        </>
+      )}
+
+      {view === 'security' && (
+        <div className="form">
+          <GmailBox acc={acc} />
+          <form className="form" onSubmit={saveSecurity}>
+            <label className="f">Naam<input id="p-name" type="text" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} /></label>
+            <label className="f">ID / WhatsApp<input id="p-contact" type="text" maxLength={80} value={contact} onChange={(e) => setContact(e.target.value)} /></label>
+            <label className="f">Phone number<input type="tel" inputMode="tel" autoComplete="tel" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0300-1234567" disabled={acc.oldDb} /></label>
+            <button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Save ho raha hai…' : 'Save karein'}</button>
+          </form>
+          <SecurityPasswordBox acc={acc} />
+        </div>
+      )}
+
+      {view === 'theme' && (
+        <div className="form">
+          <div className="f">App ka rang<Seg label="Theme" value={theme} onChange={setThemeChoice} options={[{ v: 'system', label: 'Phone jaisa' }, { v: 'light', label: '☀ Light' }, { v: 'dark', label: '☾ Dark' }]} /></div>
+          <div className="f">
+            Background
+            <Seg label="Background" value={bg.type} onChange={(t) => (t === 'image' && !bg.image ? bgRef.current?.click() : setBg({ type: t }))} options={[{ v: 'none', label: 'Asal' }, { v: 'color', label: 'Ek rang' }, { v: 'gradient', label: 'Gradient' }, { v: 'image', label: 'Apni pic' }]} />
+            <input ref={bgRef} type="file" accept="image/*" hidden onChange={(e) => pickBg(e.target.files?.[0])} />
+          </div>
+          {bg.type === 'color' && <label className="f row"><input type="color" value={bg.c1 || '#101828'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Background ka rang" /><span className="muted small">Rang chunein</span></label>}
+          {bg.type === 'gradient' && (
+            <>
+              <div className="presets">{BG_PRESETS.map((g) => <button type="button" key={g.c1 + g.c2} className="preset" style={{ background: `linear-gradient(135deg, ${g.c1}, ${g.c2})` }} onClick={() => setBg({ c1: g.c1, c2: g.c2 })} aria-label="Gradient" />)}</div>
+              <div className="row">
+                <input type="color" value={bg.c1 || '#2B0B14'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Pehla rang" />
+                <input type="color" value={bg.c2 || '#10183A'} onChange={(e) => setBg({ c2: e.target.value })} aria-label="Doosra rang" />
+                <label className="grow f"><span className="muted tiny">Angle {bg.angle ?? 135}°</span><input type="range" min={0} max={360} value={bg.angle ?? 135} onChange={(e) => setBg({ angle: Number(e.target.value) })} /></label>
+              </div>
+            </>
+          )}
+          {bg.type === 'image' && <div className="row">{bg.image && <img className="bg-thumb" src={bg.image} alt="" />}<button type="button" className="btn sm" disabled={!!up} onClick={() => bgRef.current?.click()}>{up === 'bg' ? 'Upload…' : 'Pic badlein'}</button></div>}
+          {bg.type === 'image' && <label className="f"><span className="muted tiny">Blur: {bg.blur ?? 8}px</span><input type="range" min={0} max={30} step={1} value={bg.blur ?? 8} onChange={(e) => setBg({ blur: Number(e.target.value) })} /></label>}
+          {bg.type !== 'none' && <label className="row check"><input type="checkbox" checked={bg.sync !== false} onChange={(e) => setBg({ sync: e.target.checked })} /><span>Header, neeche ki patti aur cards ka rang background ke saath milayein</span></label>}
+          {bg.type !== 'none' && <label className="f"><span className="muted tiny">Andhera: {Math.round((bg.dim ?? 0) * 100)}%</span><input type="range" min={0} max={0.85} step={0.05} value={bg.dim ?? 0} onChange={(e) => setBg({ dim: Number(e.target.value) })} /></label>}
+          <div className="f">
+            Khaas rang (buttons, links)
+            <div className="presets">
+              {ACCENTS.map((a) => <button type="button" key={a} className={'preset dot' + (prefs.accent === a ? ' on' : '')} style={{ background: a }} onClick={() => savePrefs({ ...prefs, accent: a })} aria-label={a} />)}
+              <input type="color" value={prefs.accent || '#E5383B'} onChange={(e) => savePrefs({ ...prefs, accent: e.target.value })} aria-label="Apna rang" />
+              {prefs.accent && <button type="button" className="btn sm" onClick={() => savePrefs({ ...prefs, accent: undefined })}>Asal</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'language' && (
+        <div className="form">
+          <div className="f">Zabaan / Language<Seg label="Language" value={prefs.lang === 'en' ? 'en' : 'ur'} onChange={(l) => savePrefs({ ...prefs, lang: l })} options={[{ v: 'ur', label: 'Roman Urdu' }, { v: 'en', label: 'English' }]} /></div>
+          <p className="muted small m0">Poori app ka interface foran aap ki chuni hui zabaan mein badal jata hai.</p>
+        </div>
+      )}
+
       {crop && (
-        <CropSheet
-          file={crop.file}
-          aspect={crop.kind === 'avatar' ? 1 : 3}
-          outWidth={crop.kind === 'avatar' ? 512 : 1500}
-          round={crop.kind === 'avatar'}
-          title={crop.kind === 'avatar' ? 'Profile photo crop' : 'Banner crop'}
-          onClose={() => setCrop(null)}
-          onDone={(f) => uploadCropped(f, crop.kind)}
-        />
+        <CropSheet file={crop.file} aspect={crop.kind === 'avatar' ? 1 : 3} outWidth={crop.kind === 'avatar' ? 512 : 1500} round={crop.kind === 'avatar'} title={crop.kind === 'avatar' ? 'Profile photo crop' : 'Banner crop'} onClose={() => setCrop(null)} onDone={(f) => uploadCropped(f, crop.kind)} />
       )}
     </Sheet>
   );

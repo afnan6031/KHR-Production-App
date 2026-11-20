@@ -4,7 +4,7 @@ import { useData, type ChatTarget, type ServerChannelInput } from '../lib/data';
 import type { DirectMessage, Profile, ServerChannel } from '../lib/types';
 import { errorText, fmtClock, fmtDate } from '../lib/utils';
 import { Avatar, ConfirmButton, Logo, Seg, Sheet, useBackHandler, useToast } from '../components/ui';
-import { Composer, ImageViewer, MessageFeed, UserAvatar, roleTone, type FeedItem } from '../components/Messaging';
+import { Composer, ImageViewer, MessageFeed, UserAvatar, dispatchChatDrop, roleTone, type FeedItem } from '../components/Messaging';
 
 /* ---------- server channel "naye message" (har device par yaad) ---------- */
 const SEEN_EVENT = 'khr-sseen';
@@ -200,7 +200,7 @@ function ChannelChat({ active, channelId, onBack, onOpenUser, onEdit, onMembers 
   const memberCount = ch.is_private ? d.server_channel_members.filter((m) => m.channel_id === ch.id).length : null;
 
   return (
-    <div className="chat-pane">
+    <div className="chat-pane" onDragOver={(e) => { if (canPost && e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={(e) => { if (!canPost) return; const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); dispatchChatDrop('srv-' + ch.id, f); } }}>
       <header className="chat-head">
         <button className="back-icon" onClick={onBack} aria-label="Wapas">‹</button>
         <span className="chash big" aria-hidden="true">{ch.read_only ? '📢' : '#'}</span>
@@ -412,7 +412,7 @@ function DMChat({ active, peer, onBack, onOpenUser }: { active: boolean; peer: s
   const fs = d.friendState(peer);
 
   return (
-    <div className="chat-pane">
+    <div className="chat-pane" onDragOver={(e) => { if (allowed && e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={(e) => { if (!allowed) return; const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); dispatchChatDrop('dm-' + peer, f); } }}>
       <header className="chat-head">
         <button className="back-icon" onClick={onBack} aria-label="Wapas">‹</button>
         <button className="avbtn" onClick={() => onOpenUser(peer)}><UserAvatar id={peer} status /></button>
