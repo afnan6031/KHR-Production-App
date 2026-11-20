@@ -6,7 +6,7 @@ import { PdUploadCancelled, normalizePixeldrainUrl, uploadToPixeldrain, type PdP
 import { mb } from '../lib/gofile';
 import { APP_TZ, dayLabel, errorText, fmtClock } from '../lib/utils';
 import { Avatar, ConfirmButton, useBackHandler, useToast } from './ui';
-import { VideoCard, useVideoUpload, videoLinksIn } from './VideoUpload';
+import { VideoCard, videoLinksIn } from './VideoUpload';
 
 
 /* ---------- Server roles ka rang ---------- */
@@ -523,7 +523,6 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
     const pos = mq.at + ins.length;
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(pos, pos); });
   };
-  const vid = useVideoUpload(); void vid;
 
   async function uploadMediaFile(f: File, kind: 'video' | 'audio' | 'doc') {
     upCtl.current?.abort();

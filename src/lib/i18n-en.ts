@@ -1023,7 +1023,7 @@ export const EN: Record<string, string> = {
   'Password yaad na ho to logout kar ke login screen par "Password bhool gaye?" dabayein — Gmail par code aayega.': 'If you forget the password, log out and tap "Forgot password?" on the login screen — a code will come to your Gmail.',
   '🔁 Yehi setting dobara': '🔁 Use this setting again',
   'Wohi setting lag gayi — ab Generate dabayein': 'Same setting applied — now tap Generate',
-  'Live model baat-cheet ke liye hai: har dafa awaaz / lehja thoda badal sakta hai. Har dafa bilkul wohi awaaz chahiye to TTS model chunein.': 'Live models are made for conversation: the voice / tone can change slightly each time. For exactly the same voice every time, choose a TTS model.',,
+  'Live model baat-cheet ke liye hai: har dafa awaaz / lehja thoda badal sakta hai. Har dafa bilkul wohi awaaz chahiye to TTS model chunein.': 'Live models are made for conversation: the voice / tone can change slightly each time. For exactly the same voice every time, choose a TTS model.',
   'My account': 'My account',
   '‹ Wapas menu par': '‹ Back to menu',
   'Logo, banner, about, date of birth': 'Photo, banner, about, date of birth',

@@ -235,7 +235,7 @@ function TaskMiniCard({ task, now, showName, onOpenChannel, onReject }: {
   );
 }
 
-export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, emptyTitle = 'Aaj koi task nahi', groupByChannel: _groupByChannel = true, foldId: _foldId = 'board' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; emptyTitle?: string; groupByChannel?: boolean; foldId?: string }) {
+export function TaskBoard({ tasks, now, showName, onOpenChannel, emptyAll, emptyTitle = 'Aaj koi task nahi' }: { tasks: Task[]; now: number; showName?: boolean; onOpenChannel?: (id: string) => void; emptyAll: string; emptyTitle?: string; groupByChannel?: boolean; foldId?: string }) {
   const [active, setActive] = useState<SecKey | null>(null);
   const [rejecting, setRejecting] = useState<Task | null>(null);
   const groups: Record<SecKey, Task[]> = { pending: [], expired: [], ended: [], completed: [] };

@@ -18,7 +18,7 @@ export function boardTasks(tasks: Task[], today: string, userId?: string) {
   );
 }
 
-export function HomeScreen({ openChannel, openProgress: _openProgress, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
+export function HomeScreen({ openChannel, goTeam, newChannel }: { openChannel: (id: string) => void; openProgress: (uid: string) => void; goTeam: () => void; newChannel: () => void }) {
   const d = useData();
   const now = useNow(5000);
   const today = todayKey();

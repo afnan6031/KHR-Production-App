@@ -1,7 +1,6 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type React from 'react';
 import { CropSheet } from './Cropper';
-import { useEffect } from 'react';
 import { GmailBox, SecurityPasswordBox, useAccountInfo } from './Account';
 import { supabase } from '../lib/supabase';
 import { applyPrefs } from '../lib/appearance';
