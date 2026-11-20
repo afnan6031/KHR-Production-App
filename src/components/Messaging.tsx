@@ -666,7 +666,7 @@ export function Composer({ placeholder, disabledNote, replyTo, onCancelReply, on
       {emoji && <EmojiPicker onPick={insert} onClose={() => setEmoji(false)} />}
       <div className="composer-row">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickImage(e.target.files?.[0])} />
-        <button className="attach" type="button" onClick={() => fileRef.current?.click()} disabled={uploading || !imgbbReady} aria-label="Image lagayein" title="Image lagayein (Pixeldrain)">
+        <button className="attach" type="button" onClick={() => fileRef.current?.click()} disabled={uploading || !imgbbReady} aria-label="Image lagayein" title="Image lagayein">
           {busy === 'img' ? <span className="spin" aria-hidden="true" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-5-5-8 8" /></svg>}
         </button>
         <input ref={vidRef} type="file" accept="video/*,.mp4,.mov,.mkv,.webm" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMediaFile(f, 'video'); }} />

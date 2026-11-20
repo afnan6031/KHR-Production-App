@@ -492,38 +492,105 @@ function blobToB64(b: Blob): Promise<string> {
     r.readAsDataURL(b);
   });
 }
+function audioMime(b: Blob): string {
+  const t = (b.type || '').split(';')[0].trim().toLowerCase();
+  if (t.startsWith('audio/')) return t === 'audio/mp3' ? 'audio/mpeg' : t;
+  const name = b instanceof File ? b.name.toLowerCase() : '';
+  if (name.endsWith('.mp3')) return 'audio/mpeg';
+  if (name.endsWith('.wav')) return 'audio/wav';
+  if (name.endsWith('.m4a') || name.endsWith('.mp4')) return 'audio/mp4';
+  if (name.endsWith('.ogg') || name.endsWith('.oga')) return 'audio/ogg';
+  if (name.endsWith('.flac')) return 'audio/flac';
+  if (name.endsWith('.aac')) return 'audio/aac';
+  return 'audio/webm';
+}
+
+/** Active multimodal Gemini models discover karein (taake kabhi 404 na aaye) */
+async function discoverAnalysisModels(): Promise<string[]> {
+  const fallback = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-flash-latest',
+    'gemini-2.5-pro'
+  ];
+  try {
+    const r = await fetch(`${BASE}/models?pageSize=100`, { headers: { 'x-goog-api-key': GEMINI_KEY } });
+    if (!r.ok) return fallback;
+    const j = (await r.json()) as { models?: { name?: string; supportedGenerationMethods?: string[] }[] };
+    const live = (j.models || [])
+      .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m) => String(m.name || '').replace(/^models\//, ''))
+      .filter((id) =>
+        id.startsWith('gemini-') &&
+        !/(tts|live|native-audio|image|imagen|veo|embedding|aqa|robotics|computer-use|deep-research)/i.test(id)
+      );
+    if (!live.length) return fallback;
+    // Prefer flash models, newest version first
+    const score = (id: string) => {
+      let s = 0;
+      if (/flash/i.test(id)) s += 50;
+      if (!/preview|exp|001|002/i.test(id)) s += 10;
+      const ver = id.match(/gemini-(\d+(?:\.\d+)?)/);
+      if (ver) s += parseFloat(ver[1]) * 10;
+      return s;
+    };
+    const sorted = [...new Set(live)].sort((a, b) => score(b) - score(a));
+    return [...sorted.slice(0, 8), ...fallback.filter((x) => !sorted.includes(x))];
+  } catch {
+    return fallback;
+  }
+}
+
 export async function analyzeVoiceSample(blob: Blob, label: string): Promise<ClonedVoice> {
   if (!GEMINI_KEY) throw new Error('Gemini API key set nahi. Owner GitHub secret VITE_GEMINI_API_KEY check kare.');
   if (blob.size > 15 * 1024 * 1024) throw new Error('Voice sample 15 MB se chhota rakhein (10–30 second kaafi hain).');
   const b64 = await blobToB64(blob);
-  const mime = blob.type && blob.type.startsWith('audio/') ? blob.type.split(';')[0] : 'audio/webm';
+  const mime = audioMime(blob);
   const voiceCatalog = VOICES.map((v) => `${v.name} (${v.gender}, ${v.style}, ${v.best})`).join('; ');
   const prompt = [
     'Listen carefully to this voice sample. Analyze the speaker gender, vocal pitch, timbre, energy, warmth, pacing, and cadence.',
     `Pick the SINGLE closest matching voice name from this exact list: ${voiceCatalog}.`,
-    'Return ONLY valid JSON with keys: {"baseVoice":"<exact name from list>","stylePrompt":"<15-30 word English speaking style directive for TTS to mimic this speaker tone, pitch, pace, and delivery>","summary":"<short 6-10 word description of the voice>"}.'
+    'Return ONLY valid JSON (no markdown) with keys: {"baseVoice":"<exact name from list>","stylePrompt":"<15-30 word English speaking style directive for TTS to mimic this speaker tone, pitch, pace, and delivery>","summary":"<short 6-10 word description of the voice>"}.'
   ].join('\n');
+
+  const models = await discoverAnalysisModels();
   let lastErr = 'Voice analyze nahi ho saki.';
-  for (const m of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+  for (const m of models) {
     try {
-      const res = await fetch(`${BASE}/models/${m}:generateContent?key=${encodeURIComponent(GEMINI_KEY)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } })
+      const res = await fetch(`${BASE}/models/${m}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: mime, data: b64 } }] }],
+          generationConfig: { temperature: 0.2 }
+        })
       });
-      if (!res.ok) { lastErr = `Gemini HTTP ${res.status}`; continue; }
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        lastErr = errJson?.error?.message || `Gemini HTTP ${res.status} (${m})`;
+        continue;
+      }
       const j = await res.json();
-      const rawText: string = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const rawText: string = j?.candidates?.[0]?.content?.parts?.map((pt: { text?: string }) => pt.text || '').join('\n') || '';
       const match = rawText.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(match ? match[0] : rawText) as { baseVoice?: string; stylePrompt?: string; summary?: string };
+      if (!match) { lastErr = 'Gemini ne sahi jawab nahi diya. Dobara try karein.'; continue; }
+      const parsed = JSON.parse(match[0]) as { baseVoice?: string; stylePrompt?: string; summary?: string };
       const chosen = VOICES.find((v) => v.name.toLowerCase() === String(parsed.baseVoice || '').trim().toLowerCase())?.name || 'Charon';
       const clone: ClonedVoice = {
-        id: 'cl-' + Date.now().toString(36), label: label.trim() || 'Meri Awaaz', baseVoice: chosen,
+        id: 'cl-' + Date.now().toString(36),
+        label: label.trim() || 'Meri Awaaz',
+        baseVoice: chosen,
         stylePrompt: String(parsed.stylePrompt || 'natural, clear, expressive delivery').slice(0, 160),
-        summary: String(parsed.summary || `${chosen} style match`).slice(0, 80), createdAt: Date.now()
+        summary: String(parsed.summary || `${chosen} style match`).slice(0, 80),
+        createdAt: Date.now()
       };
       saveClonedVoice(clone);
       return clone;
-    } catch (e) { lastErr = e instanceof Error ? e.message : String(e); }
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
   }
   throw new Error(lastErr);
 }
