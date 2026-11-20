@@ -451,7 +451,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
   function applyUpdate() {
     if (!updInfo) return;
     if (updInfo.platform === 'web') {
-      if ('caches' in window) {
+      if (typeof caches !== 'undefined') {
         caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))).finally(() => window.location.reload());
       } else {
         window.location.reload();
