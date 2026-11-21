@@ -9,6 +9,9 @@ const fs = require('fs');
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
+// v23: smooth 90+ FPS — GPU blocklist wale PC par bhi GPU use ho, aur Windows ka window-occlusion throttling band
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 const ICON = path.join(__dirname, '..', 'build-resources', 'icon.png');
 const BAR = {
@@ -35,7 +38,11 @@ function showWindow() {
 }
 
 function createWindow(startHidden) {
-  const t = settings.dark ? BAR.dark : BAR.light;
+  // v23: glass / custom background mein patti ka aakhri rang yaad rehta hai — app khulte hi wahi (safed jhalak nahi)
+  const sb = settings.bar;
+  const t = sb && /^#[0-9a-f]{6}$/i.test(sb.color)
+    ? { color: sb.color, symbolColor: sb.dark ? '#E8EBF4' : '#121A2E', bg: sb.color }
+    : (settings.dark ? BAR.dark : BAR.light);
   win = new BrowserWindow({
     width: 1200,
     height: 820,
@@ -107,6 +114,7 @@ function applyAutostart() {
 ipcMain.on('khr-theme', (_e, dark) => {
   lastBar = '';
   settings.dark = !!dark;
+  delete settings.bar;
   writeSettings(settings);
   const t = dark ? BAR.dark : BAR.light;
   if (!win) return;
@@ -120,7 +128,11 @@ ipcMain.on('khr-bar', (_e, o) => {
   const key = o.color + (o.dark ? 'd' : 'l');
   if (key === lastBar) return;
   lastBar = key;
+  settings.dark = !!o.dark;
+  settings.bar = { color: o.color, dark: !!o.dark };
+  writeSettings(settings);
   try { win.setTitleBarOverlay({ color: o.color, symbolColor: o.dark ? '#E8EBF4' : '#121A2E', height: 32 }); } catch { /* purana Windows */ }
+  try { win.setBackgroundColor(o.color); } catch { /* koi baat nahi */ }
 });
 // v16: Pixeldrain par audio upload (Node se — browser ki CORS rukawat nahi), progress app ko bhejte hain
 const https = require('https');
