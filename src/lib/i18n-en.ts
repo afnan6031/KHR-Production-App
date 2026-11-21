@@ -1168,5 +1168,10 @@ export const EN_PATTERNS: [RegExp, (m: RegExpMatchArray) => string | null][] = [
   [/^Kaam ke din: (.+)$/, (m) => 'Work days: ' + m[1].split(', ').map(tr).join(', ')],
   [/^Notifications: (\d+) naye$/, (m) => `Notifications: ${m[1]} new`],
   [/^Messages: (\d+) naye$/, (m) => `Messages: ${m[1]} new`],
-  [/^(.+) par 6 digit ka code bheja jayega\.$/, (m) => `A 6-digit code will be sent to ${m[1]}.`]
+  [/^(.+) par 6 digit ka code bheja jayega\.$/, (m) => `A 6-digit code will be sent to ${m[1]}.`],
+  [/^Glass box andhera: (\d+)%$/, (m) => `Glass box darkness: ${m[1]}%`],
+  [/^Glass box gloss \/ tint: (\d+)%$/, (m) => `Glass box gloss / tint: ${m[1]}%`],
+  [/^Card glass blur \(kam blur = tez 90\+ FPS\): (\d+)px$/, (m) => `Card glass blur (lower = faster 90+ FPS): ${m[1]}px`],
+  [/^Popup ke peechhe blur: (\d+)px$/, (m) => `Blur behind popups: ${m[1]}px`],
+  [/^Popup ke peechhe andhera \(light dim\): (\d+)%$/, (m) => `Dim behind popups: ${m[1]}%`]
 ];

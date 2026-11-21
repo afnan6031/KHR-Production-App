@@ -101,18 +101,25 @@ async function applyTint(p?: Prefs | null) {
   const dark = isDark();
   const isGlass = root.getAttribute('data-theme') === 'glass';
 
-  // Auto-sync Glass text color with effective background brightness (unless user manually picked textColor)
+  // Auto-sync Glass text color with effective background brightness & glass darkness, and disable opaque tinted-ui in Glass mode
   if (isGlass) {
     const dim = hasBg ? Math.max(0, Math.min(0.85, p?.bg?.dim ?? (p?.bg?.type === 'image' ? 0.35 : 0))) : 0;
-    const bgLum = rawTint
+    const gDark = Math.max(0, Math.min(0.75, p?.glass?.darkness ?? 0.20));
+    const rawLum = rawTint
       ? ((0.299 * rawTint[0] + 0.587 * rawTint[1] + 0.114 * rawTint[2]) / 255) * (1 - dim)
-      : 0.88;
-    const autoDarkBg = bgLum < 0.52;
+      : 0.90;
+    const effLum = rawLum * (1 - gDark * 0.65);
+    const autoDarkBg = effLum < 0.54;
     if (!p?.textColor || !/^#[0-9a-f]{6}$/i.test(p.textColor)) {
       root.style.setProperty('--fg', autoDarkBg ? '#FFFFFF' : '#0F172A');
-      root.style.setProperty('--muted', autoDarkBg ? 'rgba(255, 255, 255, 0.84)' : 'rgba(15, 23, 42, 0.78)');
+      root.style.setProperty('--muted', autoDarkBg ? 'rgba(255, 255, 255, 0.84)' : 'rgba(15, 23, 42, 0.76)');
     }
     root.setAttribute('data-glass-tone', autoDarkBg ? 'dark' : 'light');
+    document.body.classList.remove('tinted-ui');
+    ['--tint', '--tint-surface', '--tint-head', '--tint-nav', '--tint-line'].forEach((v) => root.style.removeProperty(v));
+    desktop()?.setTheme(autoDarkBg);
+    syncSystemBars(autoDarkBg);
+    return;
   } else {
     root.removeAttribute('data-glass-tone');
   }
@@ -156,7 +163,7 @@ function preBlur(url: string, blur: number): Promise<string | null> {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
-        const W = 1920;
+        const W = 1280;
         const scale = Math.min(1, W / Math.max(img.naturalWidth, img.naturalHeight));
         const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
         const c = document.createElement('canvas');
@@ -168,7 +175,7 @@ function preBlur(url: string, blur: number): Promise<string | null> {
         g.filter = `blur(${r.toFixed(1)}px)`;
         const pad = r * 2;
         g.drawImage(img, -pad, -pad, w + pad * 2, h + pad * 2);
-        const out = c.toDataURL('image/jpeg', 0.94);
+        const out = c.toDataURL('image/jpeg', 0.90);
         blurCache.set(key, out);
         try { localStorage.setItem(BLUR_KEY, JSON.stringify({ k: key, u: out })); } catch { /* jagah nahi — sirf is dafa */ }
         resolve(out);
@@ -249,14 +256,22 @@ export function applyPrefs(p?: Prefs | null, save = true) {
   } else {
     root.style.setProperty('--glass-text-shadow', 'none');
   }
-  // Custom Glass Box color, opacity, and blur
+  // Custom Glass Box color, gloss opacity, darkness (andhera), card blur, popup backdrop blur & popup dim (40% default)
   const gRgb = parse(p?.glass?.color) || [255, 255, 255];
-  const gOp = Math.max(0.05, Math.min(0.55, p?.glass?.opacity ?? 0.16));
-  const gBlur = Math.max(0, Math.min(32, p?.glass?.blur ?? 18));
+  const gOp = Math.max(0.04, Math.min(0.50, p?.glass?.opacity ?? 0.14));
+  const gDark = Math.max(0, Math.min(0.75, p?.glass?.darkness ?? 0.20));
+  const gBlur = Math.max(0, Math.min(28, p?.glass?.blur ?? 8));
+  const gPopBlur = Math.max(0, Math.min(30, p?.glass?.popupBlur ?? 8));
+  const gPopDim = Math.max(0, Math.min(0.85, p?.glass?.popupDim ?? 0.40));
   root.style.setProperty('--glass-rgb', `${gRgb[0]}, ${gRgb[1]}, ${gRgb[2]}`);
   root.style.setProperty('--glass-alpha', String(gOp));
-  root.style.setProperty('--glass-alpha-soft', String(Math.max(0.04, +(gOp * 0.72).toFixed(2))));
-  root.style.setProperty('--glass-blur', gBlur + 'px');
+  root.style.setProperty('--glass-alpha-soft', String(Math.max(0.03, +(gOp * 0.65).toFixed(2))));
+  root.style.setProperty('--glass-darkness', String(gDark));
+  root.style.setProperty('--glass-darkness-soft', String(+(gDark * 0.72).toFixed(2)));
+  root.style.setProperty('--glass-card-blur', gBlur + 'px');
+  root.style.setProperty('--glass-blur', Math.min(24, gBlur + 6) + 'px');
+  root.style.setProperty('--glass-popup-blur', gPopBlur + 'px');
+  root.style.setProperty('--glass-popup-dim', String(gPopDim));
   applyTint(p);
   setLang(p?.lang === 'en' ? 'en' : 'ur');
   if (save) {

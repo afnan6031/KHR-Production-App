@@ -26,7 +26,7 @@ export interface Prefs {
   textColor?: string;
   textShadow?: boolean;
   textShadowColor?: string;
-  glass?: { color?: string; opacity?: number; blur?: number };
+  glass?: { color?: string; opacity?: number; darkness?: number; blur?: number; popupBlur?: number; popupDim?: number };
 }
 
 export interface MusicTrack {

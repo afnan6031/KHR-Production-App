@@ -587,14 +587,14 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
               <div className="row">
                 <input type="color" value={bg.c1 || '#2B0B14'} onChange={(e) => setBg({ c1: e.target.value })} aria-label="Pehla rang" />
                 <input type="color" value={bg.c2 || '#10183A'} onChange={(e) => setBg({ c2: e.target.value })} aria-label="Doosra rang" />
-                <label className="grow f"><span className="muted tiny">Angle {bg.angle ?? 135}°</span><input type="range" min={0} max={360} value={bg.angle ?? 135} onChange={(e) => setBg({ angle: Number(e.target.value) })} /></label>
+                <label className="grow f"><span className="muted tiny">Angle {bg.angle ?? 135}°</span><input type="range" min={0} max={360} style={{ ['--p' as string]: `${Math.round(((bg.angle ?? 135) / 360) * 100)}%` }} value={bg.angle ?? 135} onChange={(e) => setBg({ angle: Number(e.target.value) })} /></label>
               </div>
             </>
           )}
           {bg.type === 'image' && <div className="row">{bg.image && <img className="bg-thumb" src={bg.image} alt="" />}<button type="button" className="btn sm" disabled={!!up} onClick={() => bgRef.current?.click()}>{up === 'bg' ? 'Upload…' : 'Pic badlein'}</button></div>}
-          {bg.type === 'image' && <label className="f"><span className="muted tiny">Blur: {bg.blur ?? 8}px</span><input type="range" min={0} max={30} step={1} value={bg.blur ?? 8} onChange={(e) => setBg({ blur: Number(e.target.value) })} /></label>}
+          {bg.type === 'image' && <label className="f"><span className="muted tiny">Blur: {bg.blur ?? 8}px</span><input type="range" min={0} max={30} step={1} style={{ ['--p' as string]: `${Math.round(((bg.blur ?? 8) / 30) * 100)}%` }} value={bg.blur ?? 8} onChange={(e) => setBg({ blur: Number(e.target.value) })} /></label>}
           {bg.type !== 'none' && <label className="row check"><input type="checkbox" checked={bg.sync !== false} onChange={(e) => setBg({ sync: e.target.checked })} /><span>Header, neeche ki patti aur cards ka rang background ke saath milayein</span></label>}
-          {bg.type !== 'none' && <label className="f"><span className="muted tiny">Andhera: {Math.round((bg.dim ?? 0) * 100)}%</span><input type="range" min={0} max={0.85} step={0.05} value={bg.dim ?? 0} onChange={(e) => setBg({ dim: Number(e.target.value) })} /></label>}
+          {bg.type !== 'none' && <label className="f"><span className="muted tiny">Andhera: {Math.round((bg.dim ?? 0) * 100)}%</span><input type="range" min={0} max={0.85} step={0.05} style={{ ['--p' as string]: `${Math.round(((bg.dim ?? 0) / 0.85) * 100)}%` }} value={bg.dim ?? 0} onChange={(e) => setBg({ dim: Number(e.target.value) })} /></label>}
           <div className="f">
             Khaas rang (buttons, links)
             <div className="presets">
@@ -650,12 +650,64 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
                 </div>
               </div>
               <label className="f">
-                <span className="muted tiny">Glass blur: {prefs.glass?.blur ?? 18}px</span>
-                <input type="range" min={0} max={32} step={1} value={prefs.glass?.blur ?? 18} onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, blur: Number(e.target.value) } })} />
+                <span className="muted tiny">Glass box andhera: {Math.round((prefs.glass?.darkness ?? 0.20) * 100)}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.75}
+                  step={0.02}
+                  style={{ ['--p' as string]: `${Math.round(((prefs.glass?.darkness ?? 0.20) / 0.75) * 100)}%` }}
+                  value={prefs.glass?.darkness ?? 0.20}
+                  onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, darkness: Number(e.target.value) } })}
+                />
               </label>
               <label className="f">
-                <span className="muted tiny">Glass box transparency / tint: {Math.round((prefs.glass?.opacity ?? 0.16) * 100)}%</span>
-                <input type="range" min={0.05} max={0.55} step={0.01} value={prefs.glass?.opacity ?? 0.16} onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, opacity: Number(e.target.value) } })} />
+                <span className="muted tiny">Glass box gloss / tint: {Math.round((prefs.glass?.opacity ?? 0.14) * 100)}%</span>
+                <input
+                  type="range"
+                  min={0.04}
+                  max={0.50}
+                  step={0.01}
+                  style={{ ['--p' as string]: `${Math.round((((prefs.glass?.opacity ?? 0.14) - 0.04) / 0.46) * 100)}%` }}
+                  value={prefs.glass?.opacity ?? 0.14}
+                  onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, opacity: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="f">
+                <span className="muted tiny">Card glass blur (kam blur = tez 90+ FPS): {prefs.glass?.blur ?? 8}px</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={28}
+                  step={1}
+                  style={{ ['--p' as string]: `${Math.round(((prefs.glass?.blur ?? 8) / 28) * 100)}%` }}
+                  value={prefs.glass?.blur ?? 8}
+                  onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, blur: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="f">
+                <span className="muted tiny">Popup ke peechhe blur: {prefs.glass?.popupBlur ?? 8}px</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={30}
+                  step={1}
+                  style={{ ['--p' as string]: `${Math.round(((prefs.glass?.popupBlur ?? 8) / 30) * 100)}%` }}
+                  value={prefs.glass?.popupBlur ?? 8}
+                  onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, popupBlur: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="f">
+                <span className="muted tiny">Popup ke peechhe andhera (light dim): {Math.round((prefs.glass?.popupDim ?? 0.40) * 100)}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.85}
+                  step={0.05}
+                  style={{ ['--p' as string]: `${Math.round(((prefs.glass?.popupDim ?? 0.40) / 0.85) * 100)}%` }}
+                  value={prefs.glass?.popupDim ?? 0.40}
+                  onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, popupDim: Number(e.target.value) } })}
+                />
               </label>
             </>
           )}
