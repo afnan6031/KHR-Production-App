@@ -31,12 +31,15 @@ export function applyTheme(choice = getTheme()) {
   root.style.colorScheme = dark ? 'dark' : 'light';
   const meta = document.querySelector('meta[name="theme-color"]');
   meta?.setAttribute('content', dark ? '#0B1124' : '#FFFFFF');
-  // Windows app ki upar wali patti + Android status bar bhi isi rang mein
-  desktop()?.setTheme(dark);
-  syncSystemBars(dark);
+  // Windows app ki upar wali patti + Android status bar bhi isi rang mein.
+  // v23: glass mein patti ka rang appearance.ts (applyTint) glass ke hisaab se khud nikalta hai — yahan safed na bhejo.
+  if (choice !== 'glass') {
+    desktop()?.setTheme(dark);
+    syncSystemBars(dark);
+  }
 }
 
-type Desktop = { isDesktop: boolean; setTheme: (dark: boolean) => void; attention: () => void; show: () => void };
+type Desktop = { isDesktop: boolean; setTheme: (dark: boolean) => void; setBar?: (color: string, dark: boolean) => void; attention: () => void; show: () => void };
 /** Windows (Electron) app mein chal rahe hain? */
 export function desktop(): Desktop | undefined {
   return (window as unknown as { khrDesktop?: Desktop }).khrDesktop;

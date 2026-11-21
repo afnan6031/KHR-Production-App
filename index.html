@@ -28,6 +28,14 @@
           var dark = t === 'dark' || (t !== 'light' && t !== 'glass' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
           if (t === 'light' || t === 'dark' || t === 'glass') document.documentElement.setAttribute('data-theme', t);
           document.documentElement.style.background = dark ? '#090E1C' : '#F2F4FA';
+          // v23: glass mein upar ki patti ka aakhri rang pehle frame se (safed jhalak nahi)
+          if (t === 'glass') {
+            var tb = (localStorage.getItem('khr-tb') || '').split('|');
+            if (/^#[0-9a-f]{6}$/i.test(tb[0])) {
+              document.documentElement.style.setProperty('--tb-bg', tb[0]);
+              document.documentElement.style.setProperty('--tb-fg', tb[1] === '1' ? '#E8EDF7' : '#0F172A');
+            }
+          }
           document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
         } catch (e) {}
       })();

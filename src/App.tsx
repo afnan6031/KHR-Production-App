@@ -227,6 +227,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
     const last: Record<string, string> = {};
     const put = (k: string, v: string) => { if (last[k] !== v) { last[k] = v; document.documentElement.style.setProperty(k, v); } };
     const set = () => {
+      if (document.hidden) return; // chhupi window mein layout napna bekar (aur jhatka deta hai)
       const h = document.querySelector('.top')?.getBoundingClientRect().height || 56;
       const n = document.querySelector('nav.tabs')?.getBoundingClientRect().height || 60;
       put('--hdr', Math.round(h) + 'px');
@@ -236,7 +237,7 @@ function Shell({ mode, setMode }: { mode: Mode | null; setMode: (m: Mode) => voi
     };
     set();
     window.addEventListener('resize', set);
-    const id = window.setInterval(set, 1500);
+    const id = window.setInterval(set, 3000);
     return () => { window.removeEventListener('resize', set); window.clearInterval(id); };
   }, []);
 

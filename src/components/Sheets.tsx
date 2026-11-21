@@ -676,7 +676,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
                 />
               </label>
               <label className="f">
-                <span className="muted tiny">Card glass blur (kam blur = tez 90+ FPS): {prefs.glass?.blur ?? 8}px</span>
+                <span className="muted tiny">Glass blur (header, menu, dropdown): {prefs.glass?.blur ?? 8}px</span>
                 <input
                   type="range"
                   min={0}

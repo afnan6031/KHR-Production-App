@@ -1773,7 +1773,10 @@ img {
   contain: layout style;
 }
 
-/* ================= v21 TRUE iOS 27 LIQUID GLASS ENGINE ================= */
+/* ================= v23 — 3D LIQUID GLASS =================
+   Lag ki wajah (v21/v22): har card par live backdrop-filter + SVG lens filter. Ye GPU par nahi chalta tha.
+   v23: 3D = layered gradient + bevel (inset shadow) + naram drop shadow. Ye sab ek dafa paint hota hai, scroll par muft.
+   Live blur sirf chhoti cheezon par (header, neeche ki patti, dropdown, popup ke peechhe) aur sirf data-fx="full" par. */
 :root[data-theme="glass"] {
   --bg: transparent;
   --glass-rgb: 255, 255, 255;
@@ -1786,31 +1789,54 @@ img {
   --glass-popup-blur: 8px;
   --glass-popup-dim: 0.40;
   --glass-text-shadow: none;
+  --glass-sh: 0, 0, 0;            /* saaye ka rang: dark tone mein kaala, light tone mein neela-grey */
+  --glass-radius: 26px;
+  --glass-rim: rgba(255, 255, 255, 0.24);
 
-  /* True iOS 27 Liquid Glass Surface: crystal refractive sheen + adjustable dark glass depth */
+  /* bari glass slab: upar-left chamak, neeche gehrai, andar halki roshni */
   --glass-surface:
-    radial-gradient(120% 85% at 14% 4%, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.03) 44%, transparent 70%),
-    radial-gradient(90% 70% at 88% 96%, rgba(255, 255, 255, 0.14) 0%, transparent 60%),
+    linear-gradient(158deg, rgba(255, 255, 255, 0.30) 0%, rgba(255, 255, 255, 0.09) 24%, rgba(255, 255, 255, 0) 50%),
+    radial-gradient(90% 70% at 92% 100%, rgba(255, 255, 255, 0.12) 0%, transparent 62%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0) 32%),
     linear-gradient(145deg,
       rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.06)) 0%,
       rgba(var(--glass-rgb), calc(var(--glass-alpha) * 0.45)) 52%,
       rgba(var(--glass-rgb), calc(var(--glass-alpha) + 0.02)) 100%),
     rgba(8, 12, 22, var(--glass-darkness));
-
+  /* andar ke chhote box */
   --glass-surface-soft:
+    linear-gradient(170deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 55%),
     linear-gradient(155deg,
       rgba(var(--glass-rgb), calc(var(--glass-alpha-soft) + 0.04)) 0%,
       rgba(var(--glass-rgb), calc(var(--glass-alpha-soft) * 0.45)) 100%),
     rgba(8, 12, 22, var(--glass-darkness-soft));
 
-  --glass-rim: rgba(255, 255, 255, 0.18);
-  --glass-depth:
-    0 8px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.36),
-    inset 0 -1.5px 2px rgba(255, 255, 255, 0.12),
-    inset 0 -8px 16px -10px rgba(0, 0, 0, 0.24);
+  /* 3D: kinare ki bevel (andar ki roshni / saya) */
+  --glass-bevel:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.62),
+    inset 1.5px 0 1px -0.5px rgba(130, 210, 255, 0.20),
+    inset -1.5px 0 1px -0.5px rgba(255, 175, 225, 0.18),
+    inset 0 -2px 2px rgba(var(--glass-sh), 0.20),
+    inset 0 0 20px rgba(255, 255, 255, 0.06);
+  /* bara box: contact + ambient + door ka saya + bevel */
+  --glass-3d:
+    0 1px 1px rgba(var(--glass-sh), 0.24),
+    0 4px 9px rgba(var(--glass-sh), 0.16),
+    0 16px 30px -6px rgba(var(--glass-sh), 0.26),
+    var(--glass-bevel);
+  --glass-3d-soft: 0 1px 2px rgba(var(--glass-sh), 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.36), inset 0 -1px 1px rgba(var(--glass-sh), 0.14);
+  --glass-3d-btn: 0 1px 1px rgba(var(--glass-sh), 0.22), 0 4px 10px rgba(var(--glass-sh), 0.16), inset 0 1.5px 0 rgba(255, 255, 255, 0.58), inset 0 -2px 2px rgba(var(--glass-sh), 0.18);
+  --glass-3d-press: 0 0 1px rgba(var(--glass-sh), 0.25), inset 0 2px 6px rgba(var(--glass-sh), 0.34), inset 0 -1px 0 rgba(255, 255, 255, 0.22);
+  --glass-3d-in: inset 0 2px 5px rgba(var(--glass-sh), 0.28), inset 0 -1px 0 rgba(255, 255, 255, 0.22), 0 1px 0 rgba(255, 255, 255, 0.16);
+  --glass-3d-gem: 0 1px 1px rgba(var(--glass-sh), 0.30), 0 6px 14px color-mix(in srgb, var(--accent) 42%, transparent), inset 0 1.5px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 4px rgba(0, 0, 0, 0.28), inset 0 0 12px rgba(255, 255, 255, 0.10);
+  --glass-accent-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #fff) 0%, var(--accent) 48%, color-mix(in srgb, var(--accent) 80%, #000) 100%);
+  --glass-depth: 0 2px 6px rgba(var(--glass-sh), 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.36);
 
-  /* Global surface variables -> 100% translucent glass (ZERO opaque white boxes anywhere!) */
+  /* header / neeche ki patti / popup / menu ki ghani parat (live blur na ho to zyada ghani) */
+  --glass-bar-ov: rgba(10, 14, 26, 0.18);
+  --glass-pop-ov: rgba(10, 14, 26, 0.56);
+
+  /* Global surface variables -> translucent glass (safed opaque box kahin nahi) */
   --surface: rgba(var(--glass-rgb), var(--glass-alpha));
   --surface-2: rgba(var(--glass-rgb), var(--glass-alpha-soft));
   --card: rgba(var(--glass-rgb), var(--glass-alpha));
@@ -1824,12 +1850,23 @@ img {
   --shadow: var(--glass-depth);
   color-scheme: light;
 }
-
 :root[data-theme="glass"][data-glass-tone="dark"] {
   color-scheme: dark;
-  --glass-rim: rgba(255, 255, 255, 0.16);
   --line: rgba(255, 255, 255, 0.14);
+  /* dark glass par role / rang saaf dikhen (dark theme wali roshan palette) */
+  --r1: #A88BF0; --r2: #5DB7EE; --r3: #F08A5B; --r4: #EE7CB5; --r5: #6FD08A; --r6: #DDBB55; --r7: #5B9DFF;
+  --good: #4CC57D; --warn: #E3B04B; --bad: #FF6B6B; --live: #FF8B4E; --live-soft: #3D2418; --blue: #6B95FF;
 }
+:root[data-theme="glass"][data-glass-tone="light"] {
+  --glass-sh: 30, 41, 82;
+  --glass-rim: rgba(255, 255, 255, 0.78);
+  --glass-bar-ov: rgba(255, 255, 255, 0.30);
+  --glass-pop-ov: rgba(255, 255, 255, 0.64);
+}
+/* live blur nahi (phone / Fast) -> parat zyada ghani taake peechhe ka text na jhalke */
+:root[data-theme="glass"][data-fx="lite"] { --glass-bar-ov: rgba(10, 14, 26, 0.52); --glass-pop-ov: rgba(10, 14, 26, 0.72); }
+:root[data-theme="glass"][data-fx="lite"][data-glass-tone="light"] { --glass-bar-ov: rgba(255, 255, 255, 0.62); --glass-pop-ov: rgba(255, 255, 255, 0.82); }
+
 
 /* Fixed GPU layer for default ambient Glass wallpaper (ZERO background-attachment:fixed scroll lag!) */
 :root[data-theme="glass"] body {
@@ -1884,50 +1921,47 @@ img {
   text-shadow: none !important;
 }
 
-/* iPhone Control Center Style Popup Backdrop: clean 40% dim (adjustable) + clean adjustable blur */
+/* Popup ke peechhe ka parda: dim hamesha; blur sirf "full" par (ek hi layer) */
 :root[data-theme="glass"] .sheet-bg,
 :root[data-theme="glass"] .lightbox {
   background: rgba(0, 0, 0, var(--glass-popup-dim, 0.40)) !important;
-  backdrop-filter: blur(var(--glass-popup-blur, 8px)) saturate(125%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-popup-blur, 8px)) saturate(125%) !important;
+}
+:root[data-theme="glass"][data-fx="full"] .sheet-bg,
+:root[data-theme="glass"][data-fx="full"] .lightbox {
+  backdrop-filter: blur(var(--glass-popup-blur, 8px)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-popup-blur, 8px)) !important;
 }
 
-/* Fixed Glass Header & Bottom Nav (static layers -> 0 scroll cost) */
+/* Header + neeche ki patti: uthi hui glass patti */
 :root[data-theme="glass"] header.top {
-  background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  background: linear-gradient(var(--glass-bar-ov), var(--glass-bar-ov)), var(--glass-surface) !important;
   border-bottom: 1px solid var(--glass-rim) !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 18px -6px rgba(var(--glass-sh), 0.34), 0 1px 0 rgba(var(--glass-sh), 0.14), inset 0 1.5px 0 rgba(255, 255, 255, 0.55), inset 0 -2px 2px rgba(var(--glass-sh), 0.16) !important;
 }
 :root[data-theme="glass"] nav.tabs {
-  background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  background: linear-gradient(var(--glass-bar-ov), var(--glass-bar-ov)), var(--glass-surface) !important;
   border-top: 1px solid var(--glass-rim) !important;
-  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.12), inset 0 1.5px 0 rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 -8px 18px -6px rgba(var(--glass-sh), 0.34), inset 0 1.5px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 2px rgba(var(--glass-sh), 0.14) !important;
+}
+:root[data-theme="glass"][data-fx="full"] header.top,
+:root[data-theme="glass"][data-fx="full"] nav.tabs {
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%) !important;
 }
 
-/* Popups / Sheets — True Liquid Glass with Optical Specular Edge Refraction Bevel */
+/* Popup (sheet): moti 3D glass plate. Peechhe pehle se parda hai, is liye apna blur nahi */
 :root[data-theme="glass"] .sheet {
   position: relative;
-  background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  background: linear-gradient(var(--glass-pop-ov), var(--glass-pop-ov)), var(--glass-surface) !important;
   border: 1px solid var(--glass-rim) !important;
-  box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.30),
-    inset 0 2px 2px rgba(255, 255, 255, 0.42),
-    inset 0 -2px 4px rgba(255, 255, 255, 0.14),
-    inset 2px 0 3px rgba(130, 210, 255, 0.14),
-    inset -2px 0 3px rgba(255, 175, 225, 0.12) !important;
-  border-radius: 26px 26px 0 0 !important;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.30), 0 24px 60px -10px rgba(0, 0, 0, 0.42), var(--glass-bevel) !important;
+  border-radius: 30px 30px 0 0 !important;
 }
 @media (min-width: 700px) {
-  :root[data-theme="glass"] .sheet { border-radius: 28px !important; }
+  :root[data-theme="glass"] .sheet { border-radius: 30px !important; }
 }
 
-/* Top-level Liquid Glass Cards & Containers (lightweight 8px default blur = 90+ FPS smooth!) */
+/* Top-level 3D glass cards & containers — LIVE BLUR NAHI (isi se 90 FPS) */
 :root[data-theme="glass"] .panel,
 :root[data-theme="glass"] .card,
 :root[data-theme="glass"] .card.tinted,
@@ -1953,57 +1987,12 @@ img {
 :root[data-theme="glass"] main.server-main .srv-members {
   position: relative;
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(180%) !important;
   border: 1px solid var(--glass-rim) !important;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.42),
-    inset 0 -1.5px 2px rgba(255, 255, 255, 0.14),
-    inset 1.5px 0 2px rgba(130, 210, 255, 0.14),
-    inset -1.5px 0 2px rgba(255, 175, 225, 0.12) !important;
-}
-
-/* Liquid Optical Edge Specular Caustic Rim (gives physical curved-glass edge refraction like Image 3 & 4 at 120 FPS) */
-:root[data-theme="glass"] .panel::before,
-:root[data-theme="glass"] .card::before,
-:root[data-theme="glass"] .pg-sum::before,
-:root[data-theme="glass"] .pg-tile::before,
-:root[data-theme="glass"] .pod::before,
-:root[data-theme="glass"] .script-box::before,
-:root[data-theme="glass"] .studio-side::before,
-:root[data-theme="glass"] .sheet::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.5px;
-  pointer-events: none;
-  z-index: 2;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.65) 0%,
-    rgba(160, 220, 255, 0.25) 18%,
-    rgba(255, 255, 255, 0.04) 48%,
-    rgba(255, 190, 235, 0.20) 82%,
-    rgba(255, 255, 255, 0.52) 100%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-/* STRICT ZERO NESTED BLUR RULE: anything inside a glass panel/card/sheet/server NEVER runs a second backdrop-filter (eliminates 100% of scroll lag!) */
-:root[data-theme="glass"] .panel *,
-:root[data-theme="glass"] .card *,
-:root[data-theme="glass"] .sheet *,
-:root[data-theme="glass"] .pod *,
-:root[data-theme="glass"] main.server-main .srv-side *,
-:root[data-theme="glass"] main.server-main .srv-main *,
-:root[data-theme="glass"] main.server-main .srv-members * {
-  backdrop-filter: none !important;
+  box-shadow: var(--glass-3d) !important;
   -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
+
 
 /* Transparent list rows & ZERO white/opaque inner boxes everywhere in Glass mode */
 :root[data-theme="glass"] .li,
@@ -2076,7 +2065,7 @@ img {
 :root[data-theme="glass"] .take-li {
   background: var(--glass-surface-soft) !important;
   border: 1px solid var(--glass-rim) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+  box-shadow: var(--glass-3d-soft) !important;
 }
 
 :root[data-theme="glass"] .studio-side .vrow.on {
@@ -2094,41 +2083,66 @@ img {
   border-top: 1px solid var(--glass-rim) !important;
 }
 
-/* Controls, Buttons, Inputs, Segmented Controls in Glass */
+
+/* Controls: ubhre hue (raised) buttons / chips, dhanse hue (sunken) input / segmented track — sab 3D */
 :root[data-theme="glass"] .btn:not(.primary):not(.danger),
-:root[data-theme="glass"] .seg,
 :root[data-theme="glass"] .chip:not(.on),
 :root[data-theme="glass"] .vb-tab:not(.on),
 :root[data-theme="glass"] .tbtn,
 :root[data-theme="glass"] .hist-btn,
 :root[data-theme="glass"] .theme-btn,
+:root[data-theme="glass"] .x,
+:root[data-theme="glass"] .vmore-btn {
+  background: var(--glass-surface-soft) !important;
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: var(--glass-3d-btn) !important;
+  color: var(--fg) !important;
+}
+:root[data-theme="glass"] .seg,
 :root[data-theme="glass"] .mode-switch,
 :root[data-theme="glass"] input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
 :root[data-theme="glass"] textarea:not(.script-box textarea),
 :root[data-theme="glass"] select {
   background: var(--glass-surface-soft) !important;
   border: 1px solid var(--glass-rim) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  box-shadow: var(--glass-3d-in);
   color: var(--fg) !important;
 }
+/* chuna hua (selected) = chamakta hua rang ka "gem" */
+:root[data-theme="glass"] .btn.primary,
+:root[data-theme="glass"] .chip.on,
 :root[data-theme="glass"] .seg button.on,
 :root[data-theme="glass"] .mode-switch button.on,
-:root[data-theme="glass"] .size-pick button.on {
-  background: var(--accent) !important;
+:root[data-theme="glass"] .size-pick button.on,
+:root[data-theme="glass"] nav.tabs button.on {
+  background: var(--glass-accent-bg) !important;
+  border-color: color-mix(in srgb, var(--accent) 55%, #fff) !important;
   color: #FFFFFF !important;
   border-radius: 999px;
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: var(--glass-3d-gem) !important;
 }
-:root[data-theme="glass"] .x,
-:root[data-theme="glass"] .vmore-btn {
-  background: var(--glass-surface-soft) !important;
-  border: 1px solid var(--glass-rim) !important;
-  color: var(--fg) !important;
+:root[data-theme="glass"] .btn.danger {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bad) 70%, #fff) 0%, var(--bad) 50%, color-mix(in srgb, var(--bad) 78%, #000) 100%) !important;
+  border-color: color-mix(in srgb, var(--bad) 55%, #fff) !important;
+  box-shadow: 0 1px 1px rgba(var(--glass-sh), 0.3), 0 6px 14px color-mix(in srgb, var(--bad) 40%, transparent), inset 0 1.5px 0 rgba(255, 255, 255, 0.5), inset 0 -3px 4px rgba(0, 0, 0, 0.26) !important;
 }
+/* dabane par button andar dhansta hai */
+:root[data-theme="glass"] .btn:not(.primary):not(.danger):active,
+:root[data-theme="glass"] .chip:not(.on):active,
+:root[data-theme="glass"] .tbtn:active,
+:root[data-theme="glass"] .x:active {
+  box-shadow: var(--glass-3d-press) !important;
+  transform: translateY(1px) scale(0.985);
+}
+:root[data-theme="glass"] .btn.primary:active,
+:root[data-theme="glass"] .btn.danger:active { transform: translateY(1px) scale(0.985); filter: brightness(0.94); }
 :root[data-theme="glass"] .role {
   background: rgba(var(--glass-rgb), 0.16) !important;
   border: 1px solid var(--glass-rim) !important;
+  box-shadow: var(--glass-3d-soft);
 }
+:root[data-theme="glass"] nav.tabs button:not(.on) { box-shadow: none !important; }
+
 
 /* ================= iOS 27 LIQUID WATER-DROP SLIDER (Image 2 & Image 3) ================= */
 :root[data-theme="glass"] input[type="range"],
@@ -2235,91 +2249,95 @@ img {
 .gsel-opt.dis { opacity: .45; cursor: not-allowed; }
 .gsel-opt svg { flex: none; }
 
-/* ================= v22 — iOS 27 Liquid Glass (dropdown, lens, quality) ================= */
-:root[data-theme="glass"] {
-  --glass-radius: 28px;
-  --glass-rim-hi: rgba(255, 255, 255, .78);
-  --glass-edge:
-    0 14px 38px rgba(0, 0, 0, .20),
-    0 2px 6px rgba(0, 0, 0, .10),
-    inset 0 0 0 1px rgba(255, 255, 255, .10),
-    inset 0 1.5px 0 rgba(255, 255, 255, .60),
-    inset 0 -1.5px 0 rgba(255, 255, 255, .20),
-    inset 0 0 22px 2px rgba(255, 255, 255, .07);
-}
 
-/* Dropdown trigger + menu = asli glass (safed native box nahi) */
+/* ================= v23 — dropdown, 3D chhoti cheezein, tilt ================= */
+/* Dropdown trigger = ubhra hua glass button; khula ho to andar dhansa hua */
 :root[data-theme="glass"] .gsel {
   background: var(--glass-surface-soft) !important;
   border: 1px solid var(--glass-rim) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .30), 0 4px 14px rgba(0, 0, 0, .10);
+  box-shadow: var(--glass-3d-btn) !important;
   color: var(--fg) !important;
   border-radius: 16px;
 }
-:root[data-theme="glass"] .gsel.open { border-color: color-mix(in srgb, var(--accent) 60%, white) !important; }
+:root[data-theme="glass"] .gsel.open {
+  box-shadow: var(--glass-3d-press) !important;
+  border-color: color-mix(in srgb, var(--accent) 60%, white) !important;
+}
+/* Dropdown menu = moti uthi hui 3D glass plate (live blur sirf "full" par — menu chhota hai, kharcha nahi) */
 :root[data-theme="glass"] .gsel-menu {
-  background: linear-gradient(rgba(10, 14, 26, .30), rgba(10, 14, 26, .30)), var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  background: linear-gradient(var(--glass-pop-ov), var(--glass-pop-ov)), var(--glass-surface) !important;
   border: 1px solid var(--glass-rim);
   border-radius: 24px;
-  box-shadow: var(--glass-edge), 0 22px 50px rgba(0, 0, 0, .34);
+  box-shadow: 0 2px 4px rgba(var(--glass-sh), 0.26), 0 20px 46px rgba(var(--glass-sh), 0.42), var(--glass-bevel);
 }
-:root[data-theme="glass"][data-glass-tone="light"] .gsel-menu {
-  background: linear-gradient(rgba(255, 255, 255, .38), rgba(255, 255, 255, .38)), var(--glass-surface) !important;
+:root[data-theme="glass"][data-fx="full"] .gsel-menu {
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
 }
-:root[data-theme="glass"] .gsel-opt.act { background: rgba(255, 255, 255, .16); }
-:root[data-theme="glass"][data-glass-tone="light"] .gsel-opt.act { background: rgba(15, 23, 42, .09); }
-:root[data-theme="glass"] .gsel-opt.on { color: var(--fg); background: color-mix(in srgb, var(--accent) 34%, transparent); }
-:root[data-theme="glass"] .gsel-opt.on svg { color: var(--fg); }
+:root[data-theme="glass"] .gsel-opt.act { background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 2px 6px rgba(var(--glass-sh), 0.18); }
+:root[data-theme="glass"][data-glass-tone="light"] .gsel-opt.act { background: rgba(255, 255, 255, 0.70); }
+:root[data-theme="glass"] .gsel-opt.on {
+  color: #FFFFFF;
+  background: var(--glass-accent-bg);
+  box-shadow: 0 1px 1px rgba(var(--glass-sh), 0.3), 0 4px 10px color-mix(in srgb, var(--accent) 38%, transparent), inset 0 1.5px 0 rgba(255, 255, 255, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.24);
+}
+:root[data-theme="glass"] .gsel-opt.on svg { color: #FFFFFF; }
 :root[data-theme="glass"] .gsel-group { color: var(--muted); }
 
+/* Menu / popover (chat ka ⋯ menu, mention, emoji, track menu): ghani glass taake peechhe ka text na jhalke */
+:root[data-theme="glass"] .vmore-menu,
+:root[data-theme="glass"] .fmsg-actions,
+:root[data-theme="glass"] .mention-pop,
+:root[data-theme="glass"] .track-menu,
+:root[data-theme="glass"] .fmsg-more,
+:root[data-theme="glass"] .emoji-pick {
+  background: linear-gradient(var(--glass-pop-ov), var(--glass-pop-ov)), var(--glass-surface) !important;
+  box-shadow: 0 2px 4px rgba(var(--glass-sh), 0.26), 0 16px 36px rgba(var(--glass-sh), 0.40), var(--glass-bevel) !important;
+}
+
+/* Box ki shakal: gol (squircle) kinare */
+:root[data-theme="glass"] :is(.panel, .card, .card.tinted, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .vpick, .take, .pod, .mplayer, .mplayer2, .bsec, .plan-ch, main.server-main .srv-side, main.server-main .srv-main, main.server-main .srv-members) {
+  border-radius: var(--glass-radius);
+}
 /* Squircle (Chrome 139+): iOS jaisi nikharti hui gol kinari. Purane browser mein normal gol kinare. */
 @supports (corner-shape: superellipse(1.6)) {
   :root[data-theme="glass"] :is(.panel, .card, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .pod, .sheet, .gsel-menu, .gsel, .btn, .seg, .vpick, .take, .mplayer, .mplayer2, .bsec, .plan-ch) {
     corner-shape: superellipse(1.6);
   }
 }
+:root[data-theme="glass"] .btn { border-radius: 999px; transition: transform .14s cubic-bezier(.22, 1, .36, 1), box-shadow .14s; }
 
-/* Box ki shakal: bareek roshan kinara, andar ki chamak, naram saaya (iOS 27 jaisa) */
-:root[data-theme="glass"] :is(.panel, .card, .card.tinted, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .vpick, .take, .pod, .mplayer, .mplayer2, .bsec, .plan-ch, main.server-main .srv-side, main.server-main .srv-main, main.server-main .srv-members) {
-  border-radius: var(--glass-radius);
-  border-color: rgba(255, 255, 255, .22) !important;
-  box-shadow: var(--glass-edge) !important;
+/* Chhoti cheezein bhi 3D: avatar goli, badge, tag, progress bar, toast */
+:root[data-theme="glass"] .av {
+  box-shadow: 0 2px 4px rgba(var(--glass-sh), 0.30), inset 0 2px 2px rgba(255, 255, 255, 0.45), inset 0 -3px 4px rgba(0, 0, 0, 0.25);
 }
-:root[data-theme="glass"] .sheet { border-radius: 32px 32px 0 0 !important; box-shadow: 0 -10px 50px rgba(0, 0, 0, .34), var(--glass-edge) !important; }
-@media (min-width: 700px) { :root[data-theme="glass"] .sheet { border-radius: 32px !important; } }
-
-/* Kinare par roshni ki lakeer: upar-left chamak, neeche-right chamak, left par neela / right par sunehri fringe (refraction ka rang) */
-:root[data-theme="glass"] :is(.panel, .card, .pg-sum, .pg-tile, .pod, .script-box, .studio-side, .sheet)::before {
-  padding: 1.5px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, .92) 0%, rgba(255, 255, 255, .22) 20%, rgba(255, 255, 255, 0) 44%, rgba(255, 255, 255, 0) 62%, rgba(255, 255, 255, .26) 82%, rgba(255, 255, 255, .74) 100%),
-    conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0) 0deg, rgba(255, 170, 80, .55) 88deg, rgba(255, 255, 255, 0) 150deg, rgba(255, 255, 255, 0) 210deg, rgba(90, 175, 255, .60) 272deg, rgba(255, 255, 255, 0) 332deg);
+:root[data-theme="glass"] :is(.badge, .tag-owner, .stage, .live) {
+  box-shadow: 0 1px 3px rgba(var(--glass-sh), 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 2px rgba(0, 0, 0, 0.22);
 }
-
-/* Buttons / chips = capsule glass (image 7 jaisi) */
-:root[data-theme="glass"] .btn:not(.primary):not(.danger),
-:root[data-theme="glass"] .chip:not(.on),
-:root[data-theme="glass"] .tbtn {
-  border-radius: 999px;
-  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .50), inset 0 -1px 0 rgba(255, 255, 255, .14), 0 4px 14px rgba(0, 0, 0, .12);
+:root[data-theme="glass"] .bar { box-shadow: var(--glass-3d-in); background: rgba(var(--glass-sh), 0.18); }
+:root[data-theme="glass"] .bar i {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pc, var(--accent)) 68%, #fff) 0%, var(--pc, var(--accent)) 55%, color-mix(in srgb, var(--pc, var(--accent)) 82%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 6px color-mix(in srgb, var(--pc, var(--accent)) 45%, transparent);
 }
-:root[data-theme="glass"] .btn { border-radius: 999px; transition: transform .16s cubic-bezier(.22, 1, .36, 1); }
-:root[data-theme="glass"] .btn:active { transform: scale(.96); }
-
-/* ---- LENS: kinare par peechhe ka background boond ki tarah mura hua (glassfx.ts har box ko uske size ka filter deta hai) ---- */
-:root[data-theme="glass"][data-fx="lens"] [data-lens] {
-  backdrop-filter: var(--lens) blur(var(--glass-card-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: var(--lens) blur(var(--glass-card-blur)) saturate(180%) !important;
-}
-:root[data-theme="glass"][data-fx="lens"] :is(header.top, nav.tabs, .sheet, .gsel-menu)[data-lens] {
-  backdrop-filter: var(--lens) blur(var(--glass-blur)) saturate(180%) !important;
-  -webkit-backdrop-filter: var(--lens) blur(var(--glass-blur)) saturate(180%) !important;
+:root[data-theme="glass"] .toast {
+  background: linear-gradient(rgba(10, 14, 26, 0.84), rgba(10, 14, 26, 0.84)), var(--glass-surface);
+  color: #FFFFFF;
+  border: 1px solid var(--glass-rim);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38), var(--glass-bevel);
 }
 
-/* ---- FAST / flat: cards par live blur nahi (sab se tez scroll). Header, neeche ki patti, popup, dropdown par blur rehta hai ---- */
-:root[data-theme="glass"][data-fx="flat"] :is(.panel, .card, .card.tinted, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .vpick, .take, .daypick-btn, .pod, .vmore-menu, .fmsg-actions, .mplayer, .mplayer2, .bsec, .plan-ch, main.server-main .srv-side, main.server-main .srv-main, main.server-main .srv-members) {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+/* Dabane par (phone) clickable cards halka andar */
+:root[data-theme="glass"] :is(button.card, .tstat-card, .pg-tile, .pod, .daypick-btn, .vtile, .acct-item) { transition: transform .16s cubic-bezier(.22, 1, .36, 1); }
+:root[data-theme="glass"] :is(button.card, .tstat-card, .pg-tile, .pod, .daypick-btn, .vtile, .acct-item):active { transform: scale(0.985); }
+
+/* PC / Windows app: mouse ke saath card 3D tilt (glassfx.ts sirf hover wale ek card par attribute lagata hai) */
+:root[data-theme="glass"][data-fx="full"] [data-tilt] {
+  transform: perspective(900px) translateY(-2px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .12s ease-out;
+  will-change: transform;
 }
+
+/* Windows app ki upar wali patti: glass ke rang mein (JS --tb-bg set karta hai, Windows ke buttons bhi isi rang ke) */
+:root[data-theme="glass"] { --tb-bg: #E1EEF8; --tb-fg: #0F172A; }
+.desktop[data-theme="glass"] .titlebar { background: var(--tb-bg, #E1EEF8); color: var(--tb-fg, #0F172A); border-bottom: 0; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+.desktop[data-theme="glass"] .titlebar img { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.5); }

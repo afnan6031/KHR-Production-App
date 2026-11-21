@@ -117,11 +117,27 @@ async function applyTint(p?: Prefs | null) {
     root.setAttribute('data-glass-tone', autoDarkBg ? 'dark' : 'light');
     document.body.classList.remove('tinted-ui');
     ['--tint', '--tint-surface', '--tint-head', '--tint-nav', '--tint-line'].forEach((v) => root.style.removeProperty(v));
-    desktop()?.setTheme(autoDarkBg);
-    syncSystemBars(autoDarkBg);
+    // v23: upar ki patti + Windows ke buttons (min / max / close) + Android status bar — sab glass ke asli rang mein
+    const gBase: RGB = rawTint || [226, 238, 248]; // default glass wallpaper ka darmiyana rang
+    const gRgb = parse(p?.glass?.color) || [255, 255, 255];
+    const gAlpha = Math.max(0.04, Math.min(0.5, p?.glass?.opacity ?? 0.14));
+    let bar: RGB = mix(gBase, [0, 0, 0], dim);
+    bar = mix(bar, [8, 12, 22], gDark); // glass box ka andhera
+    bar = mix(bar, gRgb, Math.min(0.5, gAlpha * 1.5)); // glass box ki chamak
+    if (autoDarkBg) bar = mix(bar, [8, 12, 22], 0.25); // dark tone mein patti thori gehri taake symbols saaf dikhen
+    const barHex = hex(bar);
+    root.style.setProperty('--tb-bg', barHex);
+    root.style.setProperty('--tb-fg', autoDarkBg ? '#E8EDF7' : '#0F172A');
+    try { localStorage.setItem('khr-tb', barHex + '|' + (autoDarkBg ? '1' : '0')); } catch { /* storage band */ }
+    const dg = desktop();
+    if (dg?.setBar) dg.setBar(barHex, autoDarkBg);
+    else dg?.setTheme(autoDarkBg);
+    syncSystemBars(autoDarkBg, barHex);
     return;
   } else {
     root.removeAttribute('data-glass-tone');
+    root.style.removeProperty('--tb-bg');
+    root.style.removeProperty('--tb-fg');
   }
   const base: RGB = dark ? [17, 24, 50] : [255, 255, 255];
   if (!t) {
@@ -141,7 +157,7 @@ async function applyTint(p?: Prefs | null) {
   root.style.setProperty('--tint-line', hex(dark ? mix(t, [255, 255, 255], 0.18) : mix(t, [0, 0, 0], 0.12)));
   document.body.classList.add('tinted-ui');
   // Windows ki upar wali patti + Android status bar bhi isi rang mein
-  const d = desktop() as (ReturnType<typeof desktop> & { setBar?: (c: string, dark: boolean) => void }) | undefined;
+  const d = desktop();
   if (d?.setBar) d.setBar(head, dark);
   else d?.setTheme(dark);
   syncSystemBars(dark, head);

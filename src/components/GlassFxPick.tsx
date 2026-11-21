@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { currentGlassLevel, getGlassFx, onGlassFxChange, setGlassFx, type GlassFxMode } from '../lib/glassfx';
 import { Seg } from './ui';
 
-/** Glass ki quality: Auto (phone ke hisaab se khud), Lens (sab se sundar), Fast (sab se tez scroll). */
+/** Glass ki quality: Auto (device ke hisaab se khud), 3D Full (header / menu par live blur + mouse tilt), Fast (live blur bilkul nahi). */
 export function GlassFxPick() {
   const [mode, setMode] = useState<GlassFxMode>(getGlassFx());
   const [, bump] = useState(0);
@@ -15,14 +15,14 @@ export function GlassFxPick() {
         label="Glass quality"
         value={mode}
         onChange={setGlassFx}
-        options={[{ v: 'auto', label: 'Auto' }, { v: 'full', label: 'Lens (sab se sundar)' }, { v: 'fast', label: 'Fast (sab se smooth)' }]}
+        options={[{ v: 'auto', label: 'Auto' }, { v: 'full', label: '3D Full' }, { v: 'fast', label: 'Fast' }]}
       />
       <span className="h">
         {mode === 'auto'
-          ? `Auto: scroll slow ho to khud halka kar deta hai. Abhi: ${lvl === 'lens' ? 'Lens (kinare par refraction)' : lvl === 'blur' ? 'sirf blur' : 'flat (sab se tez)'}`
+          ? `Auto: PC par 3D Full, phone par Fast (3D shading dono mein poori). Abhi: ${lvl === 'full' ? '3D Full' : 'Fast'}`
           : mode === 'full'
-            ? 'Kinare par background boond ki tarah mura hua dikhta hai. Purane phone par scroll halka sa bhari ho sakta hai.'
-            : 'Cards par live blur band — sab se smooth scroll. Header, neeche ki patti aur popup glass hi rehte hain.'}
+            ? '3D shading + header / neeche ki patti / dropdown / popup par live glass blur + PC par mouse ke saath card tilt.'
+            : '3D shading wahi, lekin live blur bilkul band — sab se smooth (90 FPS) scroll.'}
       </span>
     </div>
   );
