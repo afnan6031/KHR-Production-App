@@ -126,20 +126,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - run: npm ci
-
       - name: Build web (Windows)
         env:
           VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
         run: npm run build
-
       - name: Build installer
         shell: bash
         env:
@@ -148,7 +144,6 @@ jobs:
           npm install --no-save electron@33.4.11 electron-builder@25.1.8
           npm pkg set version="$VERSION_NAME"
           npx electron-builder --win --publish never
-
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ env.VERSION_NAME }}
@@ -162,14 +157,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - run: npm ci
-
       - name: SEO files (sitemap + robots)
         run: |
           OWNER="${GITHUB_REPOSITORY%%/*}"
@@ -180,21 +172,17 @@ jobs:
           printf 'User-agent: *\nAllow: /\n\nSitemap: %ssitemap.xml\n' "$SITE" > public/robots.txt
           printf '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>%s</loc><lastmod>%s</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>\n</urlset>\n' "$SITE" "$(date -u +%Y-%m-%d)" > public/sitemap.xml
           echo "Site URL: $SITE"
-
       - name: Build web (GitHub Pages)
         env:
           VITE_PIXELDRAIN_API_KEY: ${{ secrets.VITE_PIXELDRAIN_API_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_GOOGLE_VERIFY: ${{ secrets.VITE_GOOGLE_VERIFY }}
         run: npm run build
-
       - uses: actions/configure-pages@v5
         id: pages
-
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
-
       - uses: actions/deploy-pages@v4
         id: deployment
 
@@ -207,12 +195,10 @@ jobs:
         with:
           name: android-${{ env.VERSION_NAME }}
           path: files
-
       - uses: actions/download-artifact@v4
         with:
           name: windows-${{ env.VERSION_NAME }}
           path: files
-
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
