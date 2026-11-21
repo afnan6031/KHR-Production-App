@@ -6,6 +6,7 @@ import { checkAudioFile, uploadAudio } from '../lib/audio';
 import { dayLabel, errorText, todayKey } from '../lib/utils';
 import { Sheet, useToast } from './ui';
 import { VideoField } from './VideoUpload';
+import { Select } from './Select';
 
 /* =========================================================================
    v13: Kaam LAGA kar hi task mukammal (tick nahi).
@@ -218,14 +219,14 @@ export function TaskWorkSheet({ task, onClose }: { task: Task; onClose: () => vo
           <>
             <label className="f">
               Kis EP mein? <span className="h">Wohi EP chunein jis ka kaam hai — kaam isi EP ke card mein nazar aayega</span>
-              <select value={epId} onChange={(e) => pickEp(e.target.value)}>
+              <Select value={epId} onChange={(e) => pickEp(e.target.value)}>
                 {eps.map((v) => (
                   <option key={v.id} value={v.id}>
                     {(v.day === today ? 'Aaj · ' : v.day > today ? '📅 ' + v.day.slice(5) + ' · ' : v.day.slice(5) + ' · ') + v.title + (hasWork(cfg.kind, v) ? '  ✓ (pehle se laga)' : '')}
                   </option>
                 ))}
                 {!isFb && <option value="new">＋ Naya EP</option>}
-              </select>
+              </Select>
             </label>
             {epId === 'new' && (
               <label className="f">

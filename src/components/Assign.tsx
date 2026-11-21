@@ -3,6 +3,7 @@ import { useData } from '../lib/data';
 import { ROLES } from '../lib/types';
 import { addDays, errorText, fmtDur, todayKey } from '../lib/utils';
 import { Sheet, useToast } from './ui';
+import { Select } from './Select';
 
 /** "2026-10-19T14:30" (Pakistan time) -> ISO */
 export function pkLocalToIso(v: string): string {
@@ -63,23 +64,23 @@ export function AssignTaskSheet({ onClose, channelId, userId }: { onClose: () =>
         <p className="muted small m0">Roz ke tasks ke ilawa khaas kaam: start aur deadline ki <b>date aur waqt</b> dono chunein (kai din ka kaam bhi).</p>
         <label className="f">
           Channel
-          <select value={ch} onChange={(e) => { setCh(e.target.value); setRole(''); }}>
+          <Select value={ch} onChange={(e) => { setCh(e.target.value); setRole(''); }}>
             {[...d.channels].sort((a, b) => a.name.localeCompare(b.name)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </Select>
         </label>
         <label className="f">
           Kis ko
-          <select value={user} onChange={(e) => { setUser(e.target.value); setRole(''); }}>
+          <Select value={user} onChange={(e) => { setUser(e.target.value); setRole(''); }}>
             <option value="">— Member chunein —</option>
             {team.map(({ p, inCh }) => <option key={p.id} value={p.id}>{p.full_name || 'Owner'}{inCh ? ' ✓' : ''}</option>)}
-          </select>
+          </Select>
           <span className="h">✓ = is channel ki team mein hai</span>
         </label>
         <label className="f">
           Role
-          <select value={role || theirRoles[0] || ''} onChange={(e) => setRole(e.target.value)}>
+          <Select value={role || theirRoles[0] || ''} onChange={(e) => setRole(e.target.value)}>
             {roleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
+          </Select>
         </label>
         <label className="f">
           Kaam <span className="h">Jaise: "EP 088 ki editing", "Script likhni hai"</span>

@@ -93,7 +93,7 @@ export function CropSheet({ file, aspect, outWidth, title, onDone, onClose, roun
       const sx = (iw / 2 - fw / 2 - cp.x) / scale;
       const sy = (ih / 2 - fh / 2 - cp.y) / scale;
       ctx.drawImage(img, sx, sy, fw / scale, fh / scale, 0, 0, outWidth, outH);
-      const blob: Blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Crop nahi hua'))), 'image/jpeg', 0.9));
+      const blob: Blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Crop nahi hua'))), 'image/jpeg', 0.95));
       await onDone(new File([blob], 'khr-' + Date.now() + '.jpg', { type: 'image/jpeg' }));
     } finally {
       setBusy(false);

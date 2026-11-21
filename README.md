@@ -655,3 +655,13 @@ npm run android:prepare           # android/ project tayyar (Android Studio se k
 
 - Stack: React 18 + TypeScript + Vite, Capacitor 7 (Android), Electron (Windows), vite-plugin-pwa, Supabase (Postgres + RLS + Realtime).
 - Icons dobara banane ke liye: `python3 scripts/make_icons.py scripts/brand-font.woff …` (Pillow chahiye).
+
+---
+
+## v22 — kya badla
+
+- **Build fix:** GitHub Pages deploy ab alag job hai aur workflow ko `actions: read` permission mili (isi ki wajah se "No artifacts named github-pages" error aata tha). Saari actions Node 24 ke layak versions par.
+- **Dropdown:** native `<select>` ki jagah apna glass dropdown (`src/components/Select.tsx`) — ab safed box nahi khulta.
+- **Liquid Glass lens:** box ke kinare par peechhe ka background boond ki tarah mura hua dikhta hai (`src/lib/glassfx.ts`, sirf Chromium: Chrome / Android / Windows app). Settings > Glass mein "Glass quality": Auto / Lens / Fast.
+- **FPS:** cards par `contrast()/brightness()` filter hata diye; Auto mode scroll slow ho to khud lens -> blur -> flat karta hai.
+- **Sharpness:** images ka `optimize-contrast` rendering hata diya (jagged thumbnails), crop output aur blurred wallpaper ka resolution barha diya.

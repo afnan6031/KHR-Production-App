@@ -6,6 +6,7 @@ import { uploadAudio } from '../lib/audio';
 import { saveBlobFile } from '../lib/files';
 import { useMusic } from '../components/Music';
 import { Sheet, useToast } from '../components/ui';
+import { Select } from '../components/Select';
 
 /**
  * v16: 🎙 Voiceover Studio — Google Gemini se script ki awaaz.
@@ -342,10 +343,10 @@ export function VoiceStudio() {
               <input type="text" maxLength={160} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Misal: whispering, mysterious, horror story" aria-label="Apna andaaz (English mein)" />
             )}
             <div className="tone-row">
-              <select value={pace} onChange={(e) => setPace(e.target.value)} aria-label="Raftar">
+              <Select value={pace} onChange={(e) => setPace(e.target.value)} aria-label="Raftar">
                 {PACES.map((p) => <option key={p.k} value={p.k}>{p.label}</option>)}
-              </select>
-              <select className="model-pick" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
+              </Select>
+              <Select className="model-pick" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
                 <optgroup label="⚡ Live — bina limit">
                   {MODELS.filter((m) => m.kind === 'live').map((m) => (
                     <option key={m.id} value={m.id}>{m.label}{usage.full[m.id] ? ' · limit poori' : ''}</option>
@@ -356,7 +357,7 @@ export function VoiceStudio() {
                     <option key={m.id} value={m.id}>{m.label} · {usage.full[m.id] ? 'limit poori' : `aaj ${usage.n[m.id] || 0}/10`}</option>
                   ))}
                 </optgroup>
-              </select>
+              </Select>
             </div>
             <p className="muted tiny m0 model-note">
               <b>{mInfo.label}</b>{` · ${mInfo.limit} · ${mInfo.note}. `}
@@ -403,10 +404,10 @@ export function VoiceStudio() {
                 ) : (
                   <>
                     {d.music_playlists.length > 0 && (
-                      <select value={plist} onChange={(e) => setPlist(e.target.value)} aria-label="Kis playlist mein" disabled={saving !== null}>
+                      <Select value={plist} onChange={(e) => setPlist(e.target.value)} aria-label="Kis playlist mein" disabled={saving !== null}>
                         <option value="">Sab gaane</option>
                         {d.music_playlists.map((p) => <option key={p.id} value={p.id} data-notr>{p.name}</option>)}
-                      </select>
+                      </Select>
                     )}
                     <button type="button" className="btn primary" onClick={toPlaylist} disabled={saving !== null}>
                       {saving !== null ? (saving < 0 ? 'Save ho raha hai…' : 'Save ho raha hai… ' + saving + '%') : '➕ Save to My Playlist'}

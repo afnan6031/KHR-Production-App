@@ -1,4 +1,5 @@
 import { syncSystemBars } from './keyboard';
+import { disableGlassFx, enableGlassFx } from './glassfx';
 /** Light / Dark / System theme — har device par yaad rehta hai */
 export type ThemeChoice = 'system' | 'light' | 'dark' | 'glass';
 const KEY = 'khr-theme';
@@ -21,6 +22,9 @@ export function applyTheme(choice = getTheme()) {
   const root = document.documentElement;
   if (choice === 'system') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', choice);
+  // v22: glass ka lens effect (kinare par background ka mudna) sirf glass theme mein
+  if (choice === 'glass') enableGlassFx();
+  else disableGlassFx();
   const dark = isDark(choice);
   // index.html ka pehle-frame wala rang ab CSS sambhalta hai
   root.style.removeProperty('background');

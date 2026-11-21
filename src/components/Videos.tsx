@@ -10,6 +10,7 @@ import { ChatSheet, useUnread } from './Chat';
 import { ImageViewer } from './Messaging';
 import { VideoCard, VideoField } from './VideoUpload';
 import { downloadMediaUrl, fetchMediaBlob, normalizeMediaUrl, saveBlobFile } from '../lib/files';
+import { Select } from './Select';
 
 /* =========================================================================
    v9: VIDEOS — har video mein title, script (Google Doc link ya likhi hui),
@@ -300,10 +301,10 @@ export function VideoBrowser({ channelId, tab, setTab, onOpen, onCreate }: {
             <DateFilter value={day} onChange={setDay} label="Kis din ki" />
             <label className="f vb-sort">
               Tarteeb
-              <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')}>
+              <Select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')}>
                 <option value="new">Nayi pehle (latest → old)</option>
                 <option value="old">Purani pehle (old → latest)</option>
-              </select>
+              </Select>
             </label>
             <label className="f vb-q">
               Dhoondein
@@ -655,10 +656,10 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
               <button type="button" className="btn sm" onClick={() => { setCustomDay(false); if (!days.includes(day)) setDay(days[0] || todayKey()); }}>List</button>
             </span>
           ) : (
-            <select value={day} onChange={(e) => (e.target.value === '__x' ? setCustomDay(true) : setDay(e.target.value))}>
+            <Select value={day} onChange={(e) => (e.target.value === '__x' ? setCustomDay(true) : setDay(e.target.value))}>
               {days.map((k) => <option key={k} value={k}>{dayOption(k)}</option>)}
               <option value="__x">📅 Koi aur date…</option>
-            </select>
+            </Select>
           )}
         </label>
         <label className="f">
@@ -721,9 +722,9 @@ export function VideoForm({ channelId, video, taskId, onClose, onSaved }: { chan
         <div className="two">
           <label className="f">
             Stage
-            <select id="v-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage)}>
+            <Select id="v-stage" value={stage} onChange={(e) => setStage(e.target.value as Stage)}>
               {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
+            </Select>
           </label>
           <label className="f">
             Due date

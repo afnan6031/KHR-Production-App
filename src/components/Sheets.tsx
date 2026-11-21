@@ -10,6 +10,8 @@ import { useData } from '../lib/data';
 import { FB_ROLE, ROLES, type Channel, type Prefs, type RoleTime } from '../lib/types';
 import { DAYS_LONG, channelTimeline, errorText, fmtDate, fmtTime, roleClass, roleTime, toMin } from '../lib/utils';
 import { Avatar, ConfirmButton, Seg, Sheet, useTheme, useToast } from './ui';
+import { Select } from './Select';
+import { GlassFxPick } from './GlassFxPick';
 
 /* ================= Channel create / edit ================= */
 export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel | null; onClose: () => void; onSaved: (id: string) => void }) {
@@ -206,17 +208,17 @@ export function ChannelSheet({ channel, onClose, onSaved }: { channel: Channel |
                     </div>
                     <label className="f">
                       Deadline kis din
-                      <select value={extra} onChange={(e) => setRoleDays(r, Number(e.target.value))}>
+                      <Select value={extra} onChange={(e) => setRoleDays(r, Number(e.target.value))}>
                         <option value={0}>Usi din (ya raat ki shift mein agle din)</option>
                         {[1, 2, 3, 4, 5, 6, 7, 10, 14].map((n) => <option key={n} value={n}>{n} din baad</option>)}
-                      </select>
+                      </Select>
                     </label>
                     <label className="f">
                       Kab shuru <span className="h">Production ke din se pehle — sirf isi role wale ko us din task dikhta hai</span>
-                      <select value={t.before || 0} onChange={(e) => setRoleBefore(r, Number(e.target.value))}>
+                      <Select value={t.before || 0} onChange={(e) => setRoleBefore(r, Number(e.target.value))}>
                         <option value={0}>Production ke din hi</option>
                         {[1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n} din pehle</option>)}
-                      </select>
+                      </Select>
                     </label>
                     <span className={'tiny ' + (overnight || extra || t.before ? 'warn' : 'muted')}>
                       {t.before ? `${t.before} din pehle · ` : ''}{fmtTime(t.start)} se {fmtTime(t.end)}{extra ? ` (${extra} din baad)` : overnight ? ' (agle din)' : ''}
@@ -709,6 +711,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
                   onChange={(e) => savePrefs({ ...prefs, glass: { ...prefs.glass, popupDim: Number(e.target.value) } })}
                 />
               </label>
+              <GlassFxPick />
             </>
           )}
         </div>
@@ -722,7 +725,7 @@ export function ProfileSheet({ onClose, onSignOut, onProgress, onRecords }: { on
       )}
 
       {crop && (
-        <CropSheet file={crop.file} aspect={crop.kind === 'avatar' ? 1 : 3} outWidth={crop.kind === 'avatar' ? 512 : 1500} round={crop.kind === 'avatar'} title={crop.kind === 'avatar' ? 'Profile photo crop' : 'Banner crop'} onClose={() => setCrop(null)} onDone={(f) => uploadCropped(f, crop.kind)} />
+        <CropSheet file={crop.file} aspect={crop.kind === 'avatar' ? 1 : 3} outWidth={crop.kind === 'avatar' ? 768 : 2400} round={crop.kind === 'avatar'} title={crop.kind === 'avatar' ? 'Profile photo crop' : 'Banner crop'} onClose={() => setCrop(null)} onDone={(f) => uploadCropped(f, crop.kind)} />
       )}
     </Sheet>
   );

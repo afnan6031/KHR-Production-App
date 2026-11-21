@@ -1764,7 +1764,7 @@ html, body {
   font-optical-sizing: auto;
 }
 img {
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
 }
 #khr-bg, header.top, nav.tabs {
   transform: translate3d(0, 0, 0);
@@ -1895,15 +1895,15 @@ img {
 /* Fixed Glass Header & Bottom Nav (static layers -> 0 scroll cost) */
 :root[data-theme="glass"] header.top {
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(190%) brightness(1.04) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(190%) brightness(1.04) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
   border-bottom: 1px solid var(--glass-rim) !important;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12), inset 0 -1px 0 rgba(255, 255, 255, 0.22) !important;
 }
 :root[data-theme="glass"] nav.tabs {
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(190%) brightness(1.04) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(190%) brightness(1.04) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
   border-top: 1px solid var(--glass-rim) !important;
   box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.12), inset 0 1.5px 0 rgba(255, 255, 255, 0.28) !important;
 }
@@ -1912,8 +1912,8 @@ img {
 :root[data-theme="glass"] .sheet {
   position: relative;
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(195%) contrast(1.05) brightness(1.04) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(195%) contrast(1.05) brightness(1.04) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
   border: 1px solid var(--glass-rim) !important;
   box-shadow:
     0 18px 44px rgba(0, 0, 0, 0.30),
@@ -1953,8 +1953,8 @@ img {
 :root[data-theme="glass"] main.server-main .srv-members {
   position: relative;
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(190%) contrast(1.05) brightness(1.03) !important;
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(190%) contrast(1.05) brightness(1.03) !important;
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(180%) !important;
   border: 1px solid var(--glass-rim) !important;
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.16),
@@ -2200,4 +2200,126 @@ img {
     rgba(255, 255, 255, 0.16) !important;
   border: 1.5px solid rgba(255, 255, 255, 0.88) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), inset 0 2px 3px rgba(255, 255, 255, 0.9), inset 0 -2px 4px rgba(0, 0, 0, 0.22) !important;
+}
+
+/* ================= v22 — Custom dropdown (Select) ================= */
+.gsel {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 10px 12px;
+  font-size: 16px; min-width: 0; cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.gsel-val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gsel-chev { flex: none; opacity: .7; transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
+.gsel.open .gsel-chev { transform: rotate(180deg); }
+.gsel:disabled { opacity: .55; cursor: not-allowed; }
+.tone .gsel { align-self: flex-start; width: auto; min-width: 180px; }
+.tone-row .gsel { width: auto; min-width: 160px; }
+.model-pick.gsel { min-width: 240px; max-width: 100%; }
+
+.gsel-menu {
+  position: fixed; z-index: 70; overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 20px;
+  background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .28), 0 2px 6px rgba(0, 0, 0, .12);
+  transform-origin: top center; animation: gsel-pop .16s cubic-bezier(.22, 1, .36, 1);
+  scrollbar-width: thin;
+}
+@keyframes gsel-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+.gsel-group { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 10px 12px 4px; }
+.gsel-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 14px;
+  font-size: 15px; font-weight: 500; cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+.gsel-opt-t { min-width: 0; overflow-wrap: anywhere; }
+.gsel-opt.act { background: var(--surface-2); }
+.gsel-opt.on { font-weight: 700; color: var(--accent); }
+.gsel-opt.dis { opacity: .45; cursor: not-allowed; }
+.gsel-opt svg { flex: none; }
+
+/* ================= v22 — iOS 27 Liquid Glass (dropdown, lens, quality) ================= */
+:root[data-theme="glass"] {
+  --glass-radius: 28px;
+  --glass-rim-hi: rgba(255, 255, 255, .78);
+  --glass-edge:
+    0 14px 38px rgba(0, 0, 0, .20),
+    0 2px 6px rgba(0, 0, 0, .10),
+    inset 0 0 0 1px rgba(255, 255, 255, .10),
+    inset 0 1.5px 0 rgba(255, 255, 255, .60),
+    inset 0 -1.5px 0 rgba(255, 255, 255, .20),
+    inset 0 0 22px 2px rgba(255, 255, 255, .07);
+}
+
+/* Dropdown trigger + menu = asli glass (safed native box nahi) */
+:root[data-theme="glass"] .gsel {
+  background: var(--glass-surface-soft) !important;
+  border: 1px solid var(--glass-rim) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .30), 0 4px 14px rgba(0, 0, 0, .10);
+  color: var(--fg) !important;
+  border-radius: 16px;
+}
+:root[data-theme="glass"] .gsel.open { border-color: color-mix(in srgb, var(--accent) 60%, white) !important; }
+:root[data-theme="glass"] .gsel-menu {
+  background: linear-gradient(rgba(10, 14, 26, .30), rgba(10, 14, 26, .30)), var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-rim);
+  border-radius: 24px;
+  box-shadow: var(--glass-edge), 0 22px 50px rgba(0, 0, 0, .34);
+}
+:root[data-theme="glass"][data-glass-tone="light"] .gsel-menu {
+  background: linear-gradient(rgba(255, 255, 255, .38), rgba(255, 255, 255, .38)), var(--glass-surface) !important;
+}
+:root[data-theme="glass"] .gsel-opt.act { background: rgba(255, 255, 255, .16); }
+:root[data-theme="glass"][data-glass-tone="light"] .gsel-opt.act { background: rgba(15, 23, 42, .09); }
+:root[data-theme="glass"] .gsel-opt.on { color: var(--fg); background: color-mix(in srgb, var(--accent) 34%, transparent); }
+:root[data-theme="glass"] .gsel-opt.on svg { color: var(--fg); }
+:root[data-theme="glass"] .gsel-group { color: var(--muted); }
+
+/* Squircle (Chrome 139+): iOS jaisi nikharti hui gol kinari. Purane browser mein normal gol kinare. */
+@supports (corner-shape: superellipse(1.6)) {
+  :root[data-theme="glass"] :is(.panel, .card, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .pod, .sheet, .gsel-menu, .gsel, .btn, .seg, .vpick, .take, .mplayer, .mplayer2, .bsec, .plan-ch) {
+    corner-shape: superellipse(1.6);
+  }
+}
+
+/* Box ki shakal: bareek roshan kinara, andar ki chamak, naram saaya (iOS 27 jaisa) */
+:root[data-theme="glass"] :is(.panel, .card, .card.tinted, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .vpick, .take, .pod, .mplayer, .mplayer2, .bsec, .plan-ch, main.server-main .srv-side, main.server-main .srv-main, main.server-main .srv-members) {
+  border-radius: var(--glass-radius);
+  border-color: rgba(255, 255, 255, .22) !important;
+  box-shadow: var(--glass-edge) !important;
+}
+:root[data-theme="glass"] .sheet { border-radius: 32px 32px 0 0 !important; box-shadow: 0 -10px 50px rgba(0, 0, 0, .34), var(--glass-edge) !important; }
+@media (min-width: 700px) { :root[data-theme="glass"] .sheet { border-radius: 32px !important; } }
+
+/* Kinare par roshni ki lakeer: upar-left chamak, neeche-right chamak, left par neela / right par sunehri fringe (refraction ka rang) */
+:root[data-theme="glass"] :is(.panel, .card, .pg-sum, .pg-tile, .pod, .script-box, .studio-side, .sheet)::before {
+  padding: 1.5px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, .92) 0%, rgba(255, 255, 255, .22) 20%, rgba(255, 255, 255, 0) 44%, rgba(255, 255, 255, 0) 62%, rgba(255, 255, 255, .26) 82%, rgba(255, 255, 255, .74) 100%),
+    conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, 0) 0deg, rgba(255, 170, 80, .55) 88deg, rgba(255, 255, 255, 0) 150deg, rgba(255, 255, 255, 0) 210deg, rgba(90, 175, 255, .60) 272deg, rgba(255, 255, 255, 0) 332deg);
+}
+
+/* Buttons / chips = capsule glass (image 7 jaisi) */
+:root[data-theme="glass"] .btn:not(.primary):not(.danger),
+:root[data-theme="glass"] .chip:not(.on),
+:root[data-theme="glass"] .tbtn {
+  border-radius: 999px;
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .50), inset 0 -1px 0 rgba(255, 255, 255, .14), 0 4px 14px rgba(0, 0, 0, .12);
+}
+:root[data-theme="glass"] .btn { border-radius: 999px; transition: transform .16s cubic-bezier(.22, 1, .36, 1); }
+:root[data-theme="glass"] .btn:active { transform: scale(.96); }
+
+/* ---- LENS: kinare par peechhe ka background boond ki tarah mura hua (glassfx.ts har box ko uske size ka filter deta hai) ---- */
+:root[data-theme="glass"][data-fx="lens"] [data-lens] {
+  backdrop-filter: var(--lens) blur(var(--glass-card-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: var(--lens) blur(var(--glass-card-blur)) saturate(180%) !important;
+}
+:root[data-theme="glass"][data-fx="lens"] :is(header.top, nav.tabs, .sheet, .gsel-menu)[data-lens] {
+  backdrop-filter: var(--lens) blur(var(--glass-blur)) saturate(180%) !important;
+  -webkit-backdrop-filter: var(--lens) blur(var(--glass-blur)) saturate(180%) !important;
+}
+
+/* ---- FAST / flat: cards par live blur nahi (sab se tez scroll). Header, neeche ki patti, popup, dropdown par blur rehta hai ---- */
+:root[data-theme="glass"][data-fx="flat"] :is(.panel, .card, .card.tinted, .stat, .tstat-card, .tmini-panel, .pg-sum, .pg-tile, .script-box, .studio-side, .vpick, .take, .daypick-btn, .pod, .vmore-menu, .fmsg-actions, .mplayer, .mplayer2, .bsec, .plan-ch, main.server-main .srv-side, main.server-main .srv-main, main.server-main .srv-members) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
