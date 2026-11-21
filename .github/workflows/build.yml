@@ -15,6 +15,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: read      # v22: deploy-pages artifact dhoondne ke liye (iske bina "No artifacts named github-pages" error aata hai)
 
 # Ye secrets teeno builds (Android, Windows, Web) ko milte hain — Settings > Secrets and variables > Actions
 env:
@@ -35,7 +36,7 @@ jobs:
     name: Android APK + AAB
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check Supabase secrets
         run: |
@@ -47,9 +48,9 @@ jobs:
             echo "::warning::VITE_IMGBB_API_KEY secret nahi mila. App chalegi lekin thumbnail upload band rahega."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: actions/setup-java@v5
@@ -116,7 +117,7 @@ jobs:
           mkdir -p ../out
           cp app/build/outputs/apk/debug/app-debug.apk "../out/KHR-Production-${VERSION_NAME}-debug.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: android-${{ env.VERSION_NAME }}
           path: out/*
@@ -125,10 +126,10 @@ jobs:
     name: Windows installer (.exe)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Build web (Windows)
@@ -144,22 +145,19 @@ jobs:
           npm install --no-save electron@33.4.11 electron-builder@25.1.8
           npm pkg set version="$VERSION_NAME"
           npx electron-builder --win --publish never
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-${{ env.VERSION_NAME }}
           path: release/*.exe
 
-  web:
-    name: Web app (GitHub Pages)
+  web-build:
+    name: Web app build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: SEO files (sitemap + robots)
@@ -178,11 +176,18 @@ jobs:
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_GOOGLE_VERIFY: ${{ secrets.VITE_GOOGLE_VERIFY }}
         run: npm run build
-      - uses: actions/configure-pages@v5
-        id: pages
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+
+  web:
+    name: Web app (GitHub Pages)
+    needs: web-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - uses: actions/deploy-pages@v4
         id: deployment
 
@@ -191,11 +196,11 @@ jobs:
     needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: android-${{ env.VERSION_NAME }}
           path: files
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: windows-${{ env.VERSION_NAME }}
           path: files
